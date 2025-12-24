@@ -2,19 +2,15 @@
 
 // ✅ Must be placed immediately after "use client" directive
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-
-// ✅ Dynamically import the auth hook to prevent server-side execution
 import { useAuth } from '@/hooks/useAuth';
 
 export default function AuthPage() {
   // ✅ State to track if component is mounted (client-side only)
   const [isMounted, setIsMounted] = useState(false);
   
-  // ✅ Auth hook should only be used after component mounts
   const { signUp, signIn, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -38,7 +34,6 @@ export default function AuthPage() {
     return null;
   }
 
-  // ✅ Show loading state from auth hook, but only after mounting
   if (authLoading) {
     return (
       <div style={styles.centered}>
