@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Copy, PhoneCall, MicOff, Mic } from 'lucide-react';
 
 // ⚠️ Prevent static prerendering – this page uses browser-only APIs (window, navigator, WebRTC)
-export const dynamic = 'force-client';
+export const dynamic = 'force-dynamic';
 
 export default function OneOnOneCall() {
   const router = useRouter();
