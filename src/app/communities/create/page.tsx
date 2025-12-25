@@ -2,11 +2,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import Button from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Users, ArrowLeft } from 'lucide-react';
+import { Users, ArrowLeft, Image, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
 // Grief types that match the database schema and UI color system
@@ -30,8 +30,9 @@ export default function CreateCommunityPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const router = useRouter();
-  const searchParams = useSearchParams();
   const supabase = createClient();
   const { user, sessionChecked } = useAuth();
   
@@ -95,6 +96,7 @@ export default function CreateCommunityPage() {
 
     setIsSubmitting(true);
     setError(null);
+    setUploadError(null);
 
     try {
       // Generate slug ID for the community
@@ -140,21 +142,24 @@ export default function CreateCommunityPage() {
 
       if (memberError) throw memberError;
 
-      // If there's a preview image, upload it to the communities bucket
-      if (previewImage) {
-        // Convert data URL to Blob
-        const response = await fetch(previewImage);
-        const blob = await response.blob();
-        
-        const { error: uploadError } = await supabase.storage
-          .from('communities')
-          .upload(`${communityId}/banner.jpg`, blob, {
-            upsert: true
-          });
+      // Handle banner upload if file exists
+      if (fileToUpload) {
+        try {
+          const fileExt = fileToUpload.name.split('.').pop();
+          const fileName = `${communityId}/banner.${fileExt || 'jpg'}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('communities')
+            .upload(fileName, fileToUpload, {
+              upsert: true
+            });
 
-        if (uploadError) {
-          console.error('Banner upload failed:', uploadError);
-          // Continue anyway - community was created successfully
+          if (uploadError) {
+            throw uploadError;
+          }
+        } catch (uploadErr: any) {
+          console.error('Banner upload failed:', uploadErr);
+          setUploadError('Banner upload failed, but your community was created successfully. You can add a banner later in community settings.');
         }
       }
 
@@ -169,14 +174,17 @@ export default function CreateCommunityPage() {
     }
   };
 
-  // Handle image preview for banner
+  // Handle image preview and file storage
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     
+    // Reset input value to allow re-selecting the same file
+    e.target.value = '';
+    
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      setError('Please upload an image file');
+      setError('Please upload an image file (JPEG, PNG, GIF, etc.)');
       return;
     }
     
@@ -185,6 +193,9 @@ export default function CreateCommunityPage() {
       setError('Image must be less than 5MB');
       return;
     }
+
+    // Store the actual file for later upload
+    setFileToUpload(file);
     
     // Create preview
     const reader = new FileReader();
@@ -192,7 +203,17 @@ export default function CreateCommunityPage() {
       setPreviewImage(reader.result as string);
       setError(null);
     };
+    reader.onerror = () => {
+      setError('Failed to load image preview. Please try a different image.');
+    };
     reader.readAsDataURL(file);
+  };
+
+  // Remove banner preview and file
+  const removeBanner = () => {
+    setPreviewImage(null);
+    setFileToUpload(null);
+    setError(null);
   };
 
   return (
@@ -227,29 +248,57 @@ export default function CreateCommunityPage() {
               <label className="block text-sm font-medium text-stone-700">
                 Community Banner (optional)
               </label>
-              <div 
-                className="border-2 border-dashed border-stone-300 rounded-lg p-4 text-center cursor-pointer hover:border-amber-400 transition-colors"
-                onClick={() => document.getElementById('banner-upload')?.click()}
-              >
+              <div className="relative">
                 {previewImage ? (
-                  <div className="relative h-32 rounded-lg overflow-hidden">
-                    <img 
-                      src={previewImage} 
-                      alt="Community banner preview" 
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center text-white text-sm">
-                      Click to change banner
+                  <div className="relative group">
+                    <div 
+                      className="border-2 border-stone-200 rounded-lg overflow-hidden cursor-pointer"
+                      onClick={() => document.getElementById('banner-upload')?.click()}
+                    >
+                      <div className="relative h-48 w-full bg-stone-100">
+                        <img 
+                          src={previewImage} 
+                          alt="Community banner preview" 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            setPreviewImage(null);
+                          }}
+                        />
+                      </div>
                     </div>
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all opacity-0 group-hover:opacity-100 pointer-events-none rounded-lg"></div>
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
+                      <div className="text-white bg-black bg-opacity-50 px-4 py-2 rounded-full flex items-center text-sm">
+                        <Image className="h-4 w-4 mr-2" />
+                        <span>Change banner</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeBanner();
+                      }}
+                      className="absolute -top-2 -right-2 bg-amber-500 text-white rounded-full p-1.5 shadow-md hover:bg-amber-600 transition-colors z-10"
+                      title="Remove banner"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 ) : (
-                  <div className="py-8">
-                    <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
-                      <span className="text-amber-700 font-bold text-lg">+</span>
+                  <div 
+                    className="border-2 border-dashed border-stone-300 rounded-lg p-6 text-center cursor-pointer hover:border-amber-400 transition-colors"
+                    onClick={() => document.getElementById('banner-upload')?.click()}
+                  >
+                    <div className="mx-auto w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-3">
+                      <Image className="h-8 w-8 text-amber-700" />
                     </div>
-                    <p className="text-stone-600">
-                      Upload a banner image (optional) <br />
-                      <span className="text-xs text-stone-500">Recommended: 1200x300px, max 5MB</span>
+                    <p className="text-stone-700 font-medium mb-1">
+                      Upload a banner image
+                    </p>
+                    <p className="text-sm text-stone-500">
+                      Recommended: 1200x300px (16:9 ratio), max 5MB
                     </p>
                   </div>
                 )}
@@ -327,10 +376,16 @@ export default function CreateCommunityPage() {
               </p>
             </div>
 
-            {/* Error Message */}
+            {/* Error Messages */}
             {error && (
               <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
                 {error}
+              </div>
+            )}
+            
+            {uploadError && (
+              <div className="p-3 bg-amber-50 text-amber-700 rounded-lg text-sm">
+                {uploadError}
               </div>
             )}
 

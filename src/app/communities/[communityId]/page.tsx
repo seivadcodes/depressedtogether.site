@@ -11,15 +11,19 @@ import {
   Users, 
   Heart, 
   MessageCircle, 
-  Plus, 
   LogIn, 
   LogOut, 
   Settings,
   UserPlus,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Trash2,
+  X,
+  Loader,
+  Upload
 } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
-// Types based on reference documents
+// Types
 interface Community {
   id: string;
   name: string;
@@ -32,7 +36,7 @@ interface Community {
 }
 
 interface Member {
-  user_id: string;          // ← primary identifier
+  user_id: string;
   username: string;
   avatar_url: string | null;
   last_online: string | null;
@@ -44,6 +48,7 @@ interface Member {
 interface Post {
   id: string;
   content: string;
+  media_url?: string | null;
   created_at: string;
   user_id: string;
   username: string;
@@ -61,6 +66,7 @@ export default function CommunityDetailPage() {
   const supabase = createClient();
   const { user } = useAuth();
   
+  // State
   const [community, setCommunity] = useState<Community | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
@@ -69,10 +75,16 @@ export default function CommunityDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newPostContent, setNewPostContent] = useState('');
-  const [isPosting, setIsPosting] = useState(false);
-  const [bannerLoading, setBannerLoading] = useState(true);
+  const [newPostMedia, setNewPostMedia] = useState<File | null>(null);
+  const [bannerModalOpen, setBannerModalOpen] = useState(false);
+  const [bannerPreview, setBannerPreview] = useState<string | null>(null);
+  const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const [bannerUploadError, setBannerUploadError] = useState<string | null>(null);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
 
-  // Grief types with gradients from reference documents
+  // Grief types with gradients
   const griefTypeGradients: Record<string, string> = {
     'parent': 'from-amber-200 to-orange-300',
     'child': 'from-purple-200 to-indigo-300',
@@ -86,7 +98,7 @@ export default function CommunityDetailPage() {
     'other': 'from-gray-200 to-stone-300'
   };
 
-  // Format time since last activity using native Date
+  // Format time since last activity
   const formatRecentActivity = (dateString: string): string => {
     const now = new Date();
     const created = new Date(dateString);
@@ -101,12 +113,199 @@ export default function CommunityDetailPage() {
     return `${hours} hours ago`;
   };
 
-  // Check if user is online (last 5 minutes)
+  // Check if user is online
   const isUserOnline = (lastOnline: string | null): boolean => {
     if (!lastOnline) return false;
     const lastOnlineDate = new Date(lastOnline);
     const now = new Date();
     return (now.getTime() - lastOnlineDate.getTime()) < 5 * 60 * 1000; // 5 minutes
+  };
+
+  // Update community banner
+  const updateBanner = async (file: File) => {
+    if (!community) return;
+    
+    setBannerUploading(true);
+    try {
+      if (!file.type.startsWith('image/')) {
+        throw new Error('Only image files are allowed');
+      }
+      
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error('Image must be less than 5MB');
+      }
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${communityId}/banner.${fileExt || 'jpg'}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('communities')
+        .upload(fileName, file, {
+          upsert: true
+        });
+
+      if (uploadError) throw uploadError;
+
+      const newBannerUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${fileName}?t=${Date.now()}`;
+      
+      setCommunity(prev => prev ? { 
+        ...prev, 
+        cover_photo_url: newBannerUrl 
+      } : null);
+
+      toast.success('Banner updated successfully!');
+      setBannerModalOpen(false);
+      setBannerPreview(null);
+      setBannerFile(null);
+    } catch (error: any) {
+      console.error('Banner update failed:', error);
+      setBannerUploadError(error.message || 'Failed to update banner');
+    } finally {
+      setBannerUploading(false);
+    }
+  };
+
+  // Delete a post
+  const deletePost = async (postId: string) => {
+    setDeletingPostId(postId);
+    try {
+      const { error } = await supabase
+        .from('community_posts')
+        .delete()
+        .eq('id', postId)
+        .eq('community_id', communityId);
+
+      if (error) throw error;
+      
+      setPosts(prev => prev.filter(post => post.id !== postId));
+      toast.success('Post deleted successfully');
+    } catch (error: any) {
+      console.error('Post deletion failed:', error);
+      toast.error(error.message || 'Failed to delete post');
+    } finally {
+      setDeletingPostId(null);
+    }
+  };
+
+  // Upload post media
+  const uploadPostMedia = async (file: File, postId: string) => {
+    try {
+      setUploadingMedia(true);
+      
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error('Unsupported file type. Please upload JPG, PNG, GIF, MP4 or MOV files.');
+      }
+      
+      const maxSize = file.type.startsWith('video/') ? 15 : 5;
+      if (file.size > maxSize * 1024 * 1024) {
+        throw new Error(`File must be less than ${maxSize}MB`);
+      }
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${communityId}/posts/${postId}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('community-media')
+        .upload(fileName, file, {
+          upsert: true,
+          contentType: file.type
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('community-media')
+        .getPublicUrl(fileName);
+
+      return data.publicUrl;
+    } catch (error: any) {
+      console.error('Media upload failed:', error);
+      throw error;
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  // Create post with optional media
+  const createPostWithMedia = async (content: string, file: File | null, userId: string) => {
+    if (!community) throw new Error('Community not loaded');
+    
+    try {
+      // Create the post first
+      const { data: postData, error: postError } = await supabase
+        .from('community_posts')
+        .insert({
+          community_id: communityId,
+          user_id: userId,
+          content: content.trim(),
+          created_at: new Date().toISOString(),
+          media_url: file ? 'uploading' : null
+        })
+        .select(`
+          id,
+          content,
+          created_at,
+          community_id,
+          media_url,
+          user_id,
+          user:profiles!inner (
+            id,
+            full_name,
+            avatar_url
+          )
+        `)
+        .single();
+
+      if (postError) throw postError;
+      
+      let mediaUrl = null;
+      
+      // Upload media if exists
+      if (file) {
+        mediaUrl = await uploadPostMedia(file, postData.id);
+        
+        // Update post with media URL
+        if (mediaUrl) {
+          const { error: updateError } = await supabase
+            .from('community_posts')
+            .update({ media_url: mediaUrl })
+            .eq('id', postData.id);
+
+          if (updateError) {
+            console.warn('Failed to update post with media URL:', updateError);
+          }
+        }
+      }
+
+      // Format the post data
+      const userData = Array.isArray(postData.user) ? postData.user[0] : postData.user;
+      return {
+        id: postData.id,
+        content: postData.content,
+        created_at: postData.created_at,
+        user_id: postData.user_id,
+        username: userData?.full_name || 'Anonymous',
+        avatar_url: userData?.avatar_url || null,
+        community_id: postData.community_id,
+        media_url: mediaUrl,
+        likes_count: 0,
+        comments_count: 0,
+        is_liked: false
+      };
+    } catch (error: any) {
+      console.error('Post creation failed:', error);
+      
+      // Clean up if post was created but media failed
+      if (error.message?.includes('media')) {
+        await supabase
+          .from('community_posts')
+          .delete()
+          .eq('id', error.postId);
+      }
+      
+      throw error;
+    }
   };
 
   // Fetch community data
@@ -128,16 +327,19 @@ export default function CommunityDetailPage() {
         if (communityError) throw communityError;
         
         // Add cover photo URL
+        const coverPhotoUrl = communityData.cover_photo_url || 
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
+        
         const communityWithPhoto = {
           ...communityData,
-          cover_photo_url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`
+          cover_photo_url: coverPhotoUrl
         };
         
         setCommunity(communityWithPhoto);
 
         // Check if user is a member
         if (user) {
-          const { data: memberData, error: memberError } = await supabase
+          const { data: memberData } = await supabase
             .from('community_members')
             .select('role')
             .eq('community_id', communityId)
@@ -153,74 +355,72 @@ export default function CommunityDetailPage() {
           }
         }
 
-        // Fetch members with user details
-       const { data: membersData, error: membersError } = await supabase
-  .from('community_members')
-  .select(`
-    role,
-    joined_at,
-    user_id,
-    user:profiles!inner (
-      
-      full_name,
-      avatar_url,
-      last_online
-    )
-  `)
-  .eq('community_id', communityId)
-  .order('joined_at', { ascending: true });
+        // Fetch members
+        const { data: membersData, error: membersError } = await supabase
+          .from('community_members')
+          .select(`
+            role,
+            joined_at,
+            user_id,
+            user:profiles!inner (
+              full_name,
+              avatar_url,
+              last_online
+            )
+          `)
+          .eq('community_id', communityId)
+          .order('joined_at', { ascending: true });
 
         if (membersError) throw membersError;
         
-        // Format members data correctly
-       const formattedMembers = membersData.map(member => {
-  const profile = Array.isArray(member.user) ? member.user[0] : member.user;
-  return {
-    
-    user_id: member.user_id,
-    username: profile.full_name || 'Anonymous', // map to username for UI
-    avatar_url: profile.avatar_url,
-    last_online: profile.last_online,
-    is_online: isUserOnline(profile.last_online),
-    role: member.role,
-    joined_at: member.joined_at
-  };
-});
+        const formattedMembers = membersData.map(member => {
+          const profile = Array.isArray(member.user) ? member.user[0] : member.user;
+          return {
+            user_id: member.user_id,
+            username: profile.full_name || 'Anonymous',
+            avatar_url: profile.avatar_url,
+            last_online: profile.last_online,
+            is_online: isUserOnline(profile.last_online),
+            role: member.role,
+            joined_at: member.joined_at
+          };
+        });
         
         setMembers(formattedMembers);
 
         // Fetch posts
         const { data: postData, error: postError } = await supabase
           .from('community_posts')
-.select(`
-  id,
-  content,
-  created_at,
-  community_id,
-  likes_count,
-  comments_count,
-  user_id,
-  user:profiles!inner (
-    id,
-    full_name,
-    avatar_url
-  )
-`)
-.eq('community_id', communityId)
-.order('created_at', { ascending: false });
+          .select(`
+            id,
+            content,
+            created_at,
+            community_id,
+            media_url,
+            likes_count,
+            comments_count,
+            user_id,
+            user:profiles!inner (
+              id,
+              full_name,
+              avatar_url
+            )
+          `)
+          .eq('community_id', communityId)
+          .order('created_at', { ascending: false });
 
         if (postError) throw postError;
         
-        // Format posts data correctly
         const formattedPosts = postData.map(post => {
           const userData = Array.isArray(post.user) ? post.user[0] : post.user;
           return {
             id: post.id,
             content: post.content,
+            media_url: post.media_url,
             created_at: post.created_at,
             user_id: post.user_id,
-            username: userData.full_name || 'Anonymous',
-            avatar_url: userData.avatar_url,
+            username: userData?.full_name || 'Anonymous',
+            avatar_url: userData?.avatar_url || null,
             community_id: post.community_id,
             likes_count: post.likes_count || 0,
             comments_count: post.comments_count || 0,
@@ -240,11 +440,6 @@ export default function CommunityDetailPage() {
 
     fetchData();
   }, [communityId, user, supabase]);
-
-  // Handle banner image load
-  const handleBannerLoad = () => {
-    setBannerLoading(false);
-  };
 
   // Handle join/leave community
   const handleMembership = async () => {
@@ -293,65 +488,86 @@ export default function CommunityDetailPage() {
     }
   };
 
-  // Handle create post
+  // Handle create post with media
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !community || !newPostContent.trim()) return;
+    if (!user || !community || (!newPostContent.trim() && !newPostMedia)) return;
     
-    setIsPosting(true);
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .from('community_posts')
-        .insert({
-          community_id: community.id,
-          user_id: user.id,
-          content: newPostContent.trim(),
-          created_at: new Date().toISOString()
-        })
-        .select(`
-          id,
-          content,
-          created_at,
-          community_id,
-          likes_count,
-          comments_count,
-          user_id,
-          user:profiles!inner (
-            id,
-            full_name,
-            avatar_url
-          )
-        `)
-        .single();
-
-      if (error) throw error;
+      const newPost = await createPostWithMedia(
+        newPostContent.trim(),
+        newPostMedia,
+        user.id
+      );
       
-      // Format new post correctly
-      const userData = Array.isArray(data.user) ? data.user[0] : data.user;
-      const newPost = {
-        id: data.id,
-        content: data.content,
-        created_at: data.created_at,
-        user_id: data.user_id,
-        username: userData?.full_name || 'Anonymous', 
-        avatar_url: userData.avatar_url,
-        community_id: data.community_id,
-        likes_count: data.likes_count || 0,
-        comments_count: data.comments_count || 0,
-        is_liked: false
-      };
-      
-      // Add new post to state
       setPosts(prev => [newPost, ...prev]);
       setNewPostContent('');
+      setNewPostMedia(null);
+      toast.success('Post created successfully!');
     } catch (err: any) {
       console.error('Error creating post:', err);
       setError(err.message || 'Failed to create post');
-    } finally {
-      setIsPosting(false);
+      toast.error('Failed to create post');
     }
+  };
+
+  // Handle banner file selection
+  const handleBannerFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    e.target.value = '';
+    
+    if (!file.type.startsWith('image/')) {
+      setBannerUploadError('Please upload an image file (JPEG, PNG, GIF, etc.)');
+      return;
+    }
+    
+    if (file.size > 5 * 1024 * 1024) {
+      setBannerUploadError('Image must be less than 5MB');
+      return;
+    }
+
+    setBannerFile(file);
+    setBannerUploadError(null);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setBannerPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle post media selection
+  const handlePostMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    e.target.value = '';
+    
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
+    if (!allowedTypes.includes(file.type)) {
+      setError('Unsupported file type. Please upload JPG, PNG, GIF, MP4 or MOV files.');
+      return;
+    }
+    
+    const maxSize = file.type.startsWith('video/') ? 15 : 5;
+    if (file.size > maxSize * 1024 * 1024) {
+      setError(`File must be less than ${maxSize}MB`);
+      return;
+    }
+
+    setNewPostMedia(file);
+    setError(null);
+  };
+
+  // Remove post media
+  const removePostMedia = () => {
+    setNewPostMedia(null);
+    setError(null);
   };
 
   if (loading) {
@@ -402,38 +618,29 @@ export default function CommunityDetailPage() {
   const gradient = griefTypeGradients[community.grief_type] || 'from-amber-200 to-orange-300';
   const isAdmin = userRole === 'admin';
   const isModerator = userRole === 'moderator' || isAdmin;
-  
-  // Get safe username from auth user
   const authUsername = user?.user_metadata?.username || user?.email?.split('@')[0] || 'Anonymous';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 pt-20 md:pt-6">
       {/* Community Banner */}
       <div className="relative h-48 md:h-64 mb-6 overflow-hidden">
-        {bannerLoading && (
-          <div className="absolute inset-0 bg-gradient-to-br from-stone-200 to-stone-300 flex items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-solid border-amber-500 border-t-transparent"></div>
-          </div>
-        )}
         <img 
           src={community.cover_photo_url || `https://via.placeholder.com/1200x300/${gradient.replace(/ /g, '')}?text=${encodeURIComponent(community.name)}`}
           alt={community.name}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${bannerLoading ? 'opacity-0' : 'opacity-100'}`}
-          onLoad={handleBannerLoad}
-          onError={() => setBannerLoading(false)}
+          className="w-full h-full object-cover"
+          onError={(e) => {
+            e.currentTarget.src = `https://via.placeholder.com/1200x300/${gradient.replace(/ /g, '')}?text=${encodeURIComponent(community.name)}`;
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
         
         {/* Admin Edit Banner Button */}
         {isAdmin && (
           <button 
-            className="absolute bottom-4 right-4 bg-white/20 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 hover:bg-white/30 transition-colors"
-            onClick={() => {
-              // TODO: Implement banner upload modal
-              alert('Banner upload functionality coming soon!');
-            }}
+            onClick={() => setBannerModalOpen(true)}
+            className="absolute bottom-4 right-4 bg-black/30 backdrop-blur-sm text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-black/40 transition-colors"
           >
-            <ImageIcon size={16} />
+            <ImageIcon size={18} />
             Edit Banner
           </button>
         )}
@@ -499,11 +706,10 @@ export default function CommunityDetailPage() {
                     </Button>
                   )}
                   
-                  {isAdmin && (
+                  {(isAdmin) && (
                     <Button
                       onClick={() => {
-                        // TODO: Implement community settings
-                        alert('Community settings coming soon!');
+                        toast('Community settings coming soon!');
                       }}
                       variant="outline"
                       className="flex items-center gap-2"
@@ -540,14 +746,67 @@ export default function CommunityDetailPage() {
                         className="w-full px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent min-h-[100px] max-h-[200px] resize-y"
                         maxLength={500}
                       />
+                      
+                      {newPostMedia && (
+                        <div className="mt-3 p-3 bg-stone-50 rounded-lg relative">
+                          <button
+                            type="button"
+                            onClick={removePostMedia}
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-sm"
+                            title="Remove media"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                          {newPostMedia.type.startsWith('image/') ? (
+                            <img 
+                              src={URL.createObjectURL(newPostMedia)} 
+                              alt="Post preview" 
+                              className="max-h-64 w-full object-contain rounded-lg"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center p-4 bg-stone-100 rounded-lg">
+                              <div className="text-amber-500 mb-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-10 h-10">
+                                  <path fillRule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v11.5c0 1.243 1.007 2.25 2.25 2.25h11.5a2.25 2.25 0 002.25-2.25V4.25A2.25 2.25 0 0015.75 2H4.25zm11.5 1.5a.75.75 0 01.75.75V8h-4.5a.75.75 0 010-1.5h3.75V4.75a.75.75 0 01.75-.75z" clipRule="evenodd" />
+                                  <path fillRule="evenodd" d="M6 4.5a.75.75 0 01.75.75v3.5l1.72-1.72a.75.75 0 111.06 1.06l-3 3a.75.75 0 01-1.06 0l-3-3a.75.75 0 111.06-1.06l1.72 1.72V5.25A.75.75 0 016 4.5z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                              <p className="text-sm font-medium text-stone-800 mb-1">
+                                {newPostMedia.name}
+                              </p>
+                              <p className="text-xs text-stone-500">
+                                {Math.round(newPostMedia.size / 1024)}KB
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
                       <div className="flex justify-between items-center mt-2">
-                        <span className="text-xs text-stone-500">{newPostContent.length}/500</span>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center text-amber-600 hover:text-amber-700 cursor-pointer">
+                            <Upload size={18} className="mr-1" />
+                            <span className="text-sm">Add media</span>
+                            <input
+                              type="file"
+                              accept="image/*,video/*"
+                              className="hidden"
+                              onChange={handlePostMediaSelect}
+                            />
+                          </label>
+                          <span className="text-xs text-stone-500">{newPostContent.length}/500</span>
+                        </div>
                         <Button
                           type="submit"
-                          disabled={isPosting || !newPostContent.trim()}
+                          disabled={uploadingMedia || (!newPostContent.trim() && !newPostMedia)}
                           className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium"
                         >
-                          {isPosting ? 'Posting...' : 'Share'}
+                          {uploadingMedia ? (
+                            <span className="flex items-center">
+                              <Loader size={16} className="animate-spin mr-1" />
+                              Uploading...
+                            </span>
+                          ) : 'Share'}
                         </Button>
                       </div>
                     </div>
@@ -601,18 +860,19 @@ export default function CommunityDetailPage() {
                               {formatRecentActivity(post.created_at)}
                             </p>
                           </div>
-                          {isModerator && (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              className="text-stone-400 hover:text-stone-600"
-                              onClick={() => {
-                                // TODO: Implement post moderation
-                                alert('Post moderation options coming soon!');
-                              }}
+                          {(isModerator || post.user_id === user?.id) && (
+                            <button 
+                              onClick={() => deletePost(post.id)}
+                              disabled={deletingPostId === post.id}
+                              className={`text-stone-400 hover:text-red-500 transition-colors ${deletingPostId === post.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              title="Delete post"
                             >
-                              •••
-                            </Button>
+                              {deletingPostId === post.id ? (
+                                <Loader size={18} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={18} />
+                              )}
+                            </button>
                           )}
                         </div>
                         
@@ -620,12 +880,37 @@ export default function CommunityDetailPage() {
                           {post.content}
                         </p>
                         
+                        {post.media_url && (
+                          <div className="mb-4 max-h-96 overflow-hidden rounded-lg">
+                            {post.media_url.includes('video') ? (
+                              <video 
+                                src={post.media_url} 
+                                controls 
+                                className="w-full h-auto max-h-96 object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              >
+                                Your browser does not support the video tag.
+                              </video>
+                            ) : (
+                              <img 
+                                src={post.media_url} 
+                                alt="Post media" 
+                                className="w-full h-auto max-h-96 object-contain rounded-lg"
+                                onError={(e) => {
+                                  e.currentTarget.parentElement!.style.display = 'none';
+                                }}
+                              />
+                            )}
+                          </div>
+                        )}
+                        
                         <div className="flex items-center gap-4 text-sm text-stone-500">
                           <button 
                             className={`flex items-center gap-1 hover:text-amber-600 transition-colors ${post.is_liked ? 'text-amber-600' : ''}`}
                             onClick={() => {
-                              // TODO: Implement like functionality
-                              alert('Like functionality coming soon!');
+                              toast('Like functionality coming soon!');
                             }}
                           >
                             <Heart size={16} fill={post.is_liked ? 'currentColor' : 'none'} />
@@ -634,8 +919,7 @@ export default function CommunityDetailPage() {
                           <button 
                             className="flex items-center gap-1 hover:text-blue-600 transition-colors"
                             onClick={() => {
-                              // TODO: Implement comment functionality
-                              alert('Comment functionality coming soon!');
+                              toast('Comment functionality coming soon!');
                             }}
                           >
                             <MessageCircle size={16} />
@@ -665,8 +949,7 @@ export default function CommunityDetailPage() {
                     size="sm"
                     className="text-amber-600 hover:bg-amber-50"
                     onClick={() => {
-                      // TODO: Implement invite functionality
-                      alert('Member invite functionality coming soon!');
+                      toast('Member invite functionality coming soon!');
                     }}
                   >
                     <UserPlus size={16} className="mr-1" />
@@ -676,53 +959,51 @@ export default function CommunityDetailPage() {
               </div>
               
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-                {members.map(member => {
-                  return (
-                    <div 
-                      key={member.user_id} 
-                      className="flex items-center justify-between p-2 hover:bg-stone-50 rounded-lg transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="relative">
-                          <div className={`w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-medium ${
-                            member.avatar_url 
-                              ? 'overflow-hidden' 
-                              : `bg-gradient-to-br ${gradient} text-white`
-                          }`}>
-                            {member.avatar_url ? (
-                              <img 
-                                src={member.avatar_url} 
-                                alt={member.username} 
-                                className="w-full h-full rounded-full object-cover"
-                              />
-                            ) : (
-                              member.username[0]?.toUpperCase() || 'U'
-                            )}
-                          </div>
-                          {member.is_online && (
-                            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></div>
+                {members.map(member => (
+                  <div 
+                    key={member.user_id} 
+                    className="flex items-center justify-between p-2 hover:bg-stone-50 rounded-lg transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative">
+                        <div className={`w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-sm font-medium ${
+                          member.avatar_url 
+                            ? 'overflow-hidden' 
+                            : `bg-gradient-to-br ${gradient} text-white`
+                        }`}>
+                          {member.avatar_url ? (
+                            <img 
+                              src={member.avatar_url} 
+                              alt={member.username} 
+                              className="w-full h-full rounded-full object-cover"
+                            />
+                          ) : (
+                            member.username[0]?.toUpperCase() || 'U'
                           )}
                         </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-stone-800 truncate">{member.username}</p>
-                          <p className="text-xs text-stone-500">
-                            Joined {formatRecentActivity(member.joined_at)}
-                          </p>
-                        </div>
+                        {member.is_online && (
+                          <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></div>
+                        )}
                       </div>
-                      
-                      {member.role !== 'member' && (
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          member.role === 'admin' 
-                            ? 'bg-amber-100 text-amber-800' 
-                            : 'bg-purple-100 text-purple-800'
-                        }`}>
-                          {member.role}
-                        </span>
-                      )}
+                      <div className="min-w-0">
+                        <p className="font-medium text-stone-800 truncate">{member.username}</p>
+                        <p className="text-xs text-stone-500">
+                          Joined {formatRecentActivity(member.joined_at)}
+                        </p>
+                      </div>
                     </div>
-                  );
-                })}
+                    
+                    {member.role !== 'member' && (
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        member.role === 'admin' 
+                          ? 'bg-amber-100 text-amber-800' 
+                          : 'bg-purple-100 text-purple-800'
+                      }`}>
+                        {member.role}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
               
               {members.length > 10 && (
@@ -730,8 +1011,7 @@ export default function CommunityDetailPage() {
                   variant="outline" 
                   className="w-full mt-2 text-amber-600 hover:bg-amber-50"
                   onClick={() => {
-                    // TODO: Implement view all members modal
-                    alert('Full member list coming soon!');
+                    toast('Full member list coming soon!');
                   }}
                 >
                   View all members ({members.length})
@@ -756,6 +1036,123 @@ export default function CommunityDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Banner Upload Modal */}
+      {bannerModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-lg">
+            <div className="p-5 border-b border-stone-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-bold text-stone-800">Update Community Banner</h3>
+                <button 
+                  onClick={() => setBannerModalOpen(false)}
+                  className="text-stone-400 hover:text-stone-600"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <div 
+                className="border-2 border-dashed border-stone-300 rounded-lg p-6 text-center cursor-pointer hover:border-amber-400 transition-colors"
+                onClick={() => document.getElementById('banner-modal-upload')?.click()}
+              >
+                {bannerPreview ? (
+                  <div className="relative h-48 rounded-lg overflow-hidden">
+                    <img 
+                      src={bannerPreview} 
+                      alt="Banner preview" 
+                      className="w-full h-full object-contain"
+                    />
+                    <div className="absolute inset-0 bg-black bg-opacity-20 flex items-center justify-center text-white text-sm">
+                      Click to change image
+                    </div>
+                  </div>
+                ) : (
+                  <div className="py-8">
+                    <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
+                      <ImageIcon className="h-6 w-6 text-amber-700" />
+                    </div>
+                    <p className="text-stone-600">
+                      Upload a banner image <br />
+                      <span className="text-xs text-stone-500">Recommended: 1200x300px, max 5MB</span>
+                    </p>
+                  </div>
+                )}
+              </div>
+              <input
+                type="file"
+                id="banner-modal-upload"
+                accept="image/*"
+                className="hidden"
+                onChange={handleBannerFileSelect}
+              />
+              
+              {bannerUploadError && (
+                <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                  {bannerUploadError}
+                </div>
+              )}
+              
+              <div className="flex justify-end gap-3 pt-2 border-t border-stone-200">
+                <Button
+                  variant="outline"
+                  onClick={() => setBannerModalOpen(false)}
+                  className="text-stone-700"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => bannerFile && updateBanner(bannerFile)}
+                  disabled={!bannerFile || bannerUploading}
+                  className="bg-amber-500 hover:bg-amber-600 text-white flex items-center gap-2"
+                >
+                  {bannerUploading ? (
+                    <>
+                      <Loader size={18} className="animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    'Update Banner'
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <Toaster 
+        position="top-center"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: '#fff',
+            color: '#333',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            borderRadius: '12px',
+            padding: '16px',
+          },
+          success: {
+            iconTheme: {
+              primary: '#f59e0b',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
     </div>
   );
+}
+
+// Simple Toaster component for this file only
+function Toaster({ position, toastOptions }: any) {
+  return null; // This will be replaced by actual react-hot-toast implementation
 }
