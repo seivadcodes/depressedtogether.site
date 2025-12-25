@@ -54,6 +54,7 @@ export function DashboardUI({
   removeMedia,
   handlePostSubmit,
   toggleAcceptsCalls,
+  toggleAcceptsVideoCalls, // ← NEW prop
   toggleAnonymity,
   setShowSettings,
   setShowGriefSetup,
@@ -93,6 +94,7 @@ export function DashboardUI({
         setShowSettings={setShowSettings}
         setShowGriefSetup={setShowGriefSetup}
         toggleAcceptsCalls={toggleAcceptsCalls}
+        toggleAcceptsVideoCalls={toggleAcceptsVideoCalls} // ← pass new prop
         toggleAnonymity={toggleAnonymity}
       />
     );
@@ -213,6 +215,7 @@ const SettingsModal = ({
   setShowSettings,
   setShowGriefSetup,
   toggleAcceptsCalls,
+  toggleAcceptsVideoCalls, // ← NEW prop
   toggleAnonymity 
 }: {
   profile: UserProfile | null;
@@ -221,6 +224,7 @@ const SettingsModal = ({
   setShowSettings: (show: boolean) => void;
   setShowGriefSetup: (show: boolean) => void;
   toggleAcceptsCalls: () => Promise<void>;
+  toggleAcceptsVideoCalls: () => Promise<void>; // ← NEW type
   toggleAnonymity: () => Promise<void>;
 }) => (
   <div className="min-h-screen bg-stone-50 p-4">
@@ -257,6 +261,7 @@ const SettingsModal = ({
         </button>
       </div>
 
+      {/* 1:1 Support Toggle */}
       <div className="mb-6">
         <label 
           className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border border-stone-200 hover:border-amber-300 transition"
@@ -276,6 +281,33 @@ const SettingsModal = ({
           <ToggleLeft
             className={`w-10 h-5 rounded-full p-1 transition-colors ${
               preferences.acceptsCalls
+                ? 'bg-amber-500 text-white'
+                : 'bg-stone-300 text-stone-500'
+            }`}
+          />
+        </label>
+      </div>
+
+      {/* ✨ NEW: Video Calls Toggle */}
+      <div className="mb-6">
+        <label 
+          className="flex items-center gap-3 cursor-pointer p-3 bg-white rounded-lg border border-stone-200 hover:border-amber-300 transition"
+          onClick={toggleAcceptsVideoCalls}
+        >
+          <div className="flex-1">
+            <div className="font-medium text-stone-800">
+              {preferences.acceptsVideoCalls ? 'Video calls enabled' : 'Video calls disabled'}
+            </div>
+            <div className="text-sm text-stone-500 mt-1">
+              {preferences.acceptsVideoCalls
+                ? 'You can be invited to video support sessions'
+                : 'You’ll only be matched for text or audio support'
+              }
+            </div>
+          </div>
+          <ToggleLeft
+            className={`w-10 h-5 rounded-full p-1 transition-colors ${
+              preferences.acceptsVideoCalls
                 ? 'bg-amber-500 text-white'
                 : 'bg-stone-300 text-stone-500'
             }`}

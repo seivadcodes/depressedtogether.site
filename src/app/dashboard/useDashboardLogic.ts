@@ -25,6 +25,7 @@ export interface UserProfile {
 
 export interface UserPreferences {
   acceptsCalls: boolean;
+  acceptsVideoCalls: boolean; // ← NEW
   acceptFromGenders?: ('male' | 'female' | 'nonbinary' | 'any')[];
   acceptFromCountries?: string[];
   acceptFromLanguages?: string[];
@@ -60,7 +61,7 @@ export interface DashboardUIProps {
   isLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
-fileInputRef: React.RefObject<HTMLInputElement | null>;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
   
   // Callbacks
   toggleGriefType: (type: GriefType) => void;
@@ -69,6 +70,7 @@ fileInputRef: React.RefObject<HTMLInputElement | null>;
   removeMedia: (index: number) => void;
   handlePostSubmit: () => Promise<void>;
   toggleAcceptsCalls: () => Promise<void>;
+  toggleAcceptsVideoCalls: () => Promise<void>; // ← NEW
   toggleAnonymity: () => Promise<void>;
   setShowSettings: (show: boolean) => void;
   setShowGriefSetup: (show: boolean) => void;
@@ -85,6 +87,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>({
     acceptsCalls: true,
+    acceptsVideoCalls: false, // ← disabled by default
     acceptFromGenders: ['any'],
     acceptFromCountries: [],
     acceptFromLanguages: [],
@@ -131,6 +134,7 @@ export function useDashboardLogic(): DashboardUIProps {
 
       setPreferences({
         acceptsCalls: data.accepts_calls ?? true,
+        acceptsVideoCalls: data.accepts_video_calls ?? false, // ← load from DB
         acceptFromGenders: data.accept_from_genders || ['any'],
         acceptFromCountries: data.accept_from_countries || [],
         acceptFromLanguages: data.accept_from_languages || [],
@@ -378,6 +382,18 @@ export function useDashboardLogic(): DashboardUIProps {
     }
   };
 
+  // ← NEW FUNCTION
+  const toggleAcceptsVideoCalls = async () => {
+    try {
+      const newValue = !preferences.acceptsVideoCalls;
+      setPreferences((prev) => ({ ...prev, acceptsVideoCalls: newValue }));
+      await saveProfileToDB({ accepts_video_calls: newValue });
+    } catch (err) {
+      console.error('Failed to update video call preference:', err);
+      setError('Failed to update settings. Please try again.');
+    }
+  };
+
   const toggleAnonymity = async () => {
     try {
       const newValue = !preferences.isAnonymous;
@@ -418,6 +434,7 @@ export function useDashboardLogic(): DashboardUIProps {
     removeMedia,
     handlePostSubmit,
     toggleAcceptsCalls,
+    toggleAcceptsVideoCalls, // ← export new function
     toggleAnonymity,
     setShowSettings,
     setShowGriefSetup,
