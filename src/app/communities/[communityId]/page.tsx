@@ -23,7 +23,6 @@ import {
 import { toast } from 'react-hot-toast';
 // Import hearts logic functions
 import * as Hearts from '@/lib/comments-hearts/heartsLogic';
-
 // Types
 interface Community {
   id: string;
@@ -35,7 +34,6 @@ interface Community {
   created_at: string;
   cover_photo_url?: string | null;
 }
-
 interface Member {
   user_id: string;
   username: string;
@@ -45,7 +43,6 @@ interface Member {
   role: 'member' | 'admin' | 'moderator';
   joined_at: string;
 }
-
 interface Post {
   id: string;
   content: string;
@@ -59,7 +56,6 @@ interface Post {
   comments_count: number;
   is_liked: boolean;
 }
-
 interface Comment {
   id: string;
   content: string;
@@ -69,14 +65,12 @@ interface Comment {
   avatar_url: string | null;
   post_id: string;
 }
-
 export default function CommunityDetailPage() {
   const params = useParams();
   const communityId = params.communityId as string;
   const router = useRouter();
   const supabase = createClient();
   const { user } = useAuth();
-
   // State
   const [community, setCommunity] = useState<Community | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -101,7 +95,6 @@ export default function CommunityDetailPage() {
   const [addingComment, setAddingComment] = useState<Record<string, boolean>>({});
   const [expandedPosts, setExpandedPosts] = useState<string[]>([]);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
-
   const griefTypeGradients: Record<string, string> = {
     'parent': 'from-amber-200 to-orange-300',
     'child': 'from-purple-200 to-indigo-300',
@@ -114,7 +107,6 @@ export default function CommunityDetailPage() {
     'suicide': 'from-violet-200 to-purple-300',
     'other': 'from-gray-200 to-stone-300'
   };
-
   // Format time since last activity
   const formatRecentActivity = (dateString: string): string => {
     const now = new Date();
@@ -127,7 +119,6 @@ export default function CommunityDetailPage() {
     const hours = Math.floor(diffMinutes / 60);
     return `${hours} hours ago`;
   };
-
   // Check if user is online
   const isUserOnline = (lastOnline: string | null): boolean => {
     if (!lastOnline) return false;
@@ -135,7 +126,6 @@ export default function CommunityDetailPage() {
     const now = new Date();
     return (now.getTime() - lastOnlineDate.getTime()) < 5 * 60 * 1000; // 5 minutes
   };
-
   // Toggle like for a post
   const handleToggleLike = async (postId: string) => {
     if (!user) {
@@ -144,7 +134,6 @@ export default function CommunityDetailPage() {
     }
     setLikeLoading(prev => ({ ...prev, [postId]: true }));
     try {
-      // Inside handleToggleLike function
       const result = await Hearts.toggleLike(postId, user.id, 'community_posts');
       // Update local state
       setPosts(prevPosts => prevPosts.map(post =>
@@ -159,110 +148,111 @@ export default function CommunityDetailPage() {
       setLikeLoading(prev => ({ ...prev, [postId]: false }));
     }
   };
-
   // Fetch comments for a post
   const fetchComments = async (postId: string) => {
-  if (!postId) return;
-  setCommentLoading(prev => ({ ...prev, [postId]: true }));
-  try {
-    const { data, error } = await supabase
-      .from('community_post_comments_with_profiles') // 👈 CHANGED: Use the view
-      .select('*') // 👈 CHANGED: No need for complex select syntax
-      .eq('post_id', postId)
-      .order('created_at', { ascending: true });
-
-    if (error) throw error;
-
-    // Format comments — now username and avatar_url are direct fields
-    const formattedComments = data.map(comment => ({
-      id: comment.id,
-      content: comment.content,
-      created_at: comment.created_at,
-      user_id: comment.user_id,
-      username: comment.username || 'Anonymous', // 👈 Direct field from view
-      avatar_url: comment.avatar_url || null,   // 👈 Direct field from view
-      post_id: comment.post_id
-    }));
-
-    setComments(prev => ({
-      ...prev,
-      [postId]: formattedComments
-    }));
-
-    // Add to expanded posts
-    if (!expandedPosts.includes(postId)) {
-      setExpandedPosts(prev => [...prev, postId]);
+    if (!postId) return;
+    setCommentLoading(prev => ({ ...prev, [postId]: true }));
+    try {
+      const { data, error } = await supabase
+        .from('community_post_comments_with_profiles')
+        .select('*')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      // Format comments — now username and avatar_url are direct fields
+      const formattedComments = data.map(comment => ({
+        id: comment.id,
+        content: comment.content,
+        created_at: comment.created_at,
+        user_id: comment.user_id,
+        username: comment.username || 'Anonymous',
+        avatar_url: comment.avatar_url || null,
+        post_id: comment.post_id
+      }));
+      setComments(prev => ({
+        ...prev,
+        [postId]: formattedComments
+      }));
+      // Add to expanded posts
+      if (!expandedPosts.includes(postId)) {
+        setExpandedPosts(prev => [...prev, postId]);
+      }
+    } catch (error: any) {
+      console.error('Error fetching comments:', error);
+      toast.error('Failed to load comments');
+    } finally {
+      setCommentLoading(prev => ({ ...prev, [postId]: false }));
     }
-  } catch (error: any) {
-    console.error('Error fetching comments:', error);
-    toast.error('Failed to load comments');
-  } finally {
-    setCommentLoading(prev => ({ ...prev, [postId]: false }));
-  }
-};
+  };
   // Add a new comment to a post
- const addComment = async (postId: string, content: string) => {
-  if (!user || !content.trim() || !postId) return;
-  setAddingComment(prev => ({ ...prev, [postId]: true }));
-  try {
-    // Step 1: Insert the comment
-    const { data: insertData, error: insertError } = await supabase
-      .from('community_post_comments')
-      .insert({
-        post_id: postId,
-        user_id: user.id,
-        content: content.trim(),
-        created_at: new Date().toISOString()
-      })
-      .select('id, content, created_at, post_id, user_id')
-      .single();
-
-    if (insertError) throw insertError;
-
-    // Step 2: Fetch the newly inserted comment WITH profile info via the view
-    const { data: commentWithProfile, error: profileError } = await supabase
-      .from('community_post_comments_with_profiles')
-      .select('*')
-      .eq('id', insertData.id)
-      .single();
-
-    if (profileError) throw profileError;
-
-    // Format the new comment
-    const newComment = {
-      id: commentWithProfile.id,
-      content: commentWithProfile.content,
-      created_at: commentWithProfile.created_at,
-      user_id: commentWithProfile.user_id,
-      username: commentWithProfile.username || 'Anonymous', // 👈 From view
-      avatar_url: commentWithProfile.avatar_url || null,   // 👈 From view
-      post_id: commentWithProfile.post_id
-    };
-
-    // Update comments state
-    setComments(prev => ({
-      ...prev,
-      [postId]: [...(prev[postId] || []), newComment]
-    }));
-
-    // Update posts state to increment comments_count
-    setPosts(prev => prev.map(post =>
-      post.id === postId
-        ? { ...post, comments_count: (post.comments_count || 0) + 1 }
-        : post
-    ));
-
-    // Clear the input
-    setNewCommentContent(prev => ({ ...prev, [postId]: '' }));
-    toast.success('Comment added successfully');
-  } catch (error: any) {
-    console.error('Error adding comment:', error);
-    toast.error('Failed to add comment');
-  } finally {
-    setAddingComment(prev => ({ ...prev, [postId]: false }));
-  }
-};
-
+  const addComment = async (postId: string, content: string) => {
+    if (!user || !content.trim() || !postId) return;
+    setAddingComment(prev => ({ ...prev, [postId]: true }));
+    try {
+      // Step 1: Insert the comment
+      const { data: insertData, error: insertError } = await supabase
+        .from('community_post_comments')
+        .insert({
+          post_id: postId,
+          user_id: user.id,
+          content: content.trim(),
+          created_at: new Date().toISOString()
+        })
+        .select('id, content, created_at, post_id, user_id')
+        .single();
+      if (insertError) throw insertError;
+      // Step 2: Fetch the newly inserted comment WITH profile info via the view
+      const { data: commentWithProfile, error: profileError } = await supabase
+        .from('community_post_comments_with_profiles')
+        .select('*')
+        .eq('id', insertData.id)
+        .single();
+      if (profileError) throw profileError;
+      // Format the new comment
+      const newComment = {
+        id: commentWithProfile.id,
+        content: commentWithProfile.content,
+        created_at: commentWithProfile.created_at,
+        user_id: commentWithProfile.user_id,
+        username: commentWithProfile.username || 'Anonymous',
+        avatar_url: commentWithProfile.avatar_url || null,
+        post_id: commentWithProfile.post_id
+      };
+      // Update comments state
+      setComments(prev => ({
+        ...prev,
+        [postId]: [...(prev[postId] || []), newComment]
+      }));
+      // Get the current comment count for this post
+      const { data: currentPost, error: postError } = await supabase
+        .from('community_posts')
+        .select('comments_count')
+        .eq('id', postId)
+        .single();
+      if (postError) throw postError;
+      // Update the comments_count in the database
+      const newCommentCount = (currentPost.comments_count || 0) + 1;
+      const { error: countError } = await supabase
+        .from('community_posts')
+        .update({ comments_count: newCommentCount })
+        .eq('id', postId);
+      if (countError) console.warn('Failed to update comment count in database:', countError);
+      // Update posts state with the new comment count
+      setPosts(prev => prev.map(post =>
+        post.id === postId
+          ? { ...post, comments_count: newCommentCount }
+          : post
+      ));
+      // Clear the input
+      setNewCommentContent(prev => ({ ...prev, [postId]: '' }));
+      toast.success('Comment added successfully');
+    } catch (error: any) {
+      console.error('Error adding comment:', error);
+      toast.error('Failed to add comment');
+    } finally {
+      setAddingComment(prev => ({ ...prev, [postId]: false }));
+    }
+  };
   // Delete a comment
   const deleteComment = async (commentId: string, postId: string) => {
     setDeletingCommentId(commentId);
@@ -271,22 +261,32 @@ export default function CommunityDetailPage() {
         .from('community_post_comments')
         .delete()
         .eq('id', commentId);
-      
       if (error) throw error;
-      
+      // Get the current comment count for this post
+      const { data: currentPost, error: postError } = await supabase
+        .from('community_posts')
+        .select('comments_count')
+        .eq('id', postId)
+        .single();
+      if (postError) throw postError;
+      // Update the comments_count in the database
+      const newCommentCount = Math.max(0, (currentPost.comments_count || 0) - 1);
+      const { error: countError } = await supabase
+        .from('community_posts')
+        .update({ comments_count: newCommentCount })
+        .eq('id', postId);
+      if (countError) console.warn('Failed to update comment count in database:', countError);
       // Update comments state
       setComments(prev => ({
         ...prev,
         [postId]: (prev[postId] || []).filter(comment => comment.id !== commentId)
       }));
-      
       // Update posts state to decrement comments_count
-      setPosts(prev => prev.map(post => 
-        post.id === postId 
-          ? { ...post, comments_count: Math.max(0, (post.comments_count || 0) - 1) } 
+      setPosts(prev => prev.map(post =>
+        post.id === postId
+          ? { ...post, comments_count: newCommentCount }
           : post
       ));
-      
       toast.success('Comment deleted successfully');
     } catch (error: any) {
       console.error('Error deleting comment:', error);
@@ -295,7 +295,6 @@ export default function CommunityDetailPage() {
       setDeletingCommentId(null);
     }
   };
-
   // Toggle expand/collapse comments for a post
   const toggleComments = (postId: string) => {
     if (expandedPosts.includes(postId)) {
@@ -308,7 +307,6 @@ export default function CommunityDetailPage() {
       }
     }
   };
-
   // Update community banner
   const updateBanner = async (file: File) => {
     if (!community) return;
@@ -344,7 +342,6 @@ export default function CommunityDetailPage() {
       setBannerUploading(false);
     }
   };
-
   // Delete a post
   const deletePost = async (postId: string) => {
     setDeletingPostId(postId);
@@ -370,7 +367,6 @@ export default function CommunityDetailPage() {
       setDeletingPostId(null);
     }
   };
-
   // Upload post media
   const uploadPostMedia = async (file: File, postId: string) => {
     try {
@@ -403,7 +399,6 @@ export default function CommunityDetailPage() {
       setUploadingMedia(false);
     }
   };
-
   // Create post with optional media
   const createPostWithMedia = async (content: string, file: File | null, userId: string) => {
     if (!community) throw new Error('Community not loaded');
@@ -424,12 +419,7 @@ export default function CommunityDetailPage() {
           created_at,
           community_id,
           media_url,
-          user_id,
-          user:profiles!inner (
-            id,
-            full_name,
-            avatar_url
-          )
+          user_id
         `)
         .single();
       if (postError) throw postError;
@@ -448,8 +438,13 @@ export default function CommunityDetailPage() {
           }
         }
       }
-      // Format the post data
-      const userData = Array.isArray(postData.user) ? postData.user[0] : postData.user;
+      // Get user profile for the post
+      const { data: userData } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', userId)
+        .single();
+      // Return formatted post
       return {
         id: postData.id,
         content: postData.content,
@@ -475,7 +470,6 @@ export default function CommunityDetailPage() {
       throw error;
     }
   };
-
   // Fetch community data
   useEffect(() => {
     const fetchData = async () => {
@@ -483,21 +477,46 @@ export default function CommunityDetailPage() {
       try {
         setLoading(true);
         setError(null);
-        // Fetch community details
-        const { data: communityData, error: communityError } = await supabase
-          .from('communities')
-          .select('*')
-          .eq('id', communityId)
-          .single();
-        if (communityError) throw communityError;
-        // Add cover photo URL
-        const coverPhotoUrl = communityData.cover_photo_url ||
-          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
-        const communityWithPhoto = {
-          ...communityData,
-          cover_photo_url: coverPhotoUrl
-        };
-        setCommunity(communityWithPhoto);
+       // Fetch community details
+const { data: communityData, error: communityError } = await supabase
+  .from('communities')
+  .select('*')
+  .eq('id', communityId)
+  .single();
+
+if (communityError) {
+  throw new Error(`Failed to fetch community: ${communityError.message}`);
+}
+
+if (!communityData) {
+  throw new Error('Community not found');
+}
+
+// Add cover photo URL
+let coverPhotoUrl = communityData.cover_photo_url;
+
+// Fallback if no cover_photo_url exists
+if (!coverPhotoUrl) {
+  coverPhotoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
+}
+
+// Get accurate member count by counting community_members
+const { count, error: countError } = await supabase
+  .from('community_members')
+  .select('*', { count: 'exact', head: true })
+  .eq('community_id', communityId);
+
+if (countError) {
+  throw new Error(`Failed to count members: ${countError.message}`);
+}
+
+const communityWithPhoto = {
+  ...communityData,
+  cover_photo_url: coverPhotoUrl,
+  member_count: count || 0 // Use the accurate count from the members table
+};
+
+setCommunity(communityWithPhoto);
         // Check if user is a member
         if (user) {
           const { data: memberData } = await supabase
@@ -513,7 +532,9 @@ export default function CommunityDetailPage() {
             setIsMember(false);
             setUserRole(null);
           }
-          // Check like status for all posts later
+        } else {
+          setIsMember(false);
+          setUserRole(null);
         }
         // Fetch members
         const { data: membersData, error: membersError } = await supabase
@@ -544,7 +565,7 @@ export default function CommunityDetailPage() {
           };
         });
         setMembers(formattedMembers);
-        // Fetch posts
+        // Fetch posts - This is the key fix for making posts visible to everyone
         const { data: postData, error: postError } = await supabase
           .from('community_posts')
           .select(`
@@ -555,37 +576,52 @@ export default function CommunityDetailPage() {
             media_url,
             likes_count,
             comments_count,
-            user_id,
-            user:profiles!inner (
-              id,
-              full_name,
-              avatar_url
-            )
+            user_id
           `)
           .eq('community_id', communityId)
           .order('created_at', { ascending: false });
         if (postError) throw postError;
+        // Get user profiles for all posts in a single query for better performance
+        const userIds = [...new Set(postData.map(post => post.user_id))];
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', userIds);
+        if (profilesError) {
+          console.warn('Error fetching profiles for posts:', profilesError);
+        }
+        // Create a map of user_id to profile data
+        const profilesMap = new Map();
+        profilesData?.forEach(profile => {
+          profilesMap.set(profile.id, profile);
+        });
         // Check like status for each post if user is logged in
         let postsWithLikes = postData.map(post => {
-          const userData = Array.isArray(post.user) ? post.user[0] : post.user;
+          const userProfile = profilesMap.get(post.user_id) || {};
           return {
             id: post.id,
             content: post.content,
             media_url: post.media_url,
             created_at: post.created_at,
             user_id: post.user_id,
-            username: userData?.full_name || 'Anonymous',
-            avatar_url: userData?.avatar_url || null,
+            username: userProfile.full_name || 'Anonymous',
+            avatar_url: userProfile.avatar_url || null,
             community_id: post.community_id,
             likes_count: post.likes_count || 0,
             comments_count: post.comments_count || 0,
             is_liked: false // Will update below if user is logged in
           };
         });
+        // Check likes for logged in users
         if (user) {
           const likeStatusPromises = postsWithLikes.map(async (post) => {
-            const isLiked = await Hearts.checkIfLiked(post.id, user.id, 'community_posts');
-            return { postId: post.id, isLiked };
+            try {
+              const isLiked = await Hearts.checkIfLiked(post.id, user.id, 'community_posts');
+              return { postId: post.id, isLiked };
+            } catch (error) {
+              console.error('Error checking like status:', error);
+              return { postId: post.id, isLiked: false };
+            }
           });
           const likeStatusResults = await Promise.all(likeStatusPromises);
           postsWithLikes = postsWithLikes.map(post => {
@@ -603,7 +639,6 @@ export default function CommunityDetailPage() {
     };
     fetchData();
   }, [communityId, user, supabase]);
-
   // Handle join/leave community
   const handleMembership = async () => {
     if (!user) {
@@ -645,7 +680,6 @@ export default function CommunityDetailPage() {
       setCommunity(prev => prev ? { ...prev, member_count: prev.member_count + 1 } : null);
     }
   };
-
   // Handle create post with media
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -667,7 +701,6 @@ export default function CommunityDetailPage() {
       toast.error('Failed to create post');
     }
   };
-
   // Handle banner file selection
   const handleBannerFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -690,7 +723,6 @@ export default function CommunityDetailPage() {
     };
     reader.readAsDataURL(file);
   };
-
   // Handle post media selection
   const handlePostMediaSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -709,13 +741,11 @@ export default function CommunityDetailPage() {
     setNewPostMedia(file);
     setError(null);
   };
-
   // Remove post media
   const removePostMedia = () => {
     setNewPostMedia(null);
     setError(null);
   };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 flex items-center justify-center">
@@ -726,7 +756,6 @@ export default function CommunityDetailPage() {
       </div>
     );
   }
-
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 flex items-center justify-center p-4">
@@ -743,7 +772,6 @@ export default function CommunityDetailPage() {
       </div>
     );
   }
-
   if (!community) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 flex items-center justify-center p-4">
@@ -760,12 +788,10 @@ export default function CommunityDetailPage() {
       </div>
     );
   }
-
   const gradient = griefTypeGradients[community.grief_type] || 'from-amber-200 to-orange-300';
   const isAdmin = userRole === 'admin';
   const isModerator = userRole === 'moderator' || isAdmin;
   const authUsername = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Anonymous';
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 pt-20 md:pt-6">
       {/* Community Banner */}
@@ -1069,115 +1095,116 @@ export default function CommunityDetailPage() {
                             {post.comments_count}
                           </button>
                         </div>
-
                         {/* Comments section */}
-                        {expandedPosts.includes(post.id) && (
-                          <div className="mt-4 border-t border-stone-100 pt-4">
-                            {/* Comments list */}
-                            {commentLoading[post.id] ? (
-                              <div className="flex justify-center py-4">
-                                <div className="h-6 w-6 animate-spin rounded-full border-2 border-solid border-amber-500 border-t-transparent"></div>
-                              </div>
-                            ) : comments[post.id]?.length === 0 ? (
-                              <p className="text-sm text-stone-500 text-center py-2">No comments yet. Be the first to comment!</p>
-                            ) : (
-                              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                                {comments[post.id]?.map(comment => (
-                                  <div key={comment.id} className="flex gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 flex-shrink-0 flex items-center justify-center text-white font-medium text-xs">
-                                      {comment.avatar_url ? (
-                                        <img
-                                          src={comment.avatar_url}
-                                          alt={comment.username}
-                                          className="w-full h-full rounded-full object-cover"
-                                        />
-                                      ) : (
-                                        comment.username[0]?.toUpperCase() || 'U'
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0 bg-stone-50 rounded-lg p-3">
-                                      <div className="flex justify-between items-start">
-                                        <div>
-                                          <h4 className="font-medium text-stone-800 text-sm">{comment.username}</h4>
-                                          <p className="text-xs text-stone-500 mt-0.5">
-                                            {formatRecentActivity(comment.created_at)}
-                                          </p>
-                                        </div>
-                                        {(comment.user_id === user?.id || isModerator) && (
-                                          <button
-                                            onClick={async () => {
-                                              if (window.confirm('Are you sure you want to delete this comment?')) {
-                                                await deleteComment(comment.id, post.id);
-                                              }
-                                            }}
-                                            disabled={deletingCommentId === comment.id}
-                                            className="text-stone-400 hover:text-red-500 transition-colors disabled:opacity-50"
-                                            title="Delete comment"
-                                          >
-                                            {deletingCommentId === comment.id ? (
-                                              <Loader2 size={14} className="animate-spin" />
-                                            ) : (
-                                              <Trash2 size={14} />
-                                            )}
-                                          </button>
+                        <div className="mt-4 border-t border-stone-100 pt-4">
+                          {/* Comments list - conditionally rendered based on expanded state */}
+                          {expandedPosts.includes(post.id) && (
+                            <>
+                              {commentLoading[post.id] ? (
+                                <div className="flex justify-center py-4">
+                                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-solid border-amber-500 border-t-transparent"></div>
+                                </div>
+                              ) : comments[post.id]?.length === 0 ? (
+                                <p className="text-sm text-stone-500 text-center py-2">No comments yet. Be the first to comment!</p>
+                              ) : (
+                                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                                  {comments[post.id]?.map(comment => (
+                                    <div key={comment.id} className="flex gap-3">
+                                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 flex-shrink-0 flex items-center justify-center text-white font-medium text-xs">
+                                        {comment.avatar_url ? (
+                                          <img
+                                            src={comment.avatar_url}
+                                            alt={comment.username}
+                                            className="w-full h-full rounded-full object-cover"
+                                          />
+                                        ) : (
+                                          comment.username[0]?.toUpperCase() || 'U'
                                         )}
                                       </div>
-                                      <p className="text-stone-700 text-sm mt-1 whitespace-pre-line">
-                                        {comment.content}
-                                      </p>
+                                      <div className="flex-1 min-w-0 bg-stone-50 rounded-lg p-3">
+                                        <div className="flex justify-between items-start">
+                                          <div>
+                                            <h4 className="font-medium text-stone-800 text-sm">{comment.username}</h4>
+                                            <p className="text-xs text-stone-500 mt-0.5">
+                                              {formatRecentActivity(comment.created_at)}
+                                            </p>
+                                          </div>
+                                          {(comment.user_id === user?.id || isModerator) && (
+                                            <button
+                                              onClick={async () => {
+                                                if (window.confirm('Are you sure you want to delete this comment?')) {
+                                                  await deleteComment(comment.id, post.id);
+                                                }
+                                              }}
+                                              disabled={deletingCommentId === comment.id}
+                                              className="text-stone-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                                              title="Delete comment"
+                                            >
+                                              {deletingCommentId === comment.id ? (
+                                                <Loader2 size={14} className="animate-spin" />
+                                              ) : (
+                                                <Trash2 size={14} />
+                                              )}
+                                            </button>
+                                          )}
+                                        </div>
+                                        <p className="text-stone-700 text-sm mt-1 whitespace-pre-line">
+                                          {comment.content}
+                                        </p>
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {/* Add comment form - always visible */}
+                          {user && (
+                            <div className="mt-4 flex gap-3">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 flex-shrink-0 flex items-center justify-center text-white font-medium text-xs">
+                                {user?.user_metadata?.avatar_url ? (
+                                  <img
+                                    src={user.user_metadata.avatar_url}
+                                    alt={authUsername}
+                                    className="w-full h-full rounded-full object-cover"
+                                  />
+                                ) : (
+                                  authUsername[0]?.toUpperCase() || 'U'
+                                )}
                               </div>
-                            )}
-                            
-                            {/* Add comment form */}
-                            {user && (
-                              <div className="mt-4 flex gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 flex-shrink-0 flex items-center justify-center text-white font-medium text-xs">
-                                  {user?.user_metadata?.avatar_url ? (
-                                    <img
-                                      src={user.user_metadata.avatar_url}
-                                      alt={authUsername}
-                                      className="w-full h-full rounded-full object-cover"
+                              <div className="flex-1">
+                                <form onSubmit={(e) => {
+                                  e.preventDefault();
+                                  addComment(post.id, newCommentContent[post.id] || '');
+                                }}>
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="text"
+                                      value={newCommentContent[post.id] || ''}
+                                      onChange={(e) => setNewCommentContent(prev => ({ ...prev, [post.id]: e.target.value }))}
+                                      placeholder="Write a comment..."
+                                      className="flex-1 px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
                                     />
-                                  ) : (
-                                    authUsername[0]?.toUpperCase() || 'U'
-                                  )}
-                                </div>
-                                <div className="flex-1">
-                                  <form onSubmit={(e) => {
-                                    e.preventDefault();
-                                    addComment(post.id, newCommentContent[post.id] || '');
-                                  }}>
-                                    <div className="flex gap-2">
-                                      <input
-                                        type="text"
-                                        value={newCommentContent[post.id] || ''}
-                                        onChange={(e) => setNewCommentContent(prev => ({ ...prev, [post.id]: e.target.value }))}
-                                        placeholder="Write a comment..."
-                                        className="flex-1 px-3 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
-                                      />
-                                      <button
-                                        type="submit"
-                                        disabled={addingComment[post.id] || !newCommentContent[post.id]?.trim()}
-                                        className={`px-3 py-2 rounded-lg text-sm font-medium ${
-                                          newCommentContent[post.id]?.trim() 
-                                            ? 'bg-amber-500 hover:bg-amber-600 text-white' 
-                                            : 'bg-stone-200 text-stone-500 cursor-not-allowed'
-                                        }`}
-                                      >
-                                        {addingComment[post.id] ? (
-                                          <Loader2 size={16} className="animate-spin" />
-                                        ) : 'Comment'}
-                                      </button>
-                                    </div>
-                                  </form>
-                                </div>
+                                    <button
+                                      type="submit"
+                                      disabled={addingComment[post.id] || !newCommentContent[post.id]?.trim()}
+                                      className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                                        newCommentContent[post.id]?.trim()
+                                          ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                                          : 'bg-stone-200 text-stone-500 cursor-not-allowed'
+                                      }`}
+                                    >
+                                      {addingComment[post.id] ? (
+                                        <Loader2 size={16} className="animate-spin" />
+                                      ) : 'Comment'}
+                                    </button>
+                                  </div>
+                                </form>
                               </div>
-                            )}
-                          </div>
-                        )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </Card>

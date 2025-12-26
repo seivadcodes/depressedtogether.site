@@ -56,17 +56,15 @@ export default function CreateCommunityPage() {
     );
   }
 
-  // If no user after session check, don't render (redirect will happen)
   if (!user) {
     return null;
   }
 
-  // Generate slug from community name
   const generateSlug = (name: string) => {
     return name
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-') // Replace non-alphanumeric chars with hyphens
-      .replace(/(^-|-$)/g, '');     // Remove leading/trailing hyphens
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -87,7 +85,6 @@ export default function CreateCommunityPage() {
       return;
     }
 
-    // Double-check user is still authenticated before submission
     if (!user) {
       setError('Session expired. Please log in again to create a community.');
       router.push('/auth?redirectTo=/communities/create');
@@ -99,10 +96,8 @@ export default function CreateCommunityPage() {
     setUploadError(null);
 
     try {
-      // Generate slug ID for the community
       const communityId = generateSlug(name);
       
-      // Check if community with this ID already exists
       const { data: existingCommunity, error: checkError } = await supabase
         .from('communities')
         .select('id')
@@ -115,7 +110,8 @@ export default function CreateCommunityPage() {
         return;
       }
 
-      // Create the community
+      // ✅ Create community WITHOUT member_count (or set to 0 if column must exist)
+      // Best practice: omit it, but if DB requires it, set to 0 and rely on UI to compute real count
       const { error: communityError } = await supabase
         .from('communities')
         .insert({
@@ -123,14 +119,15 @@ export default function CreateCommunityPage() {
           name: name.trim(),
           description: description.trim(),
           grief_type: griefType,
-          member_count: 1, // Creator is the first member
-          online_count: 1, // Creator is online
+          // ❌ REMOVE member_count — or set to 0 as placeholder
+          member_count: 0, // optional: only if your DB schema requires it
+          online_count: 0, // same for online_count — should also be computed or via presence
           created_at: new Date().toISOString()
         });
 
       if (communityError) throw communityError;
 
-      // Add creator as community member
+      // Add creator as admin member
       const { error: memberError } = await supabase
         .from('community_members')
         .insert({
@@ -142,7 +139,7 @@ export default function CreateCommunityPage() {
 
       if (memberError) throw memberError;
 
-      // Handle banner upload if file exists
+      // Handle banner upload
       if (fileToUpload) {
         try {
           const fileExt = fileToUpload.name.split('.').pop();
@@ -154,16 +151,13 @@ export default function CreateCommunityPage() {
               upsert: true
             });
 
-          if (uploadError) {
-            throw uploadError;
-          }
+          if (uploadError) throw uploadError;
         } catch (uploadErr: any) {
           console.error('Banner upload failed:', uploadErr);
           setUploadError('Banner upload failed, but your community was created successfully. You can add a banner later in community settings.');
         }
       }
 
-      // Success! Redirect to the new community page
       router.push(`/communities/${communityId}`);
       
     } catch (err: any) {
@@ -174,30 +168,23 @@ export default function CreateCommunityPage() {
     }
   };
 
-  // Handle image preview and file storage
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
-    // Reset input value to allow re-selecting the same file
     e.target.value = '';
     
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       setError('Please upload an image file (JPEG, PNG, GIF, etc.)');
       return;
     }
     
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       setError('Image must be less than 5MB');
       return;
     }
 
-    // Store the actual file for later upload
     setFileToUpload(file);
     
-    // Create preview
     const reader = new FileReader();
     reader.onloadend = () => {
       setPreviewImage(reader.result as string);
@@ -209,7 +196,6 @@ export default function CreateCommunityPage() {
     reader.readAsDataURL(file);
   };
 
-  // Remove banner preview and file
   const removeBanner = () => {
     setPreviewImage(null);
     setFileToUpload(null);
@@ -219,7 +205,6 @@ export default function CreateCommunityPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 p-4 md:p-6 pt-20 md:pt-6">
       <div className="max-w-2xl mx-auto">
-        {/* Back Button */}
         <button
           onClick={() => router.back()}
           className="flex items-center text-amber-700 hover:text-amber-800 mb-6 transition-colors"
@@ -228,7 +213,6 @@ export default function CreateCommunityPage() {
           <span>Back to Communities</span>
         </button>
         
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 mb-4 mx-auto">
             <Users className="h-7 w-7 text-white" />
@@ -243,7 +227,6 @@ export default function CreateCommunityPage() {
 
         <Card className="bg-white rounded-xl border border-stone-200 p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Community Banner Preview/Upload */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-stone-700">
                 Community Banner (optional)
@@ -312,7 +295,6 @@ export default function CreateCommunityPage() {
               />
             </div>
 
-            {/* Community Name */}
             <div className="space-y-2">
               <label htmlFor="name" className="block text-sm font-medium text-stone-700">
                 Community Name <span className="text-red-500">*</span>
@@ -331,7 +313,6 @@ export default function CreateCommunityPage() {
               </p>
             </div>
 
-            {/* Description */}
             <div className="space-y-2">
               <label htmlFor="description" className="block text-sm font-medium text-stone-700">
                 Description <span className="text-red-500">*</span>
@@ -349,7 +330,6 @@ export default function CreateCommunityPage() {
               </p>
             </div>
 
-            {/* Grief Type */}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-stone-700">
                 Primary Grief Type <span className="text-red-500">*</span>
@@ -376,7 +356,6 @@ export default function CreateCommunityPage() {
               </p>
             </div>
 
-            {/* Error Messages */}
             {error && (
               <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">
                 {error}
@@ -389,7 +368,6 @@ export default function CreateCommunityPage() {
               </div>
             )}
 
-            {/* Submit Button */}
             <div className="pt-4 border-t border-stone-200">
               <Button
                 type="submit"
@@ -413,7 +391,6 @@ export default function CreateCommunityPage() {
           </form>
         </Card>
 
-        {/* Guidelines */}
         <div className="mt-8 bg-white rounded-xl border border-stone-200 p-5">
           <h3 className="font-medium text-stone-800 mb-3 flex items-center">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block mr-2"></span>
