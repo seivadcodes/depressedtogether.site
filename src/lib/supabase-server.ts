@@ -1,14 +1,13 @@
-import { SupabaseClient, createClient as createSupabaseClient } from '@supabase/supabase-js';
+// lib/supabase-server.ts
+import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
-// Use a different name for the imported createClient to avoid conflict
-// Then define your own createClient
-export const createClient = (): SupabaseClient => {
+const createSupabaseServerClient = (): SupabaseClient => {
   const cookieStore = cookies();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  return createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
@@ -20,4 +19,8 @@ export const createClient = (): SupabaseClient => {
       },
     },
   });
+
+  return supabase;
 };
+
+export { createSupabaseServerClient };
