@@ -18,7 +18,10 @@ import {
   Trash2,
   X,
   Loader2,
-  Upload
+  Upload,
+  ChevronDown,
+  ChevronUp,
+  CornerDownLeft
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 // Import hearts logic functions
@@ -34,6 +37,21 @@ interface Community {
   created_at: string;
   cover_photo_url?: string | null;
 }
+
+
+interface CommentNode {
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+  post_id: string;
+  parent_comment_id: string | null;
+  replies: CommentNode[];
+  reply_count: number;
+}
+
 interface Member {
   user_id: string;
   username: string;
@@ -64,6 +82,9 @@ interface Comment {
   username: string;
   avatar_url: string | null;
   post_id: string;
+  parent_comment_id?: string | null;
+  replies?: Comment[];
+  reply_count?: number;
 }
 export default function CommunityDetailPage() {
   const params = useParams();
@@ -95,6 +116,12 @@ export default function CommunityDetailPage() {
   const [addingComment, setAddingComment] = useState<Record<string, boolean>>({});
   const [expandedPosts, setExpandedPosts] = useState<string[]>([]);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
+  const [replyingToComment, setReplyingToComment] = useState<Record<string, boolean>>({});
+  const [replyContent, setReplyContent] = useState<Record<string, string>>({});
+  const [addingReply, setAddingReply] = useState<Record<string, boolean>>({});
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
+  const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
+  const [showAllComments, setShowAllComments] = useState<Record<string, boolean>>({});
   const griefTypeGradients: Record<string, string> = {
     'parent': 'from-amber-200 to-orange-300',
     'child': 'from-purple-200 to-indigo-300',
@@ -148,31 +175,54 @@ export default function CommunityDetailPage() {
       setLikeLoading(prev => ({ ...prev, [postId]: false }));
     }
   };
-  // Fetch comments for a post
+  // Fetch comments and replies for a post
   const fetchComments = async (postId: string) => {
     if (!postId) return;
     setCommentLoading(prev => ({ ...prev, [postId]: true }));
     try {
-      const { data, error } = await supabase
+      // Fetch ALL comments for this post
+      const { data: allComments, error: commentsError } = await supabase
         .from('community_post_comments_with_profiles')
         .select('*')
         .eq('post_id', postId)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      // Format comments — now username and avatar_url are direct fields
-      const formattedComments = data.map(comment => ({
-        id: comment.id,
-        content: comment.content,
-        created_at: comment.created_at,
-        user_id: comment.user_id,
-        username: comment.username || 'Anonymous',
-        avatar_url: comment.avatar_url || null,
-        post_id: comment.post_id
-      }));
+        .order('created_at', { ascending: true }); // Oldest first for proper threading
+
+      if (commentsError) throw commentsError;
+
+      // Format all comments
+      const formattedComments = allComments.map(comment => ({
+  id: comment.id,
+  content: comment.content,
+  created_at: comment.created_at,
+  user_id: comment.user_id,
+  username: comment.is_anonymous ? 'Anonymous' : (comment.username || 'Anonymous'),
+  avatar_url: comment.is_anonymous ? null : comment.avatar_url || null,
+  post_id: comment.post_id,
+  parent_comment_id: (comment.parent_comment_id ?? null) as string | null
+}));
+      // Build nested comment structure
+      // Build nested comment structure
+const buildCommentTree = (comments: Comment[], parentId: string | null = null): CommentNode[] => {
+  return comments
+    .filter(comment => comment.parent_comment_id === parentId)
+    .map((comment): CommentNode => {
+      const replies = buildCommentTree(comments, comment.id);
+      return {
+        ...comment,
+        parent_comment_id: comment.parent_comment_id ?? null, // 👈 ensures string | null
+        replies,
+        reply_count: replies.length
+      };
+    });
+};
+
+      const nestedComments = buildCommentTree(formattedComments);
+
       setComments(prev => ({
         ...prev,
-        [postId]: formattedComments
+        [postId]: nestedComments
       }));
+
       // Add to expanded posts
       if (!expandedPosts.includes(postId)) {
         setExpandedPosts(prev => [...prev, postId]);
@@ -196,53 +246,68 @@ export default function CommunityDetailPage() {
           post_id: postId,
           user_id: user.id,
           content: content.trim(),
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          parent_comment_id: null // Top-level comment
         })
         .select('id, content, created_at, post_id, user_id')
         .single();
+
       if (insertError) throw insertError;
+
       // Step 2: Fetch the newly inserted comment WITH profile info via the view
       const { data: commentWithProfile, error: profileError } = await supabase
         .from('community_post_comments_with_profiles')
         .select('*')
         .eq('id', insertData.id)
         .single();
+
       if (profileError) throw profileError;
+
       // Format the new comment
-      const newComment = {
-        id: commentWithProfile.id,
-        content: commentWithProfile.content,
-        created_at: commentWithProfile.created_at,
-        user_id: commentWithProfile.user_id,
-        username: commentWithProfile.username || 'Anonymous',
-        avatar_url: commentWithProfile.avatar_url || null,
-        post_id: commentWithProfile.post_id
-      };
+   const newComment: CommentNode = {
+  id: commentWithProfile.id,
+  content: commentWithProfile.content,
+  created_at: commentWithProfile.created_at,
+  user_id: commentWithProfile.user_id,
+  username: commentWithProfile.is_anonymous ? 'Anonymous' : (commentWithProfile.username || 'Anonymous'),
+  avatar_url: commentWithProfile.is_anonymous ? null : commentWithProfile.avatar_url || null,
+  post_id: commentWithProfile.post_id,
+  parent_comment_id: null, // now guaranteed to be string | null
+  replies: [],
+  reply_count: 0
+};
+
       // Update comments state
       setComments(prev => ({
         ...prev,
-        [postId]: [...(prev[postId] || []), newComment]
+        [postId]: [newComment, ...(prev[postId] || [])] // Add to beginning for latest comment first
       }));
+
       // Get the current comment count for this post
       const { data: currentPost, error: postError } = await supabase
         .from('community_posts')
         .select('comments_count')
         .eq('id', postId)
         .single();
+
       if (postError) throw postError;
+
       // Update the comments_count in the database
       const newCommentCount = (currentPost.comments_count || 0) + 1;
       const { error: countError } = await supabase
         .from('community_posts')
         .update({ comments_count: newCommentCount })
         .eq('id', postId);
+
       if (countError) console.warn('Failed to update comment count in database:', countError);
+
       // Update posts state with the new comment count
       setPosts(prev => prev.map(post =>
         post.id === postId
           ? { ...post, comments_count: newCommentCount }
           : post
       ));
+
       // Clear the input
       setNewCommentContent(prev => ({ ...prev, [postId]: '' }));
       toast.success('Comment added successfully');
@@ -253,46 +318,208 @@ export default function CommunityDetailPage() {
       setAddingComment(prev => ({ ...prev, [postId]: false }));
     }
   };
-  // Delete a comment
-  const deleteComment = async (commentId: string, postId: string) => {
-    setDeletingCommentId(commentId);
+  // Add a reply to a comment at any nesting level
+  const addReply = async (postId: string, parentCommentId: string, content: string) => {
+    if (!user || !content.trim() || !postId || !parentCommentId) return;
+    setAddingReply(prev => ({ ...prev, [parentCommentId]: true }));
     try {
-      const { error } = await supabase
+      // Step 1: Insert the reply
+      const { data: insertData, error: insertError } = await supabase
         .from('community_post_comments')
-        .delete()
-        .eq('id', commentId);
-      if (error) throw error;
+        .insert({
+          post_id: postId,
+          user_id: user.id,
+          content: content.trim(),
+          created_at: new Date().toISOString(),
+          parent_comment_id: parentCommentId
+        })
+        .select('id, content, created_at, post_id, user_id, parent_comment_id')
+        .single();
+
+      if (insertError) throw insertError;
+
+      // Step 2: Fetch the newly inserted reply WITH profile info via the view
+      const { data: replyWithProfile, error: profileError } = await supabase
+        .from('community_post_comments_with_profiles')
+        .select('*')
+        .eq('id', insertData.id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      // Format the new reply
+      const newReply = {
+        id: replyWithProfile.id,
+        content: replyWithProfile.content,
+        created_at: replyWithProfile.created_at,
+        user_id: replyWithProfile.user_id,
+        username: replyWithProfile.is_anonymous ? 'Anonymous' : (replyWithProfile.username || 'Anonymous'),
+        avatar_url: replyWithProfile.is_anonymous ? null : replyWithProfile.avatar_url || null,
+        post_id: replyWithProfile.post_id,
+        parent_comment_id: replyWithProfile.parent_comment_id,
+        replies: [],
+        reply_count: 0
+      };
+
+      // Update comments state with the new reply
+      const updateCommentsState = (comments: Comment[]): Comment[] => {
+        return comments.map(comment => {
+          if (comment.id === parentCommentId) {
+            return {
+              ...comment,
+              replies: [...(comment.replies || []), newReply],
+              reply_count: (comment.reply_count || 0) + 1
+            };
+          }
+          if (comment.replies && comment.replies.length > 0) {
+            return {
+              ...comment,
+              replies: updateCommentsState(comment.replies)
+            };
+          }
+          return comment;
+        });
+      };
+
+      setComments(prev => ({
+        ...prev,
+        [postId]: updateCommentsState(prev[postId] || [])
+      }));
+
       // Get the current comment count for this post
       const { data: currentPost, error: postError } = await supabase
         .from('community_posts')
         .select('comments_count')
         .eq('id', postId)
         .single();
+
       if (postError) throw postError;
-      // Update the comments_count in the database
-      const newCommentCount = Math.max(0, (currentPost.comments_count || 0) - 1);
+
+      // Update the comments_count in the database (increment by 1 for the reply)
+      const newCommentCount = (currentPost.comments_count || 0) + 1;
       const { error: countError } = await supabase
         .from('community_posts')
         .update({ comments_count: newCommentCount })
         .eq('id', postId);
+
       if (countError) console.warn('Failed to update comment count in database:', countError);
-      // Update comments state
+
+      // Update posts state with the new comment count
+      setPosts(prev => prev.map(post =>
+        post.id === postId
+          ? { ...post, comments_count: newCommentCount }
+          : post
+      ));
+
+      // Clear the reply input and close reply form
+      setReplyContent(prev => ({ ...prev, [parentCommentId]: '' }));
+      setReplyingToComment(prev => ({ ...prev, [parentCommentId]: false }));
+      toast.success('Reply added successfully');
+    } catch (error: any) {
+      console.error('Error adding reply:', error);
+      toast.error('Failed to add reply');
+    } finally {
+      setAddingReply(prev => ({ ...prev, [parentCommentId]: false }));
+    }
+  };
+  // Delete a comment or reply (and all its nested replies)
+  const deleteComment = async (commentId: string, postId: string, isReply: boolean = false, parentCommentId?: string) => {
+    const deletingId = isReply ? commentId : commentId;
+    if (isReply) {
+      setDeletingReplyId(commentId);
+    } else {
+      setDeletingCommentId(commentId);
+    }
+    try {
+      // First, get all comments to find descendants
+      const { data: allComments, error: allCommentsError } = await supabase
+        .from('community_post_comments')
+        .select('id, parent_comment_id')
+        .eq('post_id', postId);
+
+      if (allCommentsError) throw allCommentsError;
+
+      // Find all descendants of this comment (recursively)
+      const getDescendantIds = (parentId: string): string[] => {
+        const directChildren = allComments.filter(c => c.parent_comment_id === parentId);
+        return [
+          ...directChildren.map(c => c.id),
+          ...directChildren.flatMap(c => getDescendantIds(c.id))
+        ];
+      };
+
+      const descendantIds = getDescendantIds(commentId);
+      const totalCommentsToDelete = 1 + descendantIds.length;
+
+      // Delete the comment and all its descendants
+      const { error: deleteError } = await supabase
+        .from('community_post_comments')
+        .delete()
+        .in('id', [commentId, ...descendantIds]);
+
+      if (deleteError) throw deleteError;
+
+      // Get the current comment count for this post
+      const { data: currentPost, error: postError } = await supabase
+        .from('community_posts')
+        .select('comments_count')
+        .eq('id', postId)
+        .single();
+
+      if (postError) throw postError;
+
+      // Update the comments_count in the database
+      const newCommentCount = Math.max(0, (currentPost.comments_count || 0) - totalCommentsToDelete);
+      const { error: countError } = await supabase
+        .from('community_posts')
+        .update({ comments_count: newCommentCount })
+        .eq('id', postId);
+
+      if (countError) console.warn('Failed to update comment count in database:', countError);
+
+      // Update comments state - remove comment and all its descendants
+      const removeCommentAndDescendants = (comments: Comment[]): Comment[] => {
+        return comments.filter(comment => {
+          if (comment.id === commentId) return false;
+          if (comment.replies && comment.replies.length > 0) {
+            comment.replies = removeCommentAndDescendants(comment.replies);
+            comment.reply_count = comment.replies.length;
+          }
+          return true;
+        });
+      };
+
       setComments(prev => ({
         ...prev,
-        [postId]: (prev[postId] || []).filter(comment => comment.id !== commentId)
+        [postId]: removeCommentAndDescendants(prev[postId] || [])
       }));
+
       // Update posts state to decrement comments_count
       setPosts(prev => prev.map(post =>
         post.id === postId
           ? { ...post, comments_count: newCommentCount }
           : post
       ));
-      toast.success('Comment deleted successfully');
+
+      // Also remove from expanded comments if needed
+      if (expandedComments[commentId]) {
+        setExpandedComments(prev => {
+          const newExpanded = { ...prev };
+          delete newExpanded[commentId];
+          return newExpanded;
+        });
+      }
+
+      toast.success(isReply ? 'Reply deleted successfully' : 'Comment and all replies deleted successfully');
     } catch (error: any) {
-      console.error('Error deleting comment:', error);
-      toast.error('Failed to delete comment');
+      console.error(isReply ? 'Error deleting reply:' : 'Error deleting comment:', error);
+      toast.error(`Failed to delete ${isReply ? 'reply' : 'comment'}`);
     } finally {
-      setDeletingCommentId(null);
+      if (isReply) {
+        setDeletingReplyId(null);
+      } else {
+        setDeletingCommentId(null);
+      }
     }
   };
   // Toggle expand/collapse comments for a post
@@ -306,6 +533,37 @@ export default function CommunityDetailPage() {
         setExpandedPosts(prev => [...prev, postId]);
       }
     }
+  };
+  // Toggle showing replies for a comment
+  const toggleReplies = (commentId: string) => {
+    setExpandedComments(prev => ({
+      ...prev,
+      [commentId]: !prev[commentId]
+    }));
+  };
+  // Toggle reply form for a comment
+  const toggleReplyForm = (commentId: string) => {
+    setReplyingToComment(prev => {
+      const newReplyingState = !prev[commentId];
+      // If we're opening the reply form, clear the input
+      if (newReplyingState) {
+        setReplyContent(contentPrev => ({
+          ...contentPrev,
+          [commentId]: ''
+        }));
+      }
+      return {
+        ...prev,
+        [commentId]: newReplyingState
+      };
+    });
+  };
+  // Toggle showing all comments vs just the latest
+  const toggleShowAllComments = (postId: string) => {
+    setShowAllComments(prev => ({
+      ...prev,
+      [postId]: !prev[postId]
+    }));
   };
   // Update community banner
   const updateBanner = async (file: File) => {
@@ -325,12 +583,15 @@ export default function CommunityDetailPage() {
         .upload(fileName, file, {
           upsert: true
         });
+
       if (uploadError) throw uploadError;
+
       const newBannerUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${fileName}?t=${Date.now()}`;
       setCommunity(prev => prev ? {
         ...prev,
         cover_photo_url: newBannerUrl
       } : null);
+
       toast.success('Banner updated successfully!');
       setBannerModalOpen(false);
       setBannerPreview(null);
@@ -351,7 +612,9 @@ export default function CommunityDetailPage() {
         .delete()
         .eq('id', postId)
         .eq('community_id', communityId);
+
       if (error) throw error;
+
       setPosts(prev => prev.filter(post => post.id !== postId));
       // Remove comments for this post as well
       setComments(prev => {
@@ -359,6 +622,7 @@ export default function CommunityDetailPage() {
         delete newComments[postId];
         return newComments;
       });
+
       toast.success('Post deleted successfully');
     } catch (error: any) {
       console.error('Post deletion failed:', error);
@@ -387,10 +651,13 @@ export default function CommunityDetailPage() {
           upsert: true,
           contentType: file.type
         });
+
       if (uploadError) throw uploadError;
+
       const { data } = supabase.storage
         .from('communities')
         .getPublicUrl(fileName);
+
       return data.publicUrl;
     } catch (error: any) {
       console.error('Media upload failed:', error);
@@ -422,7 +689,9 @@ export default function CommunityDetailPage() {
           user_id
         `)
         .single();
+
       if (postError) throw postError;
+
       let mediaUrl = null;
       // Upload media if exists
       if (file) {
@@ -433,17 +702,20 @@ export default function CommunityDetailPage() {
             .from('community_posts')
             .update({ media_url: mediaUrl })
             .eq('id', postData.id);
+
           if (updateError) {
             console.warn('Failed to update post with media URL:', updateError);
           }
         }
       }
+
       // Get user profile for the post
       const { data: userData } = await supabase
         .from('profiles')
         .select('full_name, avatar_url')
         .eq('id', userId)
         .single();
+
       // Return formatted post
       return {
         id: postData.id,
@@ -477,46 +749,43 @@ export default function CommunityDetailPage() {
       try {
         setLoading(true);
         setError(null);
-       // Fetch community details
-const { data: communityData, error: communityError } = await supabase
-  .from('communities')
-  .select('*')
-  .eq('id', communityId)
-  .single();
+        // Fetch community details
+        const { data: communityData, error: communityError } = await supabase
+          .from('communities')
+          .select('*')
+          .eq('id', communityId)
+          .single();
 
-if (communityError) {
-  throw new Error(`Failed to fetch community: ${communityError.message}`);
-}
+        if (communityError) {
+          throw new Error(`Failed to fetch community: ${communityError.message}`);
+        }
+        if (!communityData) {
+          throw new Error('Community not found');
+        }
+        // Add cover photo URL
+        let coverPhotoUrl = communityData.cover_photo_url;
+        // Fallback if no cover_photo_url exists
+        if (!coverPhotoUrl) {
+          coverPhotoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
+        }
+        // Get accurate member count by counting community_members
+        const { count, error: countError } = await supabase
+          .from('community_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('community_id', communityId);
 
-if (!communityData) {
-  throw new Error('Community not found');
-}
+        if (countError) {
+          throw new Error(`Failed to count members: ${countError.message}`);
+        }
 
-// Add cover photo URL
-let coverPhotoUrl = communityData.cover_photo_url;
+        const communityWithPhoto = {
+          ...communityData,
+          cover_photo_url: coverPhotoUrl,
+          member_count: count || 0 // Use the accurate count from the members table
+        };
 
-// Fallback if no cover_photo_url exists
-if (!coverPhotoUrl) {
-  coverPhotoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
-}
+        setCommunity(communityWithPhoto);
 
-// Get accurate member count by counting community_members
-const { count, error: countError } = await supabase
-  .from('community_members')
-  .select('*', { count: 'exact', head: true })
-  .eq('community_id', communityId);
-
-if (countError) {
-  throw new Error(`Failed to count members: ${countError.message}`);
-}
-
-const communityWithPhoto = {
-  ...communityData,
-  cover_photo_url: coverPhotoUrl,
-  member_count: count || 0 // Use the accurate count from the members table
-};
-
-setCommunity(communityWithPhoto);
         // Check if user is a member
         if (user) {
           const { data: memberData } = await supabase
@@ -525,6 +794,7 @@ setCommunity(communityWithPhoto);
             .eq('community_id', communityId)
             .eq('user_id', user.id)
             .single();
+
           if (memberData) {
             setIsMember(true);
             setUserRole(memberData.role);
@@ -536,41 +806,43 @@ setCommunity(communityWithPhoto);
           setIsMember(false);
           setUserRole(null);
         }
-       // Fetch members
-const { data: membersData, error: membersError } = await supabase
-  .from('community_members')
-  .select(`
-    role,
-    joined_at,
-    user_id,
-    user:profiles!left (
-      full_name,
-      avatar_url,
-      last_online
-    )
-  `)
-  .eq('community_id', communityId)
-  .order('joined_at', { ascending: true });
 
-if (membersError) throw membersError;
+        // Fetch members
+        const { data: membersData, error: membersError } = await supabase
+          .from('community_members')
+          .select(`
+            role,
+            joined_at,
+            user_id,
+            user:profiles!left (
+              full_name,
+              avatar_url,
+              last_online
+            )
+          `)
+          .eq('community_id', communityId)
+          .order('joined_at', { ascending: true });
 
-const formattedMembers = membersData.map(member => {
-  // Handle the case where the LEFT JOIN returns null (no profile)
-  const profile = Array.isArray(member.user)
-    ? member.user[0] ?? null
-    : member.user;
+        if (membersError) throw membersError;
 
-  return {
-    user_id: member.user_id,
-    username: profile?.full_name || 'Anonymous',
-    avatar_url: profile?.avatar_url || null,
-    last_online: profile?.last_online || null,
-    is_online: isUserOnline(profile?.last_online || null),
-    role: member.role,
-    joined_at: member.joined_at
-  };
-});
+        const formattedMembers = membersData.map(member => {
+          // Handle the case where the LEFT JOIN returns null (no profile)
+          const profile = Array.isArray(member.user)
+            ? member.user[0] ?? null
+            : member.user;
+          return {
+            user_id: member.user_id,
+            username: profile?.full_name || 'Anonymous',
+            avatar_url: profile?.avatar_url || null,
+            last_online: profile?.last_online || null,
+            is_online: isUserOnline(profile?.last_online || null),
+            role: member.role,
+            joined_at: member.joined_at
+          };
+        });
+
         setMembers(formattedMembers);
+
         // Fetch posts - This is the key fix for making posts visible to everyone
         const { data: postData, error: postError } = await supabase
           .from('community_posts')
@@ -586,38 +858,45 @@ const formattedMembers = membersData.map(member => {
           `)
           .eq('community_id', communityId)
           .order('created_at', { ascending: false });
+
         if (postError) throw postError;
+
         // Get user profiles for all posts in a single query for better performance
         const userIds = [...new Set(postData.map(post => post.user_id))];
         const { data: profilesData, error: profilesError } = await supabase
           .from('profiles')
-          .select('id, full_name, avatar_url')
+          .select('id, full_name, avatar_url, is_anonymous') // ← ADD is_anonymous
           .in('id', userIds);
+
         if (profilesError) {
           console.warn('Error fetching profiles for posts:', profilesError);
         }
+
         // Create a map of user_id to profile data
         const profilesMap = new Map();
         profilesData?.forEach(profile => {
           profilesMap.set(profile.id, profile);
         });
-        // Check like status for each post if user is logged in
+
+        // Check like status for logged in users
         let postsWithLikes = postData.map(post => {
           const userProfile = profilesMap.get(post.user_id) || {};
+          const isAnonymous = userProfile.is_anonymous || false;
           return {
             id: post.id,
             content: post.content,
             media_url: post.media_url,
             created_at: post.created_at,
             user_id: post.user_id,
-            username: userProfile.full_name || 'Anonymous',
-            avatar_url: userProfile.avatar_url || null,
+            username: isAnonymous ? 'Anonymous' : (userProfile.full_name || 'Anonymous'),
+            avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
             community_id: post.community_id,
             likes_count: post.likes_count || 0,
             comments_count: post.comments_count || 0,
             is_liked: false // Will update below if user is logged in
           };
         });
+
         // Check likes for logged in users
         if (user) {
           const likeStatusPromises = postsWithLikes.map(async (post) => {
@@ -629,12 +908,14 @@ const formattedMembers = membersData.map(member => {
               return { postId: post.id, isLiked: false };
             }
           });
+
           const likeStatusResults = await Promise.all(likeStatusPromises);
           postsWithLikes = postsWithLikes.map(post => {
             const likeStatus = likeStatusResults.find(status => status.postId === post.id);
             return likeStatus ? { ...post, is_liked: likeStatus.isLiked } : post;
           });
         }
+
         setPosts(postsWithLikes);
       } catch (err: any) {
         console.error('Error fetching community:', err);
@@ -643,6 +924,7 @@ const formattedMembers = membersData.map(member => {
         setLoading(false);
       }
     };
+
     fetchData();
   }, [communityId, user, supabase]);
   // Handle join/leave community
@@ -658,11 +940,13 @@ const formattedMembers = membersData.map(member => {
         .delete()
         .eq('community_id', communityId)
         .eq('user_id', user.id);
+
       if (error) {
         console.error('Error leaving community:', error);
         setError('Failed to leave community');
         return;
       }
+
       setIsMember(false);
       setUserRole(null);
       setCommunity(prev => prev ? { ...prev, member_count: prev.member_count - 1 } : null);
@@ -676,11 +960,13 @@ const formattedMembers = membersData.map(member => {
           joined_at: new Date().toISOString(),
           role: 'member'
         });
+
       if (error) {
         console.error('Error joining community:', error);
         setError('Failed to join community');
         return;
       }
+
       setIsMember(true);
       setUserRole('member');
       setCommunity(prev => prev ? { ...prev, member_count: prev.member_count + 1 } : null);
@@ -697,6 +983,7 @@ const formattedMembers = membersData.map(member => {
         newPostMedia,
         user.id
       );
+
       setPosts(prev => [newPost, ...prev]);
       setNewPostContent('');
       setNewPostMedia(null);
@@ -1113,58 +1400,48 @@ const formattedMembers = membersData.map(member => {
                               ) : comments[post.id]?.length === 0 ? (
                                 <p className="text-sm text-stone-500 text-center py-2">No comments yet. Be the first to comment!</p>
                               ) : (
-                                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                                  {comments[post.id]?.map(comment => (
-                                    <div key={comment.id} className="flex gap-3">
-                                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 flex-shrink-0 flex items-center justify-center text-white font-medium text-xs">
-                                        {comment.avatar_url ? (
-                                          <img
-                                            src={comment.avatar_url}
-                                            alt={comment.username}
-                                            className="w-full h-full rounded-full object-cover"
-                                          />
-                                        ) : (
-                                          comment.username[0]?.toUpperCase() || 'U'
-                                        )}
-                                      </div>
-                                      <div className="flex-1 min-w-0 bg-stone-50 rounded-lg p-3">
-                                        <div className="flex justify-between items-start">
-                                          <div>
-                                            <h4 className="font-medium text-stone-800 text-sm">{comment.username}</h4>
-                                            <p className="text-xs text-stone-500 mt-0.5">
-                                              {formatRecentActivity(comment.created_at)}
-                                            </p>
-                                          </div>
-                                          {(comment.user_id === user?.id || isModerator) && (
-                                            <button
-                                              onClick={async () => {
-                                                if (window.confirm('Are you sure you want to delete this comment?')) {
-                                                  await deleteComment(comment.id, post.id);
-                                                }
-                                              }}
-                                              disabled={deletingCommentId === comment.id}
-                                              className="text-stone-400 hover:text-red-500 transition-colors disabled:opacity-50"
-                                              title="Delete comment"
-                                            >
-                                              {deletingCommentId === comment.id ? (
-                                                <Loader2 size={14} className="animate-spin" />
-                                              ) : (
-                                                <Trash2 size={14} />
-                                              )}
-                                            </button>
-                                          )}
-                                        </div>
-                                        <p className="text-stone-700 text-sm mt-1 whitespace-pre-line">
-                                          {comment.content}
-                                        </p>
-                                      </div>
+                                <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                                  {/* Show only the latest comment by default */}
+                                  {!showAllComments[post.id] && comments[post.id] && comments[post.id].length > 0 && (
+                                    <div className="mb-4">
+                                      <p className="text-xs text-stone-500 mb-2 flex items-center">
+                                        <CornerDownLeft size={14} className="mr-1 text-amber-500" />
+                                        Latest comment
+                                      </p>
+                                      {renderComment(comments[post.id][0], post.id, 0)}
                                     </div>
-                                  ))}
+                                  )}
+                                  {showAllComments[post.id] && (
+                                    <>
+                                      {comments[post.id]?.map(comment => (
+                                        <div key={comment.id} className="comment-thread">
+                                          {renderComment(comment, post.id, 0)}
+                                        </div>
+                                      ))}
+                                    </>
+                                  )}
+                                  {comments[post.id].length > 1 && (
+                                    <button
+                                      onClick={() => toggleShowAllComments(post.id)}
+                                      className="text-amber-600 text-sm hover:text-amber-700 flex items-center gap-1 mt-2"
+                                    >
+                                      {showAllComments[post.id] ? (
+                                        <>
+                                          <ChevronUp size={16} />
+                                          Show less comments
+                                        </>
+                                      ) : (
+                                        <>
+                                          <ChevronDown size={16} />
+                                          View all {comments[post.id].length} comments
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
                                 </div>
                               )}
                             </>
                           )}
-
                           {/* Add comment form - always visible */}
                           {user && (
                             <div className="mt-4 flex gap-3">
@@ -1400,4 +1677,118 @@ const formattedMembers = membersData.map(member => {
       )}
     </div>
   );
+  // Helper function to render a comment with its replies (recursively)
+  function renderComment(comment: Comment, postId: string, depth: number = 0) {
+    const isNested = depth > 0;
+    
+    return (
+      <div key={comment.id} className={`flex gap-3 mb-3 ${isNested ? 'ml-8' : ''}`}>
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-200 to-orange-300 flex-shrink-0 flex items-center justify-center text-white font-medium text-xs">
+          {comment.avatar_url ? (
+            <img
+              src={comment.avatar_url}
+              alt={comment.username}
+              className="w-full h-full rounded-full object-cover"
+            />
+          ) : (
+            comment.username[0]?.toUpperCase() || 'U'
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className={`${isNested ? 'bg-stone-100' : 'bg-stone-50'} rounded-lg p-3`}>
+            <div className="flex justify-between items-start">
+              <div>
+                <h4 className="font-medium text-stone-800 text-sm">{comment.username}</h4>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  {formatRecentActivity(comment.created_at)}
+                </p>
+              </div>
+              {(comment.user_id === user?.id || isModerator) && (
+                <button
+                  onClick={async () => {
+                    if (window.confirm('Are you sure you want to delete this comment? This will also delete all replies to this comment.')) {
+                      await deleteComment(comment.id, postId, false, comment.parent_comment_id || undefined);
+                    }
+                  }}
+                  disabled={deletingCommentId === comment.id || deletingReplyId === comment.id}
+                  className="text-stone-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                  title="Delete comment"
+                >
+                  {(deletingCommentId === comment.id || deletingReplyId === comment.id) ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={14} />
+                  )}
+                </button>
+              )}
+            </div>
+            <p className="text-stone-700 text-sm mt-1 whitespace-pre-line">
+              {comment.content}
+            </p>
+            
+            {/* Reply button */}
+            {user && (
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  onClick={() => toggleReplyForm(comment.id)}
+                  className="text-xs text-amber-600 hover:text-amber-700 flex items-center gap-1"
+                >
+                  <CornerDownLeft size={12} />
+                  Reply
+                </button>
+                {comment.reply_count && comment.reply_count > 0 && (
+                  <button
+                    onClick={() => toggleReplies(comment.id)}
+                    className="text-xs text-stone-500 hover:text-stone-700 flex items-center gap-1"
+                  >
+                    {expandedComments[comment.id] ? (
+                      <ChevronUp size={12} />
+                    ) : (
+                      <ChevronDown size={12} />
+                    )}
+                    {comment.reply_count} {comment.reply_count === 1 ? 'reply' : 'replies'}
+                  </button>
+                )}
+              </div>
+            )}
+            
+            {/* Reply form */}
+            {replyingToComment[comment.id] && user && (
+              <div className="mt-3 ml-4 pl-4 border-l-2 border-stone-200 pt-2">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={replyContent[comment.id] || ''}
+                    onChange={(e) => setReplyContent(prev => ({ ...prev, [comment.id]: e.target.value }))}
+                    placeholder="Write a reply..."
+                    className="flex-1 px-3 py-1.5 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-sm"
+                  />
+                  <button
+                    onClick={() => addReply(postId, comment.id, replyContent[comment.id] || '')}
+                    disabled={addingReply[comment.id] || !replyContent[comment.id]?.trim()}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ${
+                      replyContent[comment.id]?.trim()
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                        : 'bg-stone-200 text-stone-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {addingReply[comment.id] ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : 'Reply'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Recursively render replies */}
+          {expandedComments[comment.id] && comment.replies && comment.replies.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {comment.replies.map((reply) => renderComment(reply, postId, depth + 1))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 }

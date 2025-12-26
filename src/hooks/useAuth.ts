@@ -6,6 +6,40 @@ import { useRouter } from 'next/navigation';
 import { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase';
 
+// 👇 Add this helper INSIDE the file (not inside the hook)
+async function ensureProfileExists(user: User) {
+  if (!user?.id) return;
+
+  const supabase = createClient();
+  
+  // Check if profile exists
+  const { data: existing, error: fetchError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', user.id)
+    .single();
+
+  // If not found, create it
+  if (fetchError?.code === 'PGRST116') { // Row not found
+    const fullName = user.user_metadata?.full_name 
+      || user.email?.split('@')[0] 
+      || 'Friend';
+
+    const { error: insertError } = await supabase
+      .from('profiles')
+      .insert({
+        id: user.id,
+        email: user.email,
+        full_name: fullName,
+        created_at: new Date().toISOString(),
+      });
+
+    if (insertError && insertError.code !== '23505') { // ignore duplicates
+      console.error('Failed to create profile:', insertError);
+    }
+  }
+}
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -46,10 +80,8 @@ export function useAuth() {
     let isSubscribed = true;
     const supabase = createClient();
 
-    // Clear any existing session data in localStorage that might be causing conflicts
     const clearStaleSession = () => {
       try {
-        // This helps prevent redirect loops from stale session data
         if (typeof window !== 'undefined') {
           Object.keys(localStorage).forEach(key => {
             if (key.startsWith('supabase.auth.token') || 
@@ -68,13 +100,22 @@ export function useAuth() {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
         console.error('Session error:', error);
-        setLoading(false);
-        setSessionChecked(true);
+        if (isSubscribed) {
+          setLoading(false);
+          setSessionChecked(true);
+        }
         return;
       }
 
+      if (isSubscribed && session?.user) {
+        // ✅ Ensure profile exists on initial load
+        ensureProfileExists(session.user);
+        setUser(session.user);
+      } else if (isSubscribed) {
+        setUser(null);
+      }
+
       if (isSubscribed) {
-        setUser(session?.user || null);
         setLoading(false);
         setSessionChecked(true);
       }
@@ -85,29 +126,41 @@ export function useAuth() {
       if (!isSubscribed) return;
 
       console.log('Auth state changed:', event);
-      
+
       if (event === 'SIGNED_OUT') {
         setUser(null);
-        setLoading(false);
-        setSessionChecked(true);
-        // Only redirect if we're currently on an auth-protected page
+        if (isSubscribed) {
+          setLoading(false);
+          setSessionChecked(true);
+        }
         const currentPath = window.location.pathname;
         if (!currentPath.startsWith('/auth') && !currentPath.startsWith('/onboarding')) {
           router.push('/auth');
         }
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        setUser(session?.user || null);
+      } 
+      else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session?.user) {
+          // ✅ Ensure profile exists on sign-in
+          ensureProfileExists(session.user);
+          setUser(session.user);
+        }
+        if (isSubscribed) {
+          setLoading(false);
+          setSessionChecked(true);
+        }
+      } 
+      else if (event === 'USER_UPDATED') {
+        if (session?.user) {
+          setUser(session.user);
+        }
+      }
+
+      if (isSubscribed) {
         setLoading(false);
         setSessionChecked(true);
-      } else if (event === 'USER_UPDATED') {
-        setUser(session?.user || null);
       }
-      
-      setLoading(false);
-      setSessionChecked(true);
     });
 
-    // Clear stale session data on initial load to prevent redirect loops
     clearStaleSession();
 
     return () => {
@@ -119,7 +172,7 @@ export function useAuth() {
   return { 
     user, 
     loading, 
-    sessionChecked, // Added this to track when session has been fully checked
+    sessionChecked,
     signIn, 
     signUp, 
     signOut 
