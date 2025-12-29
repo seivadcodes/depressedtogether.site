@@ -333,7 +333,7 @@ export default function RoomPage() {
 
   // Main UI
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50 to-stone-100 p-4">
+    <div className="min-h-screen bg-gradient-to-b from-amber-50 to-stone-100 p-4 pt-[80px]">
       <div className="max-w-2xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
