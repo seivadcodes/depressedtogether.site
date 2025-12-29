@@ -1,437 +1,331 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { Phone, PhoneOff, Mic, MicOff, X, User } from 'lucide-react';
-import { 
-  Room, 
-  RoomEvent, 
-  ParticipantEvent,
-  Track,
-  createLocalTracks,
-  RemoteParticipant
-} from 'livekit-client';
 
-export default function CallsPage() {
-  const [users, setUsers] = useState<any[]>([]);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
-  const [incomingCall, setIncomingCall] = useState<any>(null);
-  const [activeCall, setActiveCall] = useState<any>(null);
-  const [room, setRoom] = useState<Room | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [callStatus, setCallStatus] = useState<'connecting' | 'connected' | 'ended'>('connecting');
-  const [callDuration, setCallDuration] = useState(0);
-  const router = useRouter();
+// Minimal user type for calling purposes
+interface CallUser {
+  id: string;
+  fullName: string;
+}
+
+// Call status types match your Supabase 'calls' table
+type CallStatus = 'pending' | 'accepted' | 'rejected' | 'ended';
+
+export default function CallPage() {
   const supabase = createClient();
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const audioElementsRef = useRef<HTMLAudioElement[]>([]);
+  const router = useRouter();
+  
+  const [currentUser, setCurrentUser] = useState<{ id: string; fullName: string } | null>(null);
+  const [users, setUsers] = useState<CallUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  
+  const [incomingCall, setIncomingCall] = useState<{
+    callerId: string;
+    callerName: string;
+    callId: string;
+  } | null>(null);
+  
+  const [activeCall, setActiveCall] = useState<{
+    peerName: string;
+    isCaller: boolean;
+  } | null>(null);
+  
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Cleanup on unmount
+  // Initialize: check auth + load current user + other users
   useEffect(() => {
-    return () => {
-      audioElementsRef.current.forEach(el => {
-        el.pause();
-        el.remove();
-      });
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
-
-  useEffect(() => {
-    const loadUsers = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) {
+    const init = async () => {
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      
+      if (authError || !session?.user) {
         router.push('/auth');
         return;
       }
 
-      const { data, error } = await supabase
+      // Fetch current user profile
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, full_name, avatar_url')
-        .neq('id', session.user.id)
-        .limit(10);
+        .select('id, full_name')
+        .eq('id', session.user.id)
+        .single();
 
-      if (error) {
-        setError('Failed to load users');
-      } else {
-        setUsers(data || []);
+      if (profileError || !profile) {
+        setError('Failed to load your profile.');
+        setIsLoading(false);
+        return;
       }
+
+      const currentUserData = {
+        id: profile.id,
+        fullName: profile.full_name || 'Friend',
+      };
+      setCurrentUser(currentUserData);
+
+      // Fetch other users (limit for simplicity)
+      const { data: otherUsers, error: usersError } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .neq('id', session.user.id)
+        .limit(20);
+
+      if (!usersError && otherUsers) {
+        setUsers(
+          otherUsers
+            .filter((u: any) => u.full_name) // skip incomplete profiles
+            .map((u: any) => ({
+              id: u.id,
+              fullName: u.full_name,
+            }))
+        );
+      }
+
       setIsLoading(false);
     };
 
-    loadUsers();
+    init();
+  }, [router]);
 
-    const channel = supabase.channel('calls')
-      .on('broadcast', { event: 'incoming_call' }, (payload: any) => {
-        setIncomingCall(payload.payload);
-      })
+  // Listen for incoming calls via Supabase Realtime
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const channel = supabase
+      .channel(`private-call-${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'calls',
+          filter: `callee_id=eq.${currentUser.id},status=eq.pending`,
+        },
+        (payload) => {
+          const newCall = payload.new as {
+            id: string;
+            caller_id: string;
+            callee_id: string;
+            status: CallStatus;
+          };
+
+          // Find caller's name from loaded users
+          const caller = users.find((u) => u.id === newCall.caller_id);
+          if (caller) {
+            setIncomingCall({
+              callerId: newCall.caller_id,
+              callerName: caller.fullName,
+              callId: newCall.id,
+            });
+          }
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
-      if (room) room.disconnect();
     };
-  }, []);
-
-  const connectToRoom = async (roomName: string, identityPrefix: string) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const identity = `${identityPrefix}-${session?.user.id}`;
-      
-      const response = await fetch('/api/livekit/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          identity,
-          room: roomName,
-          isPublisher: true
-        }),
-      });
-
-      const { token, url } = await response.json();
-      
-      const newRoom = new Room({
-        adaptiveStream: true,
-        dynacast: true,
-        publishDefaults: {
-          videoEncoding: { maxBitrate: 1_000_000 },
-        },
-      });
-
-      // Handle remote participant disconnect
-      newRoom.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
-        console.log('Participant disconnected:', participant.identity);
-        setCallStatus('ended');
-        setTimeout(() => {
-          endCall();
-        }, 2000);
-      });
-
-      // Handle room disconnect (e.g., network loss)
-      newRoom.on(RoomEvent.Disconnected, () => {
-        setCallStatus('ended');
-        setTimeout(() => endCall(), 2000);
-      });
-
-      // NOTE: Timer is NOT started here anymore
-
-      newRoom.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
-        handleTrackSubscribed(track, publication, participant);
-      });
-
-      await newRoom.connect(url, token);
-      
-      const audioTracks = await createLocalTracks({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: false
-      });
-
-      if (audioTracks[0]) {
-        await newRoom.localParticipant.publishTrack(audioTracks[0]);
-      }
-
-      setRoom(newRoom);
-      return newRoom;
-    } catch (err) {
-      console.error('Connection error:', err);
-      setError('Failed to connect to call');
-      setCallStatus('ended');
-      throw err;
-    }
-  };
-
-  const handleTrackSubscribed = (track: any, _publication: any, participant: any) => {
-    if (track.kind === Track.Kind.Audio) {
-      // Start timer and update status ONLY when we receive the first remote audio track
-      if (callStatus !== 'connected') {
-        setCallStatus('connected');
-        setCallDuration(0);
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = setInterval(() => {
-          setCallDuration(prev => prev + 1);
-        }, 1000);
-      }
-
-      const element = track.attach();
-      element.volume = 0.8;
-      element.style.display = 'none';
-      document.body.appendChild(element);
-      audioElementsRef.current.push(element);
-      
-      participant.on(ParticipantEvent.TrackUnpublished, () => {
-        element.remove();
-        audioElementsRef.current = audioElementsRef.current.filter(e => e !== element);
-      });
-    }
-  };
-
-  const initiateCall = async () => {
-    if (!selectedUser) return;
-    
-    const roomName = `call-${Date.now()}`;
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    const { error } = await supabase
-      .from('calls')
-      .insert({
-        caller_id: session?.user.id,
-        callee_id: selectedUser.id,
-        room_name: roomName,
-        status: 'ringing'
-      });
-
-    await supabase.channel('calls')
-      .send({
-        type: 'broadcast',
-        event: 'incoming_call',
-        payload: {
-          caller_id: session?.user.id,
-          caller_name: session?.user.user_metadata?.full_name || 'Community Member',
-          room_name: roomName,
-          timestamp: Date.now()
-        }
-      });
-
-    setActiveCall({
-      id: Date.now().toString(),
-      roomName,
-      isCaller: true,
-      with: selectedUser
-    });
-    
-    setCallStatus('connecting');
-    setCallDuration(0);
-    await connectToRoom(roomName, 'caller');
-  };
+  }, [currentUser, users]);
 
   const acceptCall = async () => {
     if (!incomingCall) return;
-    
-    setActiveCall({
-      id: Date.now().toString(),
-      roomName: incomingCall.room_name,
-      isCaller: false,
-      with: { id: incomingCall.caller_id, name: incomingCall.caller_name }
-    });
-    
-    setIncomingCall(null);
-    setCallStatus('connecting');
-    setCallDuration(0);
-    await connectToRoom(incomingCall.room_name, 'callee');
+
+    try {
+      const { error: updateError } = await supabase
+        .from('calls')
+        .update({ status: 'accepted' })
+        .eq('id', incomingCall.callId);
+
+      if (updateError) throw updateError;
+
+      setActiveCall({
+        peerName: incomingCall.callerName,
+        isCaller: false,
+      });
+      setIncomingCall(null);
+    } catch (err) {
+      console.error('Accept call error:', err);
+      setError('Failed to accept call. Please try again.');
+    }
+  };
+
+  const rejectCall = async () => {
+    if (!incomingCall) return;
+
+    try {
+      const { error: updateError } = await supabase
+        .from('calls')
+        .update({ status: 'rejected' })
+        .eq('id', incomingCall.callId);
+
+      if (updateError) throw updateError;
+
+      setIncomingCall(null);
+    } catch (err) {
+      console.error('Reject call error:', err);
+      setError('Failed to reject call.');
+    }
+  };
+
+  const startCall = async () => {
+    if (!currentUser || !selectedUserId) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const { data: newCall, error: insertError } = await supabase
+        .from('calls')
+        .insert({
+          caller_id: currentUser.id,
+          callee_id: selectedUserId,
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      // Simulate callee accepting after short delay (replace with real signaling in production)
+      setTimeout(() => {
+        const callee = users.find((u) => u.id === selectedUserId);
+        if (callee) {
+          setActiveCall({
+            peerName: callee.fullName,
+            isCaller: true,
+          });
+        }
+      }, 1500);
+    } catch (err) {
+      console.error('Start call error:', err);
+      setError('Unable to start call. User may be offline.');
+    }
   };
 
   const endCall = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
-    if (room) {
-      room.disconnect();
-      setRoom(null);
-    }
+    // In real app: update call status + clean up media streams
     setActiveCall(null);
-    setIncomingCall(null);
-    setCallStatus('ended');
-    setCallDuration(0);
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
+  // ---- UI Rendering ----
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500 mx-auto mb-4"></div>
-          <p className="text-stone-600">Loading community members...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-gray-500 text-lg">Connecting...</div>
       </div>
     );
   }
 
-  // === Active Call View ===
-  if (activeCall) {
-    const displayName = activeCall.with.full_name || activeCall.with.name || 'Community Member';
+  if (!currentUser) return null;
 
-    return (
-      <div className="min-h-screen bg-black text-white flex flex-col">
-        {/* Top bar */}
-        <div className="p-6 text-center border-b border-gray-800">
-          <h1 className="text-2xl font-bold">{displayName}</h1>
-          <p className="text-gray-400 mt-1">
-            {callStatus === 'connecting' ? 'Connecting...' : 
-             callStatus === 'connected' ? `Active • ${formatTime(callDuration)}` : 
-             'Call ended'}
-          </p>
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-bold text-gray-900">One-on-One Support Call</h1>
+          <p className="text-gray-600 mt-2">Connect with others who understand</p>
         </div>
 
-        {/* Main area - avatar */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-48 h-48 rounded-full bg-gray-800 flex items-center justify-center border-4 border-gray-700">
-            <span className="text-5xl">{displayName.charAt(0).toUpperCase()}</span>
+        {/* Incoming Call Banner */}
+        {incomingCall && (
+          <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-indigo-200 rounded-2xl shadow-sm animate-pulse">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-indigo-800">Incoming Audio Call</h2>
+                <p className="text-gray-700">From: {incomingCall.callerName}</p>
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={acceptCall}
+                  className="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-5 rounded-lg flex items-center transition"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Accept
+                </button>
+                <button
+                  onClick={rejectCall}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-5 rounded-lg transition"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Call ended overlay */}
-        {callStatus === 'ended' && (
-          <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-10">
-            <div className="text-center p-6">
-              <p className="text-lg text-gray-300">
-                {activeCall.isCaller 
-                  ? 'Call ended' 
-                  : 'Call ended by other party'}
+        {/* Active Call View */}
+        {activeCall ? (
+          <div className="bg-indigo-600 rounded-3xl p-8 text-center text-white shadow-xl">
+            <div className="mb-6">
+              <div className="w-20 h-20 bg-indigo-300 rounded-full flex items-center justify-center mx-auto text-indigo-800 font-bold text-2xl border-4 border-white">
+                {activeCall.peerName.charAt(0).toUpperCase()}
+              </div>
+              <h2 className="text-2xl font-bold mt-4">
+                {activeCall.isCaller ? 'Calling' : 'Connected to'} {activeCall.peerName}
+              </h2>
+              <p className="text-indigo-200 mt-1">Audio call in progress</p>
+            </div>
+
+            <button
+              onClick={endCall}
+              className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-8 rounded-full flex items-center mx-auto transition transform hover:scale-105"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5m6 11.25a3 3 0 01-3-3V4.5m6 0v8.25m0-8.25a3 3 0 00-3-3H6.75" />
+              </svg>
+              End Call
+            </button>
+          </div>
+        ) : (
+          // Dialer UI
+          <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
+            <div className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select someone to call
+                </label>
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="">— Choose a user —</option>
+                  {users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                onClick={startCall}
+                disabled={!selectedUserId}
+                className={`w-full py-3 px-4 rounded-lg font-semibold text-white flex items-center justify-center transition ${
+                  selectedUserId
+                    ? 'bg-indigo-600 hover:bg-indigo-700 shadow'
+                    : 'bg-gray-300 cursor-not-allowed'
+                }`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+                Start Audio Call
+              </button>
+
+              <p className="text-center text-xs text-gray-500 mt-4">
+                All calls are anonymous and recorded for community safety.
               </p>
             </div>
           </div>
         )}
 
-        {/* Controls */}
-        <div className="p-8 pb-12">
-          <div className="flex justify-center gap-8 mb-8">
-            <button
-              onClick={() => setIsMuted(!isMuted)}
-              className={`p-4 rounded-full ${
-                isMuted 
-                  ? 'bg-red-500/20 text-red-400 border border-red-500' 
-                  : 'bg-gray-700 text-white'
-              }`}
-            >
-              {isMuted ? <MicOff size={28} /> : <Mic size={28} />}
-            </button>
-          </div>
-
-          <div className="flex justify-center">
-            <button
-              onClick={endCall}
-              className="w-20 h-20 rounded-full bg-red-600 flex items-center justify-center hover:bg-red-700 transition-colors shadow-lg"
-              aria-label="End call"
-            >
-              <PhoneOff size={32} className="text-white" />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // === Incoming Call Overlay ===
-  if (incomingCall) {
-    return (
-      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
-        <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl">
-          <div className="flex flex-col items-center">
-            <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center border-2 border-amber-300 animate-pulse">
-              <Phone className="text-amber-600" size={32} />
-            </div>
-            <h2 className="text-2xl font-bold text-stone-800 mt-4">Incoming Call</h2>
-            <p className="text-stone-600 mt-2">{incomingCall.caller_name}</p>
-            
-            <div className="flex gap-6 mt-8 w-full">
-              <button
-                onClick={endCall}
-                className="flex-1 bg-stone-200 hover:bg-stone-300 text-stone-800 font-medium py-3 rounded-full flex items-center justify-center gap-2 transition-colors"
-              >
-                <X size={20} />
-              </button>
-              
-              <button
-                onClick={acceptCall}
-                className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-full flex items-center justify-center gap-2 transition-colors shadow-lg"
-              >
-                <Phone size={20} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // === Main User List ===
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50 to-stone-100 p-4">
-      {error && (
-        <div className="fixed top-4 right-4 max-w-sm p-4 bg-red-100 text-red-700 rounded-lg shadow-lg z-50">
-          {error}
-        </div>
-      )}
-      
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-stone-800">Connect With Community</h1>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="text-stone-600 hover:text-stone-900"
-          >
-            <X size={24} />
-          </button>
-        </div>
-        
-        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-          <div className="p-4 border-b border-stone-100 bg-stone-50">
-            <p className="text-stone-700">
-              Select someone from your community to start a private audio call. 
-              This is a sacred space for sharing grief — your conversation stays between you.
-            </p>
-          </div>
-          
-          <div className="divide-y divide-stone-100">
-            {users.map((user) => (
-              <div
-                key={user.id}
-                onClick={() => setSelectedUser(user)}
-                className={`p-4 flex items-center gap-4 cursor-pointer hover:bg-amber-50 transition-colors ${
-                  selectedUser?.id === user.id ? 'bg-amber-50 ring-2 ring-amber-200' : ''
-                }`}
-              >
-                <div className="w-12 h-12 rounded-full bg-amber-100 flex-shrink-0 flex items-center justify-center border border-amber-200 overflow-hidden">
-                  {user.avatar_url ? (
-                    <img 
-                      src={user.avatar_url} 
-                      alt={user.full_name} 
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-amber-800 font-medium">
-                      {user.full_name?.charAt(0) || <User size={20} />}
-                    </span>
-                  )}
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-stone-800 truncate">{user.full_name}</h3>
-                  <p className="text-stone-500 text-sm mt-1">Community member</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        
-        {selectedUser && (
-          <div className="mt-6 bg-white rounded-xl border border-stone-200 p-5">
-            <h2 className="font-medium text-stone-800 mb-3">Ready to connect?</h2>
-            <p className="text-stone-600 mb-4">
-              You're about to start an audio call with {selectedUser.full_name}. 
-              This creates a private space where you can share your grief journey.
-            </p>
-            <button
-              onClick={initiateCall}
-              className="w-full bg-amber-500 hover:bg-amber-500text-white font-medium py-3 px-6 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-md hover:shadow-lg"
-            >
-              <Phone size={20} />
-              Start Call
-            </button>
+        {error && (
+          <div className="mt-6 p-4 bg-red-50 text-red-700 rounded-lg text-center border border-red-200">
+            {error}
           </div>
         )}
       </div>

@@ -117,88 +117,103 @@ export default function ConnectPage() {
   };
 
   const fetchActiveRequests = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('quick_connect_requests')
-        .select(`
-          id,
-          user_id,
-          status,
-          expires_at,
-          created_at,
-          room_id,
-          requester_profile:profiles!user_id(full_name, avatar_url)
-        `)
-        .eq('user_id', userId)
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: false })
-        .limit(1);
+  try {
+    // Step 1: Fetch the user's own active request
+    const { data, error } = await supabase
+      .from('quick_connect_requests')
+      .select('id, user_id, status, expires_at, created_at, room_id')
+      .eq('user_id', userId)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const request = data?.[0];
-      if (request) {
-        // Handle matched status with room redirect
-        if (request.status === 'matched' && request.room_id) {
-          isRedirectingRef.current = true;
-          router.push(`/room/${request.room_id}`);
-          return;
-        }
-        
-        // Only set active request if it's available
-        if (request.status === 'available') {
-          // Format with profile
-          const formattedRequest = {
-            ...request,
-            user: request.requester_profile?.[0] || { full_name: 'Anonymous', avatar_url: null }
-          };
-          setActiveRequest(formattedRequest);
-          return;
-        }
-      }
-      
+    const request = data?.[0];
+    if (!request) {
       setActiveRequest(null);
-    } catch (err) {
-      console.error('Error fetching active requests:', err);
-      throw err;
+      return;
     }
-  };
 
+    // Handle matched status with room redirect
+    if (request.status === 'matched' && request.room_id) {
+      isRedirectingRef.current = true;
+      router.push(`/room/${request.room_id}`);
+      return;
+    }
+
+    // Only show if status is 'available'
+    if (request.status !== 'available') {
+      setActiveRequest(null);
+      return;
+    }
+
+    // Step 2: Fetch the requester's profile (which is the current user)
+    // We already have `user` in state, but to keep logic consistent and safe:
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .eq('id', userId)
+      .single();
+
+    if (profileError) {
+      console.warn('Could not load own profile in active request:', profileError);
+    }
+
+    const profile = profileData || { full_name: 'Anonymous', avatar_url: null };
+
+    // Step 3: Format and set active request
+    setActiveRequest({
+      ...request,
+      user: profile,
+    });
+  } catch (err) {
+    console.error('Error fetching active requests:', err);
+    throw err;
+  }
+};
   const fetchAvailableRequests = async (currentUserId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('quick_connect_requests')
-        .select(`
-          id,
-          created_at,
-          user_id,
-          requester_profile:profiles!user_id(
-            full_name,
-            avatar_url
-          )
-        `)
-        .eq('status', 'available')
-        .neq('user_id', currentUserId)
-        .gt('expires_at', new Date().toISOString())
-        .order('created_at', { ascending: true });
+  try {
+    // Step 1: Get available requests
+    const { data: requests, error: reqError } = await supabase
+      .from('quick_connect_requests')
+      .select('id, created_at, user_id')
+      .eq('status', 'available')
+      .neq('user_id', currentUserId)
+      .gt('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: true });
 
-      if (error) throw error;
-      
-      const formattedRequests = (data || []).map(req => ({
-        ...req,
-        // Use explicitly named join to avoid PGREST201 error
-        user: req.requester_profile?.[0] || {
-          full_name: 'Anonymous',
-          avatar_url: null
-        }
-      }));
-      
-      setAvailableRequests(formattedRequests);
-    } catch (err) {
-      console.error('Error fetching available requests:', err);
-      throw err;
+    if (reqError) throw reqError;
+
+    // Step 2: Extract user IDs
+    const userIds = requests.map(r => r.user_id);
+
+    // Step 3: Fetch all profiles at once
+    const { data: profiles, error: profError } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', userIds);
+
+    if (profError) {
+      console.warn('Could not load some profiles:', profError);
     }
-  };
+
+    // Step 4: Map profiles to requests
+    const profileMap = new Map(
+      (profiles || []).map(p => [p.id, p])
+    );
+
+    const formattedRequests = requests.map(req => ({
+      ...req,
+      user: profileMap.get(req.user_id) || { full_name: 'Anonymous', avatar_url: null }
+    }));
+
+    setAvailableRequests(formattedRequests);
+  } catch (err) {
+    console.error('Error fetching available requests:', err);
+    throw err;
+  }
+};
 
   const postRequest = async () => {
     if (!user || activeRequest || isPostingRequest || isRedirectingRef.current) return;

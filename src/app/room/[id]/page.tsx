@@ -122,30 +122,19 @@ export default function RoomPage() {
 
  const verifyRoomAccess = async (userId: string) => {
   try {
-    // Fetch room data — include acceptor_id!
+    // Fetch room data — minimal fields (no risky joins)
     const { data: roomData, error: roomError } = await supabase
       .from('quick_connect_requests')
-      .select(`
-        id,
-        status,
-        room_id,
-        user_id,
-        acceptor_id,
-        created_at,
-        requester_profile:profiles!user_id(id, full_name, avatar_url)
-      `)
+      .select('id, status, room_id, user_id, acceptor_id, created_at')
       .eq('room_id', roomId)
       .single();
 
     if (roomError) throw roomError;
     if (!roomData) throw new Error('Room not found');
-
-    // Room must be in "matched" status
     if (roomData.status !== 'matched') {
       throw new Error('This room is no longer active');
     }
 
-    // Check if current user is either requester or acceptor
     const isRequester = roomData.user_id === userId;
     const isAcceptor = roomData.acceptor_id === userId;
 
@@ -153,39 +142,48 @@ export default function RoomPage() {
       throw new Error('You are not authorized to join this room');
     }
 
-    // Set room state
     setRoom(roomData);
 
-    // Build participants list
-    const participantsList = [];
-
-    // Add requester
-    participantsList.push({
-      user_id: roomData.user_id,
-      full_name: roomData.requester_profile?.[0]?.full_name || 'Anonymous',
-      avatar_url: roomData.requester_profile?.[0]?.avatar_url || null,
-      isSelf: isRequester,
-    });
-
-    // Add acceptor (if exists)
+    // 🚀 Fetch profiles explicitly
+    const profileIds = [roomData.user_id];
     if (roomData.acceptor_id) {
-      const { data: acceptorProfile, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .eq('id', roomData.acceptor_id)
-        .single();
-
-      if (profileError) {
-        console.warn('Could not load acceptor profile:', profileError);
-      }
-
-      participantsList.push({
-        user_id: roomData.acceptor_id,
-        full_name: acceptorProfile?.full_name || 'Anonymous',
-        avatar_url: acceptorProfile?.avatar_url || null,
-        isSelf: isAcceptor,
-      });
+      profileIds.push(roomData.acceptor_id);
     }
+
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', profileIds);
+
+    if (profilesError) {
+      console.warn('Could not load participant profiles:', profilesError);
+    }
+
+    const profileMap = new Map(
+      (profiles || []).map(p => [p.id, p])
+    );
+
+    // Build participants list
+    const participantsList = [
+      // Requester
+      {
+        user_id: roomData.user_id,
+        full_name: profileMap.get(roomData.user_id)?.full_name || 'Anonymous',
+        avatar_url: profileMap.get(roomData.user_id)?.avatar_url || null,
+        isSelf: isRequester,
+      },
+      // Acceptor (if exists)
+      ...(roomData.acceptor_id
+        ? [
+            {
+              user_id: roomData.acceptor_id,
+              full_name: profileMap.get(roomData.acceptor_id)?.full_name || 'Anonymous',
+              avatar_url: profileMap.get(roomData.acceptor_id)?.avatar_url || null,
+              isSelf: isAcceptor,
+            },
+          ]
+        : []),
+    ];
 
     setParticipants(participantsList);
     return roomData;
@@ -491,6 +489,7 @@ export default function RoomPage() {
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
+                muted={false} 
                 className="w-full h-full object-contain"
               />
             ) : (
