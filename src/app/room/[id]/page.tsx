@@ -1,4 +1,4 @@
-// app/room/[id]/page.tsx — FULL UPDATED VERSION
+// app/room/[id]/page.tsx — FULL UPDATED VERSION (with empty alert box removed)
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
@@ -285,7 +285,6 @@ export default function RoomPage() {
     if (callEndedByPeer && isInCall) {
       console.log('Peer ended the call. Disconnecting...');
       if (room) room.disconnect();
-      // Optionally show a toast: "The other participant ended the call"
       setTimeout(() => {
         router.push('/connect');
       }, 1000);
@@ -391,16 +390,7 @@ export default function RoomPage() {
           <p className="text-stone-600 mb-4">
             {remoteMuted ? 'Other participant muted' : 'Listening...'}
           </p>
-          {callEndedByPeer && (
-            <div className="inline-block px-4 py-2 bg-red-50 text-red-700 rounded-lg font-medium">
-              Call ended by the other participant
-            </div>
-          )}
-          {!callEndedByPeer && (
-            <div className="inline-block px-4 py-2 bg-amber-50 text-amber-700 rounded-lg font-medium">
-              {isInCall ? 'Audio call active' : 'Establishing connection'}
-            </div>
-          )}
+          {/* Status badge intentionally omitted */}
         </div>
 
         <div className="bg-white rounded-xl border border-stone-200 p-6 mb-6">
@@ -458,20 +448,6 @@ export default function RoomPage() {
               {isAudioEnabled ? <Mic size={28} /> : <MicOff size={28} />}
               <span className="text-sm font-medium">{isAudioEnabled ? 'Mute' : 'Unmute'}</span>
             </button>
-          </div>
-        </div>
-
-        <div className="bg-amber-50 rounded-xl border border-amber-200 p-6">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-              <AlertTriangle className="text-amber-600" size={20} />
-            </div>
-            <div>
-              <h3 className="font-bold text-stone-800 mb-1">Call in session</h3>
-              <p className="text-stone-600 text-sm">
-                If either participant leaves, the call ends for both.
-              </p>
-            </div>
           </div>
         </div>
       </div>
