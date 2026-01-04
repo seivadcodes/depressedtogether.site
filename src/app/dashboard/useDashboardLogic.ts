@@ -49,6 +49,13 @@ export interface Post {
   };
 }
 
+interface ProfileUpdate {
+  full_name?: string;
+  avatar_url?: string;
+  // Add other optional fields your profile supports
+  [key: string]: unknown; // Optional: allows extra fields if needed without breaking type safety
+}
+
 export interface DashboardUIProps {
   profile: UserProfile | null;
   preferences: UserPreferences;
@@ -213,13 +220,12 @@ export function useDashboardLogic(): DashboardUIProps {
     );
   };
 
-  const saveProfileToDB = async (updates: any) => {
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError || !session?.user) {
-      router.push('/auth');
-      return;
-    }
-
+  const saveProfileToDB = async (updates: ProfileUpdate) => {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session?.user) {
+    router.push('/auth');
+    return;
+  }
     const { error } = await supabase
       .from('profiles')
       .upsert({

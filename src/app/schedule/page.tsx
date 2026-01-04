@@ -1,8 +1,7 @@
 ﻿// src/app/schedule/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
+
 import { Users, Clock, Calendar } from 'lucide-react';
 
 // Types
@@ -107,17 +106,12 @@ const minutesUntil = (future: Date) => {
 };
 
 export default function SchedulePage() {
-  const [liveEvents, setLiveEvents] = useState<Event[]>([]);
-  const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
-  const [alwaysOpen, setAlwaysOpen] = useState<Event[]>([]);
-
-  useEffect(() => {
-    setLiveEvents(mockEvents.filter(e => e.isLive && !e.isAlwaysOpen));
-    setAlwaysOpen(mockEvents.filter(e => e.isAlwaysOpen));
-    setUpcomingEvents(
-      mockEvents.filter(e => !e.isLive && !e.isAlwaysOpen && e.startTime && minutesUntil(e.startTime) <= 30)
-    );
-  }, []);
+  // ✅ Compute derived data during render — no useEffect needed
+  const liveEvents = mockEvents.filter(e => e.isLive && !e.isAlwaysOpen);
+  const alwaysOpen = mockEvents.filter(e => e.isAlwaysOpen);
+  const upcomingEvents = mockEvents.filter(
+    e => !e.isLive && !e.isAlwaysOpen && e.startTime && minutesUntil(e.startTime) <= 30
+  );
 
   const renderEventCard = (event: Event) => {
     const isUpcoming = event.startTime && !event.isLive;
@@ -208,7 +202,6 @@ export default function SchedulePage() {
     );
   };
 
-  // Common section header style
   const sectionHeaderStyle: React.CSSProperties = {
     fontSize: '1.25rem',
     fontWeight: '600',

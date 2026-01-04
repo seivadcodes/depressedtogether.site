@@ -2,36 +2,33 @@
 
 import Link from 'next/link';
 import { Home, User, LogOut } from 'lucide-react';
-import { usePathname } from 'next/navigation';
+
 import { useAuth } from '@/hooks/useAuth';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export default function Header() {
-  const pathname = usePathname();
+  
   const { user, loading, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [initials, setInitials] = useState('U');
 
-  useEffect(() => {
-    if (user) {
-      let name = '';
-      if (user.user_metadata?.full_name) {
-        name = user.user_metadata.full_name;
-      } else if (user.email) {
-        name = user.email.split('@')[0];
-      }
-
-      const computedInitials = name
-        .split(' ')
-        .map((n) => n[0]?.toUpperCase() || '')
-        .join('')
-        .substring(0, 2) || 'U';
-
-      setInitials(computedInitials);
-    } else {
-      setInitials('U');
+  // ✅ Compute initials directly during render — no useEffect needed
+  let initials = 'U';
+  if (user) {
+    let name = '';
+    if (user.user_metadata?.full_name) {
+      name = user.user_metadata.full_name;
+    } else if (user.email) {
+      name = user.email.split('@')[0];
     }
-  }, [user]);
+
+    const computedInitials = name
+      .split(' ')
+      .map((n) => n[0]?.toUpperCase() || '')
+      .join('')
+      .substring(0, 2) || 'U';
+
+    initials = computedInitials;
+  }
 
   const handleLogout = async () => {
     await signOut();
@@ -137,7 +134,7 @@ export default function Header() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontWeight: 500,
-                  fontSize: '0.875rem', // text-sm
+                  fontSize: '0.875rem',
                   border: 'none',
                   cursor: 'pointer',
                 }}
@@ -205,7 +202,7 @@ export default function Header() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.25rem',
-                color: '#3f3f46', // stone-700
+                color: '#3f3f46',
                 fontSize: '0.875rem',
                 fontWeight: 500,
                 textDecoration: 'none',

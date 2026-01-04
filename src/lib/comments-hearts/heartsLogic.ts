@@ -132,11 +132,15 @@ export async function toggleLike(
       toast.success('Post liked');
       return { isLiked: true, likesCount: newLikeCount };
     }
-  } catch (error: any) {
-    console.error('Error toggling like:', error);
-    toast.error(error.message || 'Failed to update like');
-    throw error;
+ } catch (error: unknown) {
+  console.error('Error toggling like:', error);
+  if (error instanceof Error) {
+    toast.error(error.message);
+  } else {
+    toast.error('Failed to update like');
   }
+  throw error;
+}
 }
 
 /**
@@ -165,10 +169,10 @@ export async function checkIfLiked(
 
     if (error) throw error;
     return !!data;
-  } catch (error: any) {
-    console.error('Error checking like status:', error);
-    return false;
-  }
+  } catch (error: unknown) {
+  console.error('Error checking like status:', error);
+  return false;
+}
 }
 
 /**
@@ -193,8 +197,8 @@ export async function getLikeCount(
     }
 
     return data.likes_count || 0;
-  } catch (error: any) {
-    console.error('Error getting like count:', error);
-    return 0;
-  }
+ } catch (error: unknown) {
+  console.error('Error getting like count:', error);
+  return 0;
+}
 }

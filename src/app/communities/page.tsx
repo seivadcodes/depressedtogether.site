@@ -221,8 +221,8 @@ export default function CommunitiesPage() {
             Find Your Tribe
           </h1>
           <p style={{ color: '#64748b', maxWidth: '42rem', margin: '0 auto 1rem' }}>
-            Join a circle where your grief is understood — not explained away. Share your story, read others', or simply be present.
-          </p>
+  Join a circle where your grief is understood — not explained away. Share your story, read others&apos; stories, or simply be present.
+</p>
           <div
             style={{
               display: 'inline-block',
@@ -418,8 +418,8 @@ export default function CommunitiesPage() {
           }}
         >
           <p style={{ color: '#64748b', marginBottom: '0.75rem' }}>
-            Can't find a community that matches your grief experience?
-          </p>
+  Can&rsquo;t find a community that matches your grief experience?
+</p>
           <Button
             onClick={handleRequestCommunity}
             style={{

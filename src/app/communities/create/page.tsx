@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Users, ArrowLeft, Image, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
+
 // Grief types that match the database schema and UI color system
 const GRIEF_TYPES = [
   { id: 'parent', label: 'Loss of a Parent', gradient: 'from-amber-200 to-orange-300' },
@@ -98,12 +99,17 @@ export default function CreateCommunityPage() {
     try {
       const communityId = generateSlug(name);
       
-      const { data: existingCommunity, error: checkError } = await supabase
-        .from('communities')
-        .select('id')
-        .eq('id', communityId)
-        .maybeSingle();
+     const { data: existingCommunity, error: checkError } = await supabase
+  .from('communities')
+  .select('id')
+  .eq('id', communityId)
+  .maybeSingle();
 
+if (checkError) {
+  console.error('Error checking for existing community:', checkError);
+  setError('Unable to verify community availability. Please try again.');
+  return; // or throw, depending on your flow
+}
       if (existingCommunity) {
         setError('A community with this name already exists. Please choose a different name.');
         setIsSubmitting(false);
@@ -152,18 +158,22 @@ export default function CreateCommunityPage() {
             });
 
           if (uploadError) throw uploadError;
-        } catch (uploadErr: any) {
-          console.error('Banner upload failed:', uploadErr);
-          setUploadError('Banner upload failed, but your community was created successfully. You can add a banner later in community settings.');
-        }
+        } catch (uploadErr: unknown) {
+  console.error('Banner upload failed:', uploadErr);
+  setUploadError('Banner upload failed, but your community was created successfully. You can add a banner later in community settings.');
+}
       }
 
       router.push(`/communities/${communityId}`);
       
-    } catch (err: any) {
-      console.error('Community creation error:', err);
-      setError(err.message || 'Failed to create community. Please try again.');
-    } finally {
+   } catch (err: unknown) {
+  console.error('Community creation error:', err);
+  if (err instanceof Error) {
+    setError(err.message || 'Failed to create community. Please try again.');
+  } else {
+    setError('Failed to create community. Please try again.');
+  }
+} finally {
       setIsSubmitting(false);
     }
   };
@@ -239,16 +249,17 @@ export default function CreateCommunityPage() {
                       onClick={() => document.getElementById('banner-upload')?.click()}
                     >
                       <div className="relative h-48 w-full bg-stone-100">
-                        <img 
-                          src={previewImage} 
-                          alt="Community banner preview" 
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            setPreviewImage(null);
-                          }}
-                        />
-                      </div>
+  {/* eslint-disable-next-line @next/next/no-img-element */}
+  <img 
+    src={previewImage} 
+    alt="Community banner preview" 
+    className="w-full h-full object-cover"
+    onError={(e) => {
+      e.currentTarget.style.display = 'none';
+      setPreviewImage(null);
+    }}
+  />
+</div>
                     </div>
                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all opacity-0 group-hover:opacity-100 pointer-events-none rounded-lg"></div>
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">

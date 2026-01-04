@@ -33,31 +33,27 @@ export default function HomePage() {
   }, []);
 
   // Manual heartbeat animation via JS (since inline styles can't do keyframes easily)
-  useEffect(() => {
-    let pulseInterval: NodeJS.Timeout;
-    let pingInterval: NodeJS.Timeout;
+ useEffect(() => {
+  const startPulse = () => {
+    if (!heartbeatRef.current) return;
+    heartbeatRef.current.style.opacity = '0.9';
+    setTimeout(() => {
+      if (heartbeatRef.current) {
+        heartbeatRef.current.style.opacity = '1';
+      }
+    }, 500);
+  };
 
-    const startPulse = () => {
-      if (!heartbeatRef.current) return;
-      heartbeatRef.current.style.opacity = '0.9';
-      setTimeout(() => {
-        if (heartbeatRef.current) {
-          heartbeatRef.current.style.opacity = '1';
-        }
-      }, 500);
-    };
+  const pulseInterval = setInterval(startPulse, 4000);
+  const pingInterval = setInterval(() => {
+    // Simulate ping glow by briefly changing box-shadow (optional)
+  }, 2000);
 
-    pulseInterval = setInterval(startPulse, 4000);
-    pingInterval = setInterval(() => {
-      // Simulate ping glow by briefly changing box-shadow (optional)
-    }, 2000);
-
-    return () => {
-      clearInterval(pulseInterval);
-      clearInterval(pingInterval);
-    };
-  }, []);
-
+  return () => {
+    clearInterval(pulseInterval);
+    clearInterval(pingInterval);
+  };
+}, []);
   const handleQuickConnect = async () => {
     if (isConnecting) return;
     setIsConnecting(true);

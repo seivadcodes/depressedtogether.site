@@ -609,8 +609,8 @@ const SettingsModal = ({
               <div>
                 <div style={{ fontWeight: 500, color: '#1c1917' }}>Post anonymously</div>
                 <div style={{ fontSize: '0.875rem', color: '#78716c', marginTop: '0.25rem' }}>
-                  Your name and profile picture won't be shown on your posts
-                </div>
+  Your name and profile picture won&apos;t be shown on your posts
+</div>
               </div>
             </label>
             

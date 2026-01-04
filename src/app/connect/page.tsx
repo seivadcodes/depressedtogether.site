@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
-import { Phone, X, MessageCircle, Clock, Users } from 'lucide-react';
+import { Phone, MessageCircle, Clock, Users } from 'lucide-react';
 import Image from 'next/image';
 
 interface UserProfile {
@@ -578,9 +578,9 @@ export default function ConnectPage() {
         <div style={styles.header}>
           <div>
             <h1 style={styles.title}>Connect Now</h1>
-            <p style={styles.subtitle}>
-              Post a one-on-one or group request when you need to talk — or join someone else's.
-            </p>
+           <p style={styles.subtitle}>
+  Post a one-on-one or group request when you need to talk — or join someone else&#39;s.
+</p>
           </div>
         </div>
 
@@ -647,8 +647,8 @@ export default function ConnectPage() {
               Need to Talk 1:1?
             </h2>
             <p style={{ color: '#78716c', marginBottom: '1.5rem', maxWidth: '32rem', margin: '0 auto' }}>
-              Post a request to connect with someone who's available to listen right now.
-            </p>
+  Post a request to connect with someone who&#39;s available to listen right now.
+</p>
             <button
               onClick={postOneOnOne}
               disabled={isPostingOneOnOne || !!activeGroup || isRedirectingRef.current}
@@ -726,9 +726,9 @@ export default function ConnectPage() {
             <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1c1917', marginBottom: '0.75rem' }}>
               Start a Group Call?
             </h2>
-            <p style={{ color: '#78716c', marginBottom: '1.5rem', maxWidth: '32rem', margin: '0 auto' }}>
-              Invite others to join a supportive group conversation. Anyone can join while it's active.
-            </p>
+           <p style={{ color: '#78716c', marginBottom: '1.5rem', maxWidth: '32rem', margin: '0 auto' }}>
+  Invite others to join a supportive group conversation. Anyone can join while it&#39;s active.
+</p>
             <button
               onClick={postGroup}
               disabled={isPostingGroup || !!activeOneOnOne || isRedirectingRef.current}
@@ -788,9 +788,15 @@ export default function ConnectPage() {
                     <div style={{ display: 'flex', alignItems: 'center', marginLeft: '1rem' }}>
                       <button
                         onClick={(e) => {
-                          e.stopPropagation();
-                          !isRedirectingRef.current && (request.type === 'group' ? acceptGroup(request.id) : acceptOneOnOne(request.id));
-                        }}
+  e.stopPropagation();
+  if (!isRedirectingRef.current) {
+    if (request.type === 'group') {
+      acceptGroup(request.id);
+    } else {
+      acceptOneOnOne(request.id);
+    }
+  }
+}}
                         style={{
                           background: request.type === 'group' ? '#3b82f6' : '#10b981',
                           color: 'white',

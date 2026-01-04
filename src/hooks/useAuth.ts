@@ -12,17 +12,17 @@ async function ensureProfileExists(user: User) {
 
   const supabase = createClient();
 
-  const { data: existing, error: fetchError } = await supabase
+  const { error: fetchError } = await supabase
     .from('profiles')
     .select('id')
     .eq('id', user.id)
     .single();
 
-  // If profile doesn't exist, create it
+  // If profile doesn't exist (PGRST116 = no rows returned), create it
   if (fetchError?.code === 'PGRST116') {
-    // Derive full_name: use user_metadata if available, else fallback
+    const metadata = user.user_metadata;
     const fullName =
-      (user.user_metadata as any)?.full_name ||
+      (typeof metadata?.full_name === 'string' ? metadata.full_name : null) ||
       user.email?.split('@')[0] ||
       'Friend';
 
@@ -35,6 +35,7 @@ async function ensureProfileExists(user: User) {
         created_at: new Date().toISOString(),
       });
 
+    // Ignore duplicate key errors (in case of race condition)
     if (insertError && insertError.code !== '23505') {
       console.error('Failed to create profile:', insertError);
     }
@@ -57,7 +58,6 @@ export function useAuth() {
     return data;
   }, []);
 
-  // 👇 Accept fullName during sign-up
   const signUp = useCallback(
     async (email: string, password: string, fullName?: string) => {
       const supabase = createClient();
@@ -65,7 +65,7 @@ export function useAuth() {
         email,
         password,
         options: {
-          data: { full_name: fullName }, // 👈 stored in auth.users.user_metadata
+          data: { full_name: fullName },
           emailRedirectTo: typeof window !== 'undefined'
             ? `${window.location.origin}/auth/callback`
             : undefined,
@@ -130,44 +130,37 @@ export function useAuth() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!isSubscribed) return;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isSubscribed) return;
 
-        if (event === 'SIGNED_OUT') {
-          setUser(null);
-          if (isSubscribed) {
-            setLoading(false);
-            setSessionChecked(true);
-          }
-          const currentPath = window.location.pathname;
-          if (
-            !currentPath.startsWith('/auth') &&
-            !currentPath.startsWith('/onboarding')
-          ) {
-            router.push('/auth');
-          }
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (session?.user) {
-            ensureProfileExists(session.user);
-            setUser(session.user);
-          }
-          if (isSubscribed) {
-            setLoading(false);
-            setSessionChecked(true);
-          }
-        } else if (event === 'USER_UPDATED') {
-          if (session?.user) {
-            setUser(session.user);
-          }
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setLoading(false);
+        setSessionChecked(true);
+        const currentPath = window.location.pathname;
+        if (
+          !currentPath.startsWith('/auth') &&
+          !currentPath.startsWith('/onboarding')
+        ) {
+          router.push('/auth');
         }
-
-        if (isSubscribed) {
-          setLoading(false);
-          setSessionChecked(true);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        if (session?.user) {
+          ensureProfileExists(session.user);
+          setUser(session.user);
         }
+        setLoading(false);
+        setSessionChecked(true);
+      } else if (event === 'USER_UPDATED') {
+        if (session?.user) {
+          setUser(session.user);
+        }
+        setLoading(false);
+        setSessionChecked(true);
       }
-    );
+    });
 
     clearStaleSession();
 

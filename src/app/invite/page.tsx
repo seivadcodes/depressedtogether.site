@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { Phone, User, X, MessageCircle } from 'lucide-react';
+import Image from 'next/image';
 
 type Profile = {
   id: string;
@@ -54,11 +55,10 @@ export default function InvitePage() {
       // 🔑 Listen on YOUR private channel for talk requests
       const channel = supabase
         .channel(`user:${session.user.id}`)
-        .on('broadcast', { event: 'talk_request' }, (payload: any) => {
-          setIncomingRequest(payload.payload);
-          // Auto-dismiss after 15 seconds
-          setTimeout(() => setIncomingRequest(null), 15000);
-        })
+      .on('broadcast', { event: 'talk_request' }, (payload: { payload: TalkRequest }) => {
+  setIncomingRequest(payload.payload);
+  setTimeout(() => setIncomingRequest(null), 15000);
+})
         .subscribe();
 
       return () => {
@@ -206,13 +206,15 @@ export default function InvitePage() {
                   }`}
                 >
                   <div className="w-12 h-12 rounded-full bg-amber-100 flex-shrink-0 flex items-center justify-center border border-amber-200 overflow-hidden">
-                    {user.avatar_url ? (
-                      <img
-                        src={user.avatar_url}
-                        alt={user.full_name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
+                   {user.avatar_url ? (
+  <Image
+    src={user.avatar_url}
+    alt={user.full_name}
+    width={48}    // adjust as needed; matches parent container (w-12 = 48px)
+    height={48}   // same as width for square avatar
+    className="w-full h-full object-cover"
+  />
+) : (
                       <span className="text-amber-800 font-medium">
                         {user.full_name?.charAt(0).toUpperCase() || <User size={18} />}
                       </span>

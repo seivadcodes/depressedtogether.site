@@ -32,11 +32,15 @@ export async function addComment(postId: string, content: string, userId: string
     
     toast.success('Comment added');
     return data;
-  } catch (error: any) {
-    console.error('Error adding comment:', error);
-    toast.error(error.message || 'Failed to add comment');
-    return null;
+} catch (error: unknown) {
+  console.error('Error adding comment:', error);
+  if (error instanceof Error) {
+    toast.error(error.message);
+  } else {
+    toast.error('Failed to add comment');
   }
+  return null;
+}
 }
 
 export async function deleteComment(commentId: string, userId: string) {
@@ -64,11 +68,15 @@ export async function deleteComment(commentId: string, userId: string) {
     
     toast.success('Comment deleted');
     return true;
-  } catch (error: any) {
-    console.error('Error deleting comment:', error);
-    toast.error(error.message || 'Failed to delete comment');
-    return false;
+  } catch (error: unknown) {
+  console.error('Error deleting comment:', error);
+  if (error instanceof Error) {
+    toast.error(error.message);
+  } else {
+    toast.error('Failed to delete comment');
   }
+  return false;
+}
 }
 
 export async function fetchCommentsForPost(postId: string) {
@@ -90,9 +98,9 @@ export async function fetchCommentsForPost(postId: string) {
 
     if (error) throw error;
     return data || [];
-  } catch (error: any) {
-    console.error('Error fetching comments:', error);
-    toast.error('Failed to load comments');
-    return [];
-  }
+  } catch (error: unknown) {
+  console.error('Error fetching comments:', error);
+  toast.error('Failed to load comments');
+  return [];
+}
 }

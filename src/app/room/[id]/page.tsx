@@ -1,10 +1,12 @@
 // app/room/[id]/page.tsx
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import Image from 'next/image';
 import {
   PhoneOff,
   Mic,
@@ -38,7 +40,7 @@ export default function RoomPage() {
 
   // State
   const [user, setUser] = useState<Profile | null>(null);
-  const [roomRecord, setRoomRecord] = useState<RoomRecord | null>(null);
+  const [, setRoomRecord] = useState<RoomRecord | null>(null);
   const [participants, setParticipants] = useState<{ id: string; name: string; avatar?: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +55,13 @@ export default function RoomPage() {
   // Refs
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const supabaseChannelRef = useRef<any>(null);
+  const supabaseChannelRef = useRef<RealtimeChannel | null>(null);
+  const roomRef = useRef<Room | null>(null); // used to avoid dep cycle with room
+
+  // Keep roomRef in sync
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -63,7 +71,7 @@ export default function RoomPage() {
   }, [authUser, authLoading, router]);
 
   // Cleanup on unmount or leave
-  const cleanupCall = () => {
+  const cleanupCall = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -78,94 +86,10 @@ export default function RoomPage() {
     }
     setIsInCall(false);
     setCallDuration(0);
-  };
-
-  // Initialize room & user
-  useEffect(() => {
-    if (!authUser?.id || !roomId) return;
-
-    const initialize = async () => {
-      try {
-        // Load user profile
-        const { data: profile, error: profileErr } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .eq('id', authUser.id)
-          .single();
-
-        if (profileErr) throw profileErr;
-        setUser(profile);
-
-        // Verify room access
-        const { data: roomData, error: roomErr } = await supabase
-          .from('quick_connect_requests')
-          .select('id, room_id, user_id, acceptor_id, status')
-          .eq('room_id', roomId)
-          .single();
-
-        if (roomErr || !roomData) throw new Error('Room not found');
-        if (roomData.status !== 'matched') throw new Error('Room is not active');
-        if (roomData.user_id !== authUser.id && roomData.acceptor_id !== authUser.id) {
-          throw new Error('Not authorized');
-        }
-
-        setRoomRecord(roomData);
-
-        // Load participant profiles
-        const ids = roomData.acceptor_id
-          ? [roomData.user_id, roomData.acceptor_id]
-          : [roomData.user_id];
-
-        const { data: profiles, error: profilesErr } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .in('id', ids);
-
-        const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
-        const parts = ids.map(id => {
-          const p = profileMap.get(id);
-          return {
-            id,
-            name: p?.full_name || 'Anonymous',
-            avatar: p?.avatar_url || undefined,
-          };
-        });
-
-        setParticipants(parts);
-
-        // Set up Supabase Realtime channel for this room
-        const channelName = `room:${roomId}`;
-        const channel = supabase
-          .channel(channelName)
-          .on('broadcast', { event: 'call_ended' }, (payload) => {
-            console.log('Received call_ended signal from peer');
-            setCallEndedByPeer(true);
-          })
-          .subscribe();
-
-        supabaseChannelRef.current = channel;
-
-        // Join LiveKit room
-        await joinLiveKitRoom(roomId, authUser.id);
-
-      } catch (err: any) {
-        console.error('Init error:', err);
-        setError(err.message || 'Failed to join room');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initialize();
-
-    return () => {
-      cleanupCall();
-      if (room) room.disconnect();
-    };
-  }, [roomId, authUser?.id]);
+  }, [supabase]);
 
   // Join LiveKit
-  const joinLiveKitRoom = async (roomName: string, identity: string) => {
+  const joinLiveKitRoom = useCallback(async (roomName: string, identity: string) => {
     const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
     if (!livekitUrl) {
       setError('LiveKit URL not configured');
@@ -174,6 +98,7 @@ export default function RoomPage() {
 
     const newRoom = new Room();
     setRoom(newRoom);
+    roomRef.current = newRoom;
     setIsInCall(true);
 
     newRoom.on(RoomEvent.TrackSubscribed, (track) => {
@@ -226,16 +151,148 @@ export default function RoomPage() {
       intervalRef.current = setInterval(() => {
         setCallDuration((prev) => prev + 1);
       }, 1000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('LiveKit join error:', err);
-      setError(`Call failed: ${err.message}`);
+      if (err instanceof Error) {
+        setError(`Call failed: ${err.message}`);
+      } else {
+        setError('Call failed: Unknown error');
+      }
       cleanupCall();
     }
-  };
+  }, [cleanupCall]);
+
+  const leaveRoom = useCallback(
+    async (endedByUser: boolean = true) => {
+      if (isLeaving) return;
+      setIsLeaving(true);
+
+      try {
+        if (endedByUser && supabaseChannelRef.current) {
+          await supabaseChannelRef.current.send({
+            type: 'broadcast',
+            event: 'call_ended',
+            payload: { by: authUser?.id },
+          });
+
+          await supabase.from('quick_connect_requests').update({ status: 'completed' }).eq('room_id', roomId);
+        }
+
+        if (roomRef.current) {
+          roomRef.current.disconnect();
+        }
+
+        router.push('/connect');
+      } catch (err) {
+        console.error('Leave room error:', err);
+        setError('Failed to leave room');
+      } finally {
+        setIsLeaving(false);
+      }
+    },
+    [authUser?.id, isLeaving, roomId, router, supabase]
+  );
+
+  // Initialize room & user
+  useEffect(() => {
+    if (!authUser?.id || !roomId) return;
+
+    const initialize = async () => {
+      try {
+        // Load user profile
+        const { data: profile, error: profileErr } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .eq('id', authUser.id)
+          .single();
+
+        if (profileErr) throw profileErr;
+        setUser(profile);
+
+        // Verify room access
+        const { data: roomData, error: roomErr } = await supabase
+          .from('quick_connect_requests')
+          .select('id, room_id, user_id, acceptor_id, status')
+          .eq('room_id', roomId)
+          .single();
+
+        if (roomErr || !roomData) throw new Error('Room not found');
+        if (roomData.status !== 'matched') throw new Error('Room is not active');
+        if (roomData.user_id !== authUser.id && roomData.acceptor_id !== authUser.id) {
+          throw new Error('Not authorized');
+        }
+
+        setRoomRecord(roomData);
+
+        // Load participant profiles
+        const ids = roomData.acceptor_id ? [roomData.user_id, roomData.acceptor_id] : [roomData.user_id];
+
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', ids);
+
+        const profileMap = new Map(profiles?.map((p) => [p.id, p]) || []);
+        const parts = ids.map((id) => {
+          const p = profileMap.get(id);
+          return {
+            id,
+            name: p?.full_name || 'Anonymous',
+            avatar: p?.avatar_url || undefined,
+          };
+        });
+
+        setParticipants(parts);
+
+        // Set up Supabase Realtime channel for this room
+        const channelName = `room:${roomId}`;
+        const channel = supabase
+          .channel(channelName)
+          .on('broadcast', { event: 'call_ended' }, () => {
+            console.log('Received call_ended signal from peer');
+            setCallEndedByPeer(true);
+          })
+          .subscribe();
+
+        supabaseChannelRef.current = channel;
+
+        // Join LiveKit room
+        await joinLiveKitRoom(roomId, authUser.id);
+      } catch (err: unknown) {
+        console.error('Init error:', err);
+        if (err instanceof Error) {
+          setError(err.message || 'Failed to join room');
+        } else {
+          setError('Failed to join room');
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initialize();
+
+    return () => {
+      cleanupCall();
+      if (roomRef.current) roomRef.current.disconnect();
+    };
+  }, [roomId, authUser?.id, supabase, joinLiveKitRoom, cleanupCall]);
+
+  // Handle peer ending the call
+  useEffect(() => {
+    if (callEndedByPeer && isInCall) {
+      console.log('Peer ended the call. Disconnecting...');
+      if (roomRef.current) roomRef.current.disconnect();
+      setTimeout(() => {
+        router.push('/connect');
+      }, 1000);
+    }
+  }, [callEndedByPeer, isInCall, router]);
 
   const toggleAudio = () => {
-    if (!room) return;
-    const localAudioTrack = room.localParticipant.audioTrackPublications.values().next().value?.track;
+    const currentRoom = roomRef.current;
+    if (!currentRoom) return;
+    const localAudioTrack = currentRoom.localParticipant.audioTrackPublications.values().next().value?.track;
     if (localAudioTrack) {
       if (isAudioEnabled) {
         localAudioTrack.mute();
@@ -246,48 +303,6 @@ export default function RoomPage() {
     }
   };
 
-  const leaveRoom = async (endedByUser: boolean = true) => {
-    if (isLeaving) return;
-    setIsLeaving(true);
-
-    try {
-      if (endedByUser) {
-        await supabaseChannelRef.current?.send({
-          type: 'broadcast',
-          event: 'call_ended',
-          payload: { by: authUser?.id },
-        });
-
-        await supabase
-          .from('quick_connect_requests')
-          .update({ status: 'completed' })
-          .eq('room_id', roomId);
-      }
-
-      if (room) {
-        room.disconnect();
-      }
-
-      router.push('/connect');
-    } catch (err) {
-      console.error('Leave room error:', err);
-      setError('Failed to leave room');
-    } finally {
-      setIsLeaving(false);
-    }
-  };
-
-  // Handle peer ending the call
-  useEffect(() => {
-    if (callEndedByPeer && isInCall) {
-      console.log('Peer ended the call. Disconnecting...');
-      if (room) room.disconnect();
-      setTimeout(() => {
-        router.push('/connect');
-      }, 1000);
-    }
-  }, [callEndedByPeer, isInCall, room, router]);
-
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -297,23 +312,27 @@ export default function RoomPage() {
   // === Loading State ===
   if (authLoading || isLoading) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
-      }}>
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
+        }}
+      >
         <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '3rem',
-            height: '3rem',
-            borderRadius: '50%',
-            border: '4px solid transparent',
-            borderTopColor: '#f59e0b',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 1rem',
-          }}></div>
+          <div
+            style={{
+              width: '3rem',
+              height: '3rem',
+              borderRadius: '50%',
+              border: '4px solid transparent',
+              borderTopColor: '#f59e0b',
+              animation: 'spin 1s linear infinite',
+              margin: '0 auto 1rem',
+            }}
+          ></div>
           <p style={{ color: '#78716c' }}>Joining room...</p>
         </div>
         <style>{`
@@ -328,41 +347,51 @@ export default function RoomPage() {
   // === Error State ===
   if (error) {
     return (
-      <div style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
-        padding: '1rem',
-      }}>
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '0.75rem',
-          border: '1px solid #e5e5e5',
-          padding: '2rem',
-          maxWidth: '32rem',
-          width: '100%',
-          textAlign: 'center',
-        }}>
-          <div style={{
-            width: '4rem',
-            height: '4rem',
-            borderRadius: '9999px',
-            backgroundColor: '#fee2e2',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 1rem',
-          }}>
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
+          padding: '1rem',
+        }}
+      >
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            border: '1px solid #e5e5e5',
+            padding: '2rem',
+            maxWidth: '32rem',
+            width: '100%',
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              width: '4rem',
+              height: '4rem',
+              borderRadius: '9999px',
+              backgroundColor: '#fee2e2',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem',
+            }}
+          >
             <AlertTriangle size={32} style={{ color: '#ef4444' }} />
           </div>
-          <h2 style={{
-            fontSize: '1.5rem',
-            fontWeight: '700',
-            color: '#1c1917',
-            marginBottom: '0.75rem',
-          }}>Connection Issue</h2>
+          <h2
+            style={{
+              fontSize: '1.5rem',
+              fontWeight: '700',
+              color: '#1c1917',
+              marginBottom: '0.75rem',
+            }}
+          >
+            Connection Issue
+          </h2>
           <p style={{ color: '#44403c', marginBottom: '1.5rem' }}>{error}</p>
           <button
             onClick={() => router.push('/connect')}
@@ -387,12 +416,14 @@ export default function RoomPage() {
 
   // === Main UI ===
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
-      padding: '1rem',
-      paddingTop: '5rem',
-    }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
+        padding: '1rem',
+        paddingTop: '5rem',
+      }}
+    >
       <div style={{ maxWidth: '48rem', margin: '0 auto' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
@@ -416,17 +447,20 @@ export default function RoomPage() {
                       flexShrink: 0,
                     }}
                   >
-                    {p.avatar ? (
-                      <img
-                        src={p.avatar}
-                        alt={p.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <span style={{ color: '#44403c', fontWeight: '600', fontSize: '1rem' }}>
-                        {p.name.charAt(0)}
-                      </span>
-                    )}
+                   {p.avatar ? (
+  <Image
+    src={p.avatar}
+    alt={p.name}
+    width={48}   // must specify
+    height={48}  // must specify
+    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '9999px' }}
+    unoptimized // optional: skip optimization if you prefer original
+  />
+) : (
+  <span style={{ color: '#44403c', fontWeight: '600', fontSize: '1.125rem' }}>
+    {p.name.charAt(0)}
+  </span>
+)}
                   </div>
                 ))}
               </div>
@@ -437,15 +471,17 @@ export default function RoomPage() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.25rem',
-              backgroundColor: '#fef3c7',
-              color: '#92400e',
-              borderRadius: '9999px',
-              padding: '0.25rem 0.75rem',
-            }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                backgroundColor: '#fef3c7',
+                color: '#92400e',
+                borderRadius: '9999px',
+                padding: '0.25rem 0.75rem',
+              }}
+            >
               <Clock size={16} />
               <span style={{ fontWeight: '600', fontSize: '0.875rem' }}>{formatDuration(callDuration)}</span>
             </div>
@@ -472,14 +508,16 @@ export default function RoomPage() {
               }}
             >
               {isLeaving ? (
-                <div style={{
-                  width: '1rem',
-                  height: '1rem',
-                  borderRadius: '50%',
-                  border: '2px solid transparent',
-                  borderTopColor: 'white',
-                  animation: 'spin 1s linear infinite',
-                }}></div>
+                <div
+                  style={{
+                    width: '1rem',
+                    height: '1rem',
+                    borderRadius: '50%',
+                    border: '2px solid transparent',
+                    borderTopColor: 'white',
+                    animation: 'spin 1s linear infinite',
+                  }}
+                ></div>
               ) : (
                 <PhoneOff size={18} />
               )}
@@ -489,42 +527,46 @@ export default function RoomPage() {
         </div>
 
         {/* Call Status Card */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '0.75rem',
-          border: '1px solid #e5e5e5',
-          padding: '2rem',
-          textAlign: 'center',
-          marginBottom: '1.5rem',
-        }}>
-          <div style={{
-            width: '5rem',
-            height: '5rem',
-            borderRadius: '9999px',
-            backgroundColor: '#fef3c7',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 1rem',
-          }}>
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            border: '1px solid #e5e5e5',
+            padding: '2rem',
+            textAlign: 'center',
+            marginBottom: '1.5rem',
+          }}
+        >
+          <div
+            style={{
+              width: '5rem',
+              height: '5rem',
+              borderRadius: '9999px',
+              backgroundColor: '#fef3c7',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 1rem',
+            }}
+          >
             <UserIcon size={40} style={{ color: '#d97706' }} />
           </div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1c1917', marginBottom: '0.5rem' }}>
             {isInCall ? 'Call in Progress' : 'Connecting...'}
           </h2>
-          <p style={{ color: '#44403c' }}>
-            {remoteMuted ? 'Other participant muted' : 'Listening...'}
-          </p>
+          <p style={{ color: '#44403c' }}>{remoteMuted ? 'Other participant muted' : 'Listening...'}</p>
         </div>
 
         {/* Participants */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '0.75rem',
-          border: '1px solid #e5e5e5',
-          padding: '1.5rem',
-          marginBottom: '1.5rem',
-        }}>
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            border: '1px solid #e5e5e5',
+            padding: '1.5rem',
+            marginBottom: '1.5rem',
+          }}
+        >
           <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1c1917', marginBottom: '1rem' }}>Participants</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {participants.map((p) => (
@@ -554,32 +596,45 @@ export default function RoomPage() {
                   }}
                 >
                   {p.avatar ? (
-                    <img
-                      src={p.avatar}
-                      alt={p.name}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '9999px' }}
-                    />
-                  ) : (
-                    <span style={{ color: '#44403c', fontWeight: '600', fontSize: '1.125rem' }}>
-                      {p.name.charAt(0)}
-                    </span>
-                  )}
+  <Image
+    src={p.avatar}
+    alt={p.name}
+    width={48}      // since your container is 3rem = 48px
+    height={48}
+    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '9999px' }}
+  />
+) : (
+  <span style={{ color: '#44403c', fontWeight: '600', fontSize: '1.125rem' }}>
+    {p.name.charAt(0)}
+  </span>
+)}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontWeight: '600', color: '#1c1917', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <h3
+                    style={{
+                      fontWeight: '600',
+                      color: '#1c1917',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
                     {p.name}
                   </h3>
-                  <p style={{
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                    color: p.id === user?.id
-                      ? '#d97706'
-                      : callEndedByPeer
-                      ? '#64748b'
-                      : remoteMuted
-                      ? '#64748b'
-                      : '#16a34a',
-                  }}>
+                  <p
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      color:
+                        p.id === user?.id
+                          ? '#d97706'
+                          : callEndedByPeer
+                          ? '#64748b'
+                          : remoteMuted
+                          ? '#64748b'
+                          : '#16a34a',
+                    }}
+                  >
                     {p.id === user?.id
                       ? 'You'
                       : callEndedByPeer
@@ -595,13 +650,15 @@ export default function RoomPage() {
         </div>
 
         {/* Audio Control */}
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '0.75rem',
-          border: '1px solid #e5e5e5',
-          padding: '1.5rem',
-          marginBottom: '1.5rem',
-        }}>
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '0.75rem',
+            border: '1px solid #e5e5e5',
+            padding: '1.5rem',
+            marginBottom: '1.5rem',
+          }}
+        >
           <h3 style={{ fontWeight: '700', color: '#1c1917', marginBottom: '1rem' }}>Audio Control</h3>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <button
@@ -617,22 +674,12 @@ export default function RoomPage() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '0.5rem',
-                backgroundColor: !isInCall || callEndedByPeer
-                  ? '#f5f5f4'
-                  : isAudioEnabled
-                  ? '#dbeafe'
-                  : '#f5f5f4',
-                color: !isInCall || callEndedByPeer
-                  ? '#a8a29e'
-                  : isAudioEnabled
-                  ? '#1e40af'
-                  : '#64748b',
+                backgroundColor: !isInCall || callEndedByPeer ? '#f5f5f4' : isAudioEnabled ? '#dbeafe' : '#f5f5f4',
+                color: !isInCall || callEndedByPeer ? '#a8a29e' : isAudioEnabled ? '#1e40af' : '#64748b',
               }}
             >
               {isAudioEnabled ? <Mic size={28} /> : <MicOff size={28} />}
-              <span style={{ fontSize: '0.875rem', fontWeight: '600' }}>
-                {isAudioEnabled ? 'Mute' : 'Unmute'}
-              </span>
+              <span style={{ fontSize: '0.875rem', fontWeight: '600' }}>{isAudioEnabled ? 'Mute' : 'Unmute'}</span>
             </button>
           </div>
         </div>

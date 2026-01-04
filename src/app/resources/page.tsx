@@ -1,7 +1,7 @@
 ﻿// src/app/resources/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, } from 'react';
 import Link from 'next/link';
 import ResourceCard, { ResourceType } from '@/components/ResourceCard';
 import { BookOpen } from 'lucide-react';
@@ -203,15 +203,11 @@ const categories = ["All", "Guides", "Stories", "Videos", "Tools", "Books"];
 export default function ResourcesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [forYou, setForYou] = useState<typeof allResources>([]);
 
-  useEffect(() => {
-    const recentInterest = 'parent';
-    const suggestions = allResources
-      .filter(r => !r.featured && r.tags.includes(recentInterest))
-      .slice(0, 2);
-    setForYou(suggestions);
-  }, []);
+  // ✅ Compute "forYou" directly during render — no state or effect needed
+  const forYou = allResources
+    .filter(r => !r.featured && r.tags.includes('parent'))
+    .slice(0, 2);
 
   const isDefaultView = selectedCategory === 'All' && searchQuery.trim() === '';
   const featured = allResources.filter(r => r.featured);
@@ -225,7 +221,6 @@ export default function ResourcesPage() {
     (r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
      r.excerpt.toLowerCase().includes(searchQuery.toLowerCase()))
   );
-
   // Common styles
   const buttonBase = {
     padding: '0.5rem 1.25rem',

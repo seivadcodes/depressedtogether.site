@@ -4,11 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Reuse the same client everywhere — ensures session persistence
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Optional: Stronger typing (uncomment if you want better autocompletion)
-// import type { SignUpWithPasswordCredentials } from '@supabase/supabase-js';
+// Safe metadata type (no `any`)
+export type UserMetadata = Record<string, unknown>;
 
 export { supabase };
 
@@ -20,14 +19,14 @@ export const auth = {
     email: string,
     password: string,
     options?: {
-      data?: Record<string, any>;
+      data?: UserMetadata;
       emailRedirectTo?: string;
     }
   ) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options, // ← now correctly inside the single config object
+      options,
     });
 
     if (error) throw error;

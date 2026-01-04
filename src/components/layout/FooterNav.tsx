@@ -8,7 +8,7 @@ import {
   Users,
   BookOpen,
   Calendar,
-  Gamepad2,
+  // Gamepad2, // Removed unused import
 } from 'lucide-react';
 
 const navItems = [
@@ -16,7 +16,7 @@ const navItems = [
   { name: 'Communities', href: '/communities', icon: Users },
   { name: 'Resources', href: '/resources', icon: BookOpen },
   { name: 'Schedule', href: '/schedule', icon: Calendar },
-  //{ name: 'Games', href: '/games', icon: Gamepad2 },
+  // { name: 'Games', href: '/games', icon: Gamepad2 },
 ];
 
 export default function FooterNav() {
@@ -77,12 +77,9 @@ export default function FooterNav() {
     color: '#1f2937', // text-foreground (Tailwind gray-900)
   };
 
-  // Determine if we should apply desktop overrides (you'd normally use a hook or media query for this;
-  // since inline styles don't support responsive modifiers directly, we’ll keep mobile-first and note that
-  // in real usage you might want a proper responsive solution—e.g., using a resize observer or CSS-in-JS media queries.
-  // For now, we’ll assume mobile view unless you handle responsiveness elsewhere.
-
-  const isMd = false; // You could replace this with a responsive hook if needed
+  // For simplicity, we keep mobile-first styling.
+  // In a real app, you might use a media query hook for true responsiveness.
+  const isMd = false;
 
   return (
     <footer style={isMd ? { ...footerStyle, ...footerStyleMd } : footerStyle}>

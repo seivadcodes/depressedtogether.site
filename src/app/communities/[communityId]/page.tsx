@@ -4,8 +4,6 @@ import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import Button from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import {
   Users,
   Heart,
@@ -25,8 +23,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import * as Hearts from '@/lib/comments-hearts/heartsLogic';
+import Image from 'next/image';
 
-// --- Types (unchanged) ---
+// --- Types ---
 interface Community {
   id: string;
   name: string;
@@ -96,6 +95,56 @@ interface Profile {
   is_anonymous?: boolean;
 }
 
+interface Profile {
+  id: string;
+  full_name: string;
+  avatar_url: string | null;
+  last_online?: string | null;
+  is_anonymous?: boolean;
+}
+
+interface FlatComment {
+  id: string;
+  parent_comment_id: string | null;
+}
+
+// Supabase response types
+interface CommunityMemberWithProfile {
+  role: 'member' | 'admin' | 'moderator';
+  joined_at: string;
+  user_id: string;
+  user: Profile[] | Profile | null;
+}
+
+interface CommunityPost {
+  id: string;
+  content: string;
+  created_at: string;
+  community_id: string;
+  media_url: string | null;
+  likes_count: number;
+  comments_count: number;
+  user_id: string;
+}
+
+interface CommunityPostComment {
+  id: string;
+  content: string;
+  created_at: string;
+  user_id: string;
+  post_id: string;
+  parent_comment_id: string | null;
+  username: string;
+  avatar_url: string | null;
+  is_anonymous: boolean;
+}
+
+interface CommunityPostCommentWithProfile extends CommunityPostComment {
+  username: string;
+  avatar_url: string | null;
+  is_anonymous: boolean;
+}
+
 // --- Shared Styles (Inline) ---
 const baseColors = {
   primary: '#f59e0b',
@@ -107,8 +156,10 @@ const baseColors = {
   text: { primary: '#1e293b', secondary: '#64748b', muted: '#94a3b8' },
   status: { online: '#16a34a', offline: '#cbd5e1' },
 };
+
 const spacing = { sm: '0.5rem', md: '0.75rem', lg: '1rem', xl: '1.25rem', '2xl': '1.5rem' };
 const borderRadius = { md: '0.5rem', lg: '0.75rem', xl: '1rem', full: '9999px' };
+
 const griefGradients: Record<string, string> = {
   parent: 'linear-gradient(135deg, #fcd34d, #f97316)',
   child: 'linear-gradient(135deg, #d8b4fe, #8b5cf6)',
@@ -121,7 +172,9 @@ const griefGradients: Record<string, string> = {
   suicide: 'linear-gradient(135deg, #ddd6fe, #a78bfa)',
   other: 'linear-gradient(135deg, #e5e7eb, #9ca3af)',
 };
+
 const defaultGradient = griefGradients.parent;
+
 const buttonStyle = (bg: string, color = 'white') => ({
   background: bg,
   color,
@@ -135,6 +188,7 @@ const buttonStyle = (bg: string, color = 'white') => ({
   fontWeight: 600,
   transition: 'background 0.2s',
 });
+
 const outlineButtonStyle = {
   background: 'transparent',
   color: baseColors.text.primary,
@@ -146,6 +200,7 @@ const outlineButtonStyle = {
   alignItems: 'center',
   gap: spacing.sm,
 };
+
 const cardStyle: React.CSSProperties = {
   background: baseColors.surface,
   borderRadius: borderRadius.lg,
@@ -154,6 +209,7 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
   marginBottom: spacing['2xl'],
 };
+
 const pageContainer: React.CSSProperties = {
   minHeight: '100vh',
   background: `linear-gradient(to bottom, ${baseColors.background}, #f5f5f1, #f0f0ee)`,
@@ -162,6 +218,7 @@ const pageContainer: React.CSSProperties = {
   paddingLeft: spacing.lg,
   paddingRight: spacing.lg,
 };
+
 const centerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column' as const,
@@ -170,6 +227,7 @@ const centerStyle: React.CSSProperties = {
   minHeight: '100vh',
   padding: spacing.lg,
 };
+
 const spinnerStyle: React.CSSProperties = {
   height: '3rem',
   width: '3rem',
@@ -187,10 +245,11 @@ export default function CommunityDetailPage() {
   const router = useRouter();
   const supabase = createClient();
   const { user } = useAuth();
+
   const [community, setCommunity] = useState<Community | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [comments, setComments] = useState<Record<string, Comment[]>>({});
+  const [comments, setComments] = useState<Record<string, CommentNode[]>>({});
   const [newCommentContent, setNewCommentContent] = useState<Record<string, string>>({});
   const [isMember, setIsMember] = useState(false);
   const [userRole, setUserRole] = useState<'member' | 'admin' | 'moderator' | null>(null);
@@ -208,15 +267,14 @@ export default function CommunityDetailPage() {
   const [likeLoading, setLikeLoading] = useState<Record<string, boolean>>({});
   const [commentLoading, setCommentLoading] = useState<Record<string, boolean>>({});
   const [addingComment, setAddingComment] = useState<Record<string, boolean>>({});
-  // By default, show all comment sections expanded but only show the latest comment
-  const [expandedPosts, setExpandedPosts] = useState<string[]>([]);
+
+  // Only show the latest comment by default
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [replyingToComment, setReplyingToComment] = useState<Record<string, boolean>>({});
   const [replyContent, setReplyContent] = useState<Record<string, string>>({});
   const [addingReply, setAddingReply] = useState<Record<string, boolean>>({});
-  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
-  // By default, don't show all comments - only the latest one
   const [showAllComments, setShowAllComments] = useState<Record<string, boolean>>({});
 
   const formatRecentActivity = (dateString: string): string => {
@@ -225,26 +283,32 @@ export default function CommunityDetailPage() {
     const diffMs = now.getTime() - created.getTime();
     const seconds = Math.floor(diffMs / 1000);
     if (seconds < 60) return 'Just now';
+    
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) {
       return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
     }
+    
     const hours = Math.floor(minutes / 60);
     if (hours < 24) {
       return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
     }
+    
     const days = Math.floor(hours / 24);
     if (days < 7) {
       return days === 1 ? '1 day ago' : `${days} days ago`;
     }
+    
     const weeks = Math.floor(days / 7);
     if (weeks < 4) {
       return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
     }
+    
     const months = Math.floor(days / 30);
     if (months < 12) {
       return months === 1 ? '1 month ago' : `${months} months ago`;
     }
+    
     const years = Math.floor(days / 365);
     return years === 1 ? '1 year ago' : `${years} years ago`;
   };
@@ -259,6 +323,7 @@ export default function CommunityDetailPage() {
   useEffect(() => {
     const fetchData = async () => {
       if (!communityId) return;
+      
       try {
         setLoading(true);
         setError(null);
@@ -269,40 +334,41 @@ export default function CommunityDetailPage() {
           .select('*')
           .eq('id', communityId)
           .single();
-
+          
         if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
         if (!communityData) throw new Error('Community not found');
-
+        
         let coverPhotoUrl = communityData.cover_photo_url;
         if (!coverPhotoUrl) {
           coverPhotoUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg?t=${Date.now()}`;
         }
-
+        
         // Count members
         const { count, error: countError } = await supabase
           .from('community_members')
           .select('*', { count: 'exact', head: true })
           .eq('community_id', communityId);
-
+          
         if (countError) throw new Error(`Failed to count members: ${countError.message}`);
-
+        
         const communityWithPhoto = {
           ...communityData,
           cover_photo_url: coverPhotoUrl,
           member_count: count || 0,
+          online_count: 0, // This would need to be calculated based on last_online timestamps
         };
-
+        
         setCommunity(communityWithPhoto);
-
+        
         // Check if user is a member
         if (user) {
-          const { data: memberData } = await supabase
+         const { data: memberData } = await supabase
             .from('community_members')
             .select('role')
             .eq('community_id', communityId)
             .eq('user_id', user.id)
             .single();
-
+            
           if (memberData) {
             setIsMember(true);
             setUserRole(memberData.role);
@@ -314,42 +380,47 @@ export default function CommunityDetailPage() {
           setIsMember(false);
           setUserRole(null);
         }
-
-        // Fetch members
-        const { data: membersData, error: membersError } = await supabase
-          .from('community_members')
-          .select(`
-            role,
-            joined_at,
-            user_id,
-            user:profiles!left (
-              full_name,
-              avatar_url,
-              last_online
-            )
-          `)
-          .eq('community_id', communityId)
-          .order('joined_at', { ascending: true });
-
+        
+      
+       // Fetch members
+const { data: membersData, error: membersError } = await supabase
+  .from('community_members')
+  .select(`
+    role,
+    joined_at,
+    user_id,
+    user:profiles!left (
+      id,
+      full_name,
+      avatar_url,
+      last_online,
+      is_anonymous
+    )
+  `)
+  .eq('community_id', communityId)
+  .order('joined_at', { ascending: true });
+          
         if (membersError) throw membersError;
-
-        const formattedMembers = membersData.map((member: any) => {
+        
+        const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
           const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+          const isAnonymous = profile?.is_anonymous || false;
+          
           return {
             user_id: member.user_id,
-            username: profile?.full_name || 'Anonymous',
-            avatar_url: profile?.avatar_url || null,
+            username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+            avatar_url: isAnonymous ? null : profile?.avatar_url || null,
             last_online: profile?.last_online || null,
             is_online: isUserOnline(profile?.last_online || null),
             role: member.role,
             joined_at: member.joined_at,
           };
         });
-
+        
         setMembers(formattedMembers);
-
+        
         // Fetch posts
-        const { data: postData, error: postError } = await supabase
+       const { data: postData, error: postError } = await supabase
           .from('community_posts')
           .select(`
             id,
@@ -363,26 +434,26 @@ export default function CommunityDetailPage() {
           `)
           .eq('community_id', communityId)
           .order('created_at', { ascending: false });
-
+          
         if (postError) throw postError;
-
-        const userIds = [...new Set(postData.map((post: any) => post.user_id))];
-
+        
+        const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
         const { data: profilesData, error: profilesError } = await supabase
           .from('profiles')
           .select('id, full_name, avatar_url, is_anonymous')
           .in('id', userIds);
-
+          
         if (profilesError) console.warn('Error fetching profiles for posts:', profilesError);
-
+        
         const profilesMap = new Map();
         profilesData?.forEach((profile: Profile) => {
           profilesMap.set(profile.id, profile);
         });
-
-        let postsWithLikes = postData.map((post: any) => {
+        
+        let postsWithLikes = postData.map((post: CommunityPost) => {
           const userProfile = profilesMap.get(post.user_id) || {};
           const isAnonymous = userProfile.is_anonymous || false;
+          
           return {
             id: post.id,
             content: post.content,
@@ -397,7 +468,7 @@ export default function CommunityDetailPage() {
             is_liked: false,
           };
         });
-
+        
         if (user) {
           const likeStatusPromises = postsWithLikes.map(async (post) => {
             try {
@@ -408,34 +479,31 @@ export default function CommunityDetailPage() {
               return { postId: post.id, isLiked: false };
             }
           });
-
+          
           const likeStatusResults = await Promise.all(likeStatusPromises);
           postsWithLikes = postsWithLikes.map((post) => {
             const likeStatus = likeStatusResults.find((status) => status.postId === post.id);
             return likeStatus ? { ...post, is_liked: likeStatus.isLiked } : post;
           });
         }
-
+        
         setPosts(postsWithLikes);
         
-        // Initialize expandedPosts with all post IDs to show comment sections by default
+        // Fetch the latest comment for each post
         if (postData.length > 0) {
-          setExpandedPosts(postData.map((post: any) => post.id));
-          
-          // Fetch the latest comment for each post
-          const fetchLatestCommentsPromises = postData.map(async (post: any) => {
+          const fetchLatestCommentsPromises = postData.map(async (post: CommunityPost) => {
             const { data: latestComments, error: commentsError } = await supabase
               .from('community_post_comments_with_profiles')
               .select('*')
               .eq('post_id', post.id)
               .order('created_at', { ascending: false })
               .limit(1);
-
+              
             if (commentsError) {
               console.error(`Error fetching latest comment for post ${post.id}:`, commentsError);
               return { postId: post.id, comments: [] };
             }
-
+            
             if (latestComments && latestComments.length > 0) {
               const formattedComment = {
                 id: latestComments[0].id,
@@ -445,34 +513,37 @@ export default function CommunityDetailPage() {
                 username: latestComments[0].is_anonymous ? 'Anonymous' : latestComments[0].username || 'Anonymous',
                 avatar_url: latestComments[0].is_anonymous ? null : latestComments[0].avatar_url || null,
                 post_id: latestComments[0].post_id,
-                parent_comment_id: (latestComments[0].parent_comment_id ?? null) as string | null,
+                parent_comment_id: (latestComments[0].parent_comment_id ?? null),
                 replies: [],
                 reply_count: 0,
               };
+              
               return { postId: post.id, comments: [formattedComment] };
             }
             
             return { postId: post.id, comments: [] };
           });
-
+          
           const latestCommentsResults = await Promise.all(fetchLatestCommentsPromises);
           
           // Update comments state with latest comments
-          const initialComments: Record<string, Comment[]> = {};
-          latestCommentsResults.forEach(({ postId, comments }) => {
-            initialComments[postId] = comments;
-          });
-          
-          setComments(initialComments);
+         // Update comments state with latest comments
+const initialComments: Record<string, CommentNode[]> = {};
+latestCommentsResults.forEach(({ postId, comments }) => {
+  // `comments` here is already shaped like CommentNode[]
+  initialComments[postId] = comments as CommentNode[];
+});
+setComments(initialComments);
         }
-      } catch (err: any) {
-        console.error('Error fetching community:', err);
-        setError(err.message || 'Failed to load community data');
-      } finally {
-        setLoading(false);
-      }
+      } catch (err) {
+  console.error('Error fetching community:', err);
+  const message = err instanceof Error ? err.message : 'Failed to load community data';
+  setError(message);
+} finally {
+  setLoading(false);
+}
     };
-
+    
     fetchData();
   }, [communityId, user, supabase]);
 
@@ -485,9 +556,9 @@ export default function CommunityDetailPage() {
         const style = document.createElement('style');
         style.id = 'global-spin-styles';
         style.innerHTML = `
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
         `;
         document.head.appendChild(style);
       }
@@ -499,20 +570,20 @@ export default function CommunityDetailPage() {
       router.push(`/auth?redirectTo=/communities/${communityId}`);
       return;
     }
-
+    
     if (isMember) {
       const { error } = await supabase
         .from('community_members')
         .delete()
         .eq('community_id', communityId)
         .eq('user_id', user.id);
-
+        
       if (error) {
         console.error('Error leaving community:', error);
         setError('Failed to leave community');
         return;
       }
-
+      
       setIsMember(false);
       setUserRole(null);
       setCommunity((prev) => (prev ? { ...prev, member_count: prev.member_count - 1 } : null));
@@ -525,13 +596,13 @@ export default function CommunityDetailPage() {
           joined_at: new Date().toISOString(),
           role: 'member',
         });
-
+        
       if (error) {
         console.error('Error joining community:', error);
         setError('Failed to join community');
         return;
       }
-
+      
       setIsMember(true);
       setUserRole('member');
       setCommunity((prev) => (prev ? { ...prev, member_count: prev.member_count + 1 } : null));
@@ -540,9 +611,9 @@ export default function CommunityDetailPage() {
 
   const createPostWithMedia = async (content: string, file: File | null, userId: string) => {
     if (!community) throw new Error('Community not loaded');
-
+    
     try {
-      const { data: postData, error: postError } = await supabase
+     const { data: postData, error: postError } = await supabase
         .from('community_posts')
         .insert({
           community_id: communityId,
@@ -560,9 +631,9 @@ export default function CommunityDetailPage() {
           user_id
         `)
         .single();
-
+        
       if (postError) throw postError;
-
+      
       let mediaUrl = null;
       if (file) {
         const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
@@ -570,13 +641,13 @@ export default function CommunityDetailPage() {
         
         const maxSize = file.type.startsWith('video/') ? 15 : 5;
         if (file.size > maxSize * 1024 * 1024) throw new Error(`File must be less than ${maxSize}MB`);
-
+        
         const fileExt = file.name.split('.').pop();
         const fileName = `${communityId}/posts/${postData.id}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
           .from('communities')
           .upload(fileName, file, { upsert: true, contentType: file.type });
-
+          
         if (uploadError) throw uploadError;
         
         const { data } = supabase.storage.from('communities').getPublicUrl(fileName);
@@ -586,50 +657,67 @@ export default function CommunityDetailPage() {
           await supabase.from('community_posts').update({ media_url: mediaUrl }).eq('id', postData.id);
         }
       }
-
-      const { data: userData } = await supabase
+      
+     const { data: userData } = await supabase
         .from('profiles')
-        .select('full_name, avatar_url')
+        .select('full_name, avatar_url, is_anonymous')
         .eq('id', userId)
         .single();
-
+        
+      const isAnonymous = userData?.is_anonymous || false;
+      
       return {
         id: postData.id,
         content: postData.content,
         media_url: mediaUrl,
         created_at: postData.created_at,
         user_id: postData.user_id,
-        username: userData?.full_name || 'Anonymous',
-        avatar_url: userData?.avatar_url || null,
+        username: isAnonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
+        avatar_url: isAnonymous ? null : userData?.avatar_url || null,
         community_id: postData.community_id,
         likes_count: 0,
         comments_count: 0,
         is_liked: false,
       };
-    } catch (error: any) {
-      console.error('Post creation failed:', error);
-      if (error.message?.includes('media')) {
-        await supabase.from('community_posts').delete().eq('id', error.postId);
-      }
-      throw error;
+   } catch (error) {
+  console.error('Post creation failed:', error);
+  if (error instanceof Error && error.message?.includes('media')) {
+    // Safely access postId only if it exists on the error object
+    const maybeError = error as { message: string; postId?: string };
+    if (maybeError.postId) {
+      await supabase.from('community_posts').delete().eq('id', maybeError.postId);
     }
+  }
+  throw error;
+}
   };
 
   const handleCreatePost = async (e: FormEvent) => {
     e.preventDefault();
     if (!user || !community || (!newPostContent.trim() && !newPostMedia)) return;
+    
     setError(null);
+    setUploadingMedia(!!newPostMedia);
+    
     try {
       const newPost = await createPostWithMedia(newPostContent.trim(), newPostMedia, user.id);
       setPosts((prev) => [newPost, ...prev]);
       setNewPostContent('');
       setNewPostMedia(null);
       toast.success('Post created successfully!');
-    } catch (err: any) {
-      console.error('Error creating post:', err);
-      setError(err.message || 'Failed to create post');
-      toast.error('Failed to create post');
-    }
+    } catch (err) {
+  console.error('Error creating post:', err);
+  
+  // Narrow the type safely
+  const errorMessage = err instanceof Error 
+    ? err.message 
+    : typeof err === 'string' 
+      ? err 
+      : 'Failed to create post';
+
+  setError(errorMessage);
+  toast.error('Failed to create post');
+}
   };
 
   const handleToggleLike = async (postId: string) => {
@@ -637,13 +725,17 @@ export default function CommunityDetailPage() {
       toast.error('Please sign in to like posts');
       return;
     }
-
+    
     setLikeLoading((prev) => ({ ...prev, [postId]: true }));
-
+    
     try {
       const result = await Hearts.toggleLike(postId, user.id, 'community_posts');
       setPosts((prevPosts) =>
-        prevPosts.map((post) => (post.id === postId ? { ...post, is_liked: result.isLiked, likes_count: result.likesCount } : post))
+        prevPosts.map((post) => 
+          post.id === postId 
+            ? { ...post, is_liked: result.isLiked, likes_count: result.likesCount } 
+            : post
+        )
       );
     } catch (error) {
       console.error('Error toggling like:', error);
@@ -655,18 +747,19 @@ export default function CommunityDetailPage() {
 
   const fetchComments = async (postId: string) => {
     if (!postId) return;
+    
     setCommentLoading((prev) => ({ ...prev, [postId]: true }));
-
+    
     try {
       const { data: allComments, error: commentsError } = await supabase
         .from('community_post_comments_with_profiles')
         .select('*')
         .eq('post_id', postId)
         .order('created_at', { ascending: true });
-
+        
       if (commentsError) throw commentsError;
-
-      const formattedComments = allComments.map((comment: any) => ({
+      
+      const formattedComments = allComments.map((comment: CommunityPostCommentWithProfile) => ({
         id: comment.id,
         content: comment.content,
         created_at: comment.created_at,
@@ -674,9 +767,9 @@ export default function CommunityDetailPage() {
         username: comment.is_anonymous ? 'Anonymous' : comment.username || 'Anonymous',
         avatar_url: comment.is_anonymous ? null : comment.avatar_url || null,
         post_id: comment.post_id,
-        parent_comment_id: (comment.parent_comment_id ?? null) as string | null,
+        parent_comment_id: comment.parent_comment_id ?? null,
       }));
-
+      
       const buildCommentTree = (comments: Comment[], parentId: string | null = null): CommentNode[] => {
         return comments
           .filter((comment) => comment.parent_comment_id === parentId)
@@ -690,21 +783,22 @@ export default function CommunityDetailPage() {
             };
           });
       };
-
+      
       const nestedComments = buildCommentTree(formattedComments);
       setComments((prev) => ({ ...prev, [postId]: nestedComments }));
-    } catch (error: any) {
-      console.error('Error fetching comments:', error);
-      toast.error('Failed to load comments');
-    } finally {
-      setCommentLoading((prev) => ({ ...prev, [postId]: false }));
-    }
+   } catch (error) {
+  console.error('Error fetching comments:', error);
+  toast.error('Failed to load comments');
+} finally {
+  setCommentLoading((prev) => ({ ...prev, [postId]: false }));
+}
   };
 
   const addComment = async (postId: string, content: string) => {
     if (!user || !content.trim() || !postId) return;
+    
     setAddingComment((prev) => ({ ...prev, [postId]: true }));
-
+    
     try {
       const { data: insertData, error: insertError } = await supabase
         .from('community_post_comments')
@@ -717,17 +811,17 @@ export default function CommunityDetailPage() {
         })
         .select('id, content, created_at, post_id, user_id')
         .single();
-
+        
       if (insertError) throw insertError;
-
+      
       const { data: commentWithProfile, error: profileError } = await supabase
         .from('community_post_comments_with_profiles')
         .select('*')
         .eq('id', insertData.id)
         .single();
-
+        
       if (profileError) throw profileError;
-
+      
       const newComment: CommentNode = {
         id: commentWithProfile.id,
         content: commentWithProfile.content,
@@ -740,39 +834,40 @@ export default function CommunityDetailPage() {
         replies: [],
         reply_count: 0,
       };
-
-      setComments((prev) => ({ ...prev, [postId]: [newComment, ...(prev[postId] || [])] }));
-
+      
+      setComments((prev) => ({ ...prev, [postId]: [...(prev[postId] || []), newComment] }));
+      
       // Update comment count
       const { data: currentPost, error: postError } = await supabase
         .from('community_posts')
         .select('comments_count')
         .eq('id', postId)
         .single();
-
+        
       if (postError) throw postError;
-
+      
       const newCommentCount = (currentPost.comments_count || 0) + 1;
       await supabase.from('community_posts').update({ comments_count: newCommentCount }).eq('id', postId);
-
+      
       setPosts((prev) =>
         prev.map((post) => (post.id === postId ? { ...post, comments_count: newCommentCount } : post))
       );
-
+      
       setNewCommentContent((prev) => ({ ...prev, [postId]: '' }));
       toast.success('Comment added successfully');
-    } catch (error: any) {
-      console.error('Error adding comment:', error);
-      toast.error('Failed to add comment');
-    } finally {
-      setAddingComment((prev) => ({ ...prev, [postId]: false }));
-    }
+    } catch (error) {
+  console.error('Error adding comment:', error);
+  toast.error('Failed to add comment');
+} finally {
+  setAddingComment((prev) => ({ ...prev, [postId]: false }));
+}
   };
 
   const addReply = async (postId: string, parentCommentId: string, content: string) => {
     if (!user || !content.trim() || !postId || !parentCommentId) return;
+    
     setAddingReply((prev) => ({ ...prev, [parentCommentId]: true }));
-
+    
     try {
       const { data: insertData, error: insertError } = await supabase
         .from('community_post_comments')
@@ -785,18 +880,18 @@ export default function CommunityDetailPage() {
         })
         .select('id, content, created_at, post_id, user_id, parent_comment_id')
         .single();
-
+        
       if (insertError) throw insertError;
-
-      const { data: replyWithProfile, error: profileError } = await supabase
+      
+     const { data: replyWithProfile, error: profileError } = await supabase
         .from('community_post_comments_with_profiles')
         .select('*')
         .eq('id', insertData.id)
         .single();
-
+        
       if (profileError) throw profileError;
-
-      const newReply = {
+      
+      const newReply: CommentNode = {
         id: replyWithProfile.id,
         content: replyWithProfile.content,
         created_at: replyWithProfile.created_at,
@@ -804,12 +899,12 @@ export default function CommunityDetailPage() {
         username: replyWithProfile.is_anonymous ? 'Anonymous' : replyWithProfile.username || 'Anonymous',
         avatar_url: replyWithProfile.is_anonymous ? null : replyWithProfile.avatar_url || null,
         post_id: replyWithProfile.post_id,
-        parent_comment_id: replyWithProfile.parent_comment_id,
+        parent_comment_id: replyWithProfile.parent_comment_id || null,
         replies: [],
         reply_count: 0,
       };
-
-      const updateCommentsState = (comments: Comment[]): Comment[] => {
+      
+      const updateCommentsState = (comments: CommentNode[]): CommentNode[] => {
         return comments.map((comment) => {
           if (comment.id === parentCommentId) {
             return {
@@ -818,107 +913,123 @@ export default function CommunityDetailPage() {
               reply_count: (comment.reply_count || 0) + 1,
             };
           }
+          
           if (comment.replies && comment.replies.length > 0) {
             return {
               ...comment,
               replies: updateCommentsState(comment.replies),
             };
           }
+          
           return comment;
         });
       };
-
-      setComments((prev) => ({ ...prev, [postId]: updateCommentsState(prev[postId] || []) }));
-
+      
+      setComments((prev) => ({
+        ...prev,
+        [postId]: prev[postId] ? updateCommentsState(prev[postId]) : [newReply],
+      }));
+      
       // Update comment count
       const { data: currentPost, error: postError } = await supabase
         .from('community_posts')
         .select('comments_count')
         .eq('id', postId)
         .single();
-
+        
       if (postError) throw postError;
-
+      
       const newCommentCount = (currentPost.comments_count || 0) + 1;
       await supabase.from('community_posts').update({ comments_count: newCommentCount }).eq('id', postId);
-
+      
       setPosts((prev) =>
         prev.map((post) => (post.id === postId ? { ...post, comments_count: newCommentCount } : post))
       );
-
+      
       setReplyContent((prev) => ({ ...prev, [parentCommentId]: '' }));
       setReplyingToComment((prev) => ({ ...prev, [parentCommentId]: false }));
       toast.success('Reply added successfully');
-    } catch (error: any) {
-      console.error('Error adding reply:', error);
-      toast.error('Failed to add reply');
-    } finally {
-      setAddingReply((prev) => ({ ...prev, [parentCommentId]: false }));
-    }
+   } catch (error) {
+  console.error('Error adding reply:', error);
+  toast.error('Failed to add reply');
+} finally {
+  setAddingReply((prev) => ({ ...prev, [parentCommentId]: false }));
+}
   };
 
   const deleteComment = async (commentId: string, postId: string, isReply = false) => {
-    const deletingId = isReply ? commentId : commentId;
-    
     if (isReply) {
       setDeletingReplyId(commentId);
     } else {
       setDeletingCommentId(commentId);
     }
-
+    
     try {
       const { data: allComments, error: allCommentsError } = await supabase
         .from('community_post_comments')
         .select('id, parent_comment_id')
         .eq('post_id', postId);
-
+        
       if (allCommentsError) throw allCommentsError;
-
+      
       const getDescendantIds = (parentId: string): string[] => {
-        const directChildren = allComments.filter((c: any) => c.parent_comment_id === parentId);
-        return [...directChildren.map((c: any) => c.id), ...directChildren.flatMap((c: any) => getDescendantIds(c.id))];
-      };
-
+  const directChildren = (allComments as FlatComment[]).filter(
+    (c) => c.parent_comment_id === parentId
+  );
+  return [
+    ...directChildren.map((c) => c.id),
+    ...directChildren.flatMap((c) => getDescendantIds(c.id)),
+  ];
+};
+      
       const descendantIds = getDescendantIds(commentId);
       const totalCommentsToDelete = 1 + descendantIds.length;
-
+      
       const { error: deleteError } = await supabase
         .from('community_post_comments')
         .delete()
         .in('id', [commentId, ...descendantIds]);
-
+        
       if (deleteError) throw deleteError;
-
+      
       // Update comment count
       const { data: currentPost, error: postError } = await supabase
         .from('community_posts')
         .select('comments_count')
         .eq('id', postId)
         .single();
-
+        
       if (postError) throw postError;
-
+      
       const newCommentCount = Math.max(0, (currentPost.comments_count || 0) - totalCommentsToDelete);
       await supabase.from('community_posts').update({ comments_count: newCommentCount }).eq('id', postId);
-
+      
       // Update local state
-      const removeCommentAndDescendants = (comments: Comment[]): Comment[] => {
+      const removeCommentAndDescendants = (comments: CommentNode[]): CommentNode[] => {
         return comments.filter((comment) => {
           if (comment.id === commentId) return false;
+          
           if (comment.replies && comment.replies.length > 0) {
             comment.replies = removeCommentAndDescendants(comment.replies);
             comment.reply_count = comment.replies.length;
           }
+          
           return true;
         });
       };
-
-      setComments((prev) => ({ ...prev, [postId]: removeCommentAndDescendants(prev[postId] || []) }));
+      
+      setComments((prev) => {
+        const updatedComments = { ...prev };
+        if (updatedComments[postId]) {
+          updatedComments[postId] = removeCommentAndDescendants(updatedComments[postId]);
+        }
+        return updatedComments;
+      });
       
       setPosts((prev) =>
         prev.map((post) => (post.id === postId ? { ...post, comments_count: newCommentCount } : post))
       );
-
+      
       // Close expanded replies if needed
       if (expandedComments[commentId]) {
         setExpandedComments((prev) => {
@@ -927,26 +1038,29 @@ export default function CommunityDetailPage() {
           return newExpanded;
         });
       }
-
+      
       toast.success(isReply ? 'Reply deleted successfully' : 'Comment and all replies deleted successfully');
-    } catch (error: any) {
-      console.error(isReply ? 'Error deleting reply:' : 'Error deleting comment:', error);
-      toast.error(`Failed to delete ${isReply ? 'reply' : 'comment'}`);
-    } finally {
-      if (isReply) {
-        setDeletingReplyId(null);
-      } else {
-        setDeletingCommentId(null);
-      }
-    }
+    } catch (error: unknown) {
+  console.error(isReply ? 'Error deleting reply:' : 'Error deleting comment:', error);
+  if (error instanceof Error) {
+    toast.error(`Failed to delete ${isReply ? 'reply' : 'comment'}: ${error.message}`);
+  } else {
+    toast.error(`Failed to delete ${isReply ? 'reply' : 'comment'}`);
+  }
+} finally {
+  if (isReply) {
+    setDeletingReplyId(null); // ✅ Keep this exactly as is
+  } else {
+    setDeletingCommentId(null); // ✅ Keep this exactly as is
+  }
+}
   };
 
   const toggleComments = (postId: string) => {
-    // Toggle showing all comments for this post
     setShowAllComments((prev) => ({ ...prev, [postId]: !prev[postId] }));
     
     // Ensure we have all comments loaded when expanding
-    if (!showAllComments[postId] && (!comments[postId] || comments[postId].length < 2)) {
+    if (!showAllComments[postId] && (!comments[postId] || comments[postId].length === 0)) {
       fetchComments(postId);
     }
   };
@@ -965,48 +1079,58 @@ export default function CommunityDetailPage() {
     });
   };
 
-  const toggleShowAllComments = (postId: string) => {
-    setShowAllComments((prev) => ({ ...prev, [postId]: !prev[postId] }));
-  };
-
   const updateBanner = async (file: File) => {
     if (!community) return;
+    
     setBannerUploading(true);
+    
     try {
       if (!file.type.startsWith('image/')) throw new Error('Only image files are allowed');
+      
       if (file.size > 5 * 1024 * 1024) throw new Error('Image must be less than 5MB');
-
+      
       const fileExt = file.name.split('.').pop();
       const fileName = `${communityId}/banner.${fileExt || 'jpg'}`;
-
+      
       const { error: uploadError } = await supabase.storage
         .from('communities')
         .upload(fileName, file, { upsert: true });
-
+        
       if (uploadError) throw uploadError;
-
-      const newBannerUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${fileName}?t=${Date.now()}`;
-      setCommunity((prev) => (prev ? { ...prev, cover_photo_url: newBannerUrl } : null));
       
+      const newBannerUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${fileName}?t=${Date.now()}`;
+      
+      setCommunity((prev) => (prev ? { ...prev, cover_photo_url: newBannerUrl } : null));
       toast.success('Banner updated successfully!');
       setBannerModalOpen(false);
       setBannerPreview(null);
       setBannerFile(null);
-    } catch (error: any) {
-      console.error('Banner update failed:', error);
-      setBannerUploadError(error.message || 'Failed to update banner');
-    } finally {
+    } catch (error: unknown) {
+  console.error('Banner update failed:', error);
+  if (error instanceof Error) {
+    setBannerUploadError(error.message || 'Failed to update banner');
+  } else {
+    setBannerUploadError('Failed to update banner');
+  }
+}finally {
       setBannerUploading(false);
     }
   };
 
   const deletePost = async (postId: string) => {
     setDeletingPostId(postId);
+    
     try {
-      const { error } = await supabase.from('community_posts').delete().eq('id', postId).eq('community_id', communityId);
+      const { error } = await supabase
+        .from('community_posts')
+        .delete()
+        .eq('id', postId)
+        .eq('community_id', communityId);
+        
       if (error) throw error;
-
+      
       setPosts((prev) => prev.filter((post) => post.id !== postId));
+      
       setComments((prev) => {
         const newComments = { ...prev };
         delete newComments[postId];
@@ -1014,10 +1138,14 @@ export default function CommunityDetailPage() {
       });
       
       toast.success('Post deleted successfully');
-    } catch (error: any) {
-      console.error('Post deletion failed:', error);
-      toast.error(error.message || 'Failed to delete post');
-    } finally {
+   } catch (error: unknown) {
+  console.error('Post deletion failed:', error);
+  if (error instanceof Error) {
+    toast.error(error.message || 'Failed to delete post');
+  } else {
+    toast.error('Failed to delete post');
+  }
+} finally {
       setDeletingPostId(null);
     }
   };
@@ -1025,6 +1153,7 @@ export default function CommunityDetailPage() {
   const handleBannerFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
     e.target.value = '';
     
     if (!file.type.startsWith('image/')) {
@@ -1044,12 +1173,14 @@ export default function CommunityDetailPage() {
     reader.onloadend = () => {
       setBannerPreview(reader.result as string);
     };
+    
     reader.readAsDataURL(file);
   };
 
   const handlePostMediaSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
     e.target.value = '';
     
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
@@ -1084,7 +1215,7 @@ export default function CommunityDetailPage() {
       </div>
     );
   }
-
+  
   if (error) {
     return (
       <div style={pageContainer}>
@@ -1111,7 +1242,7 @@ export default function CommunityDetailPage() {
       </div>
     );
   }
-
+  
   if (!community) {
     return (
       <div style={pageContainer}>
@@ -1131,7 +1262,7 @@ export default function CommunityDetailPage() {
             Community Not Found
           </h2>
           <p style={{ color: baseColors.text.secondary, marginBottom: '1rem' }}>
-            The community you're looking for doesn't exist.
+            The community you&apos;re looking for doesn&apos;t exist.
           </p>
           <button onClick={() => router.push('/communities')} style={buttonStyle(baseColors.primary)}>
             Browse Communities
@@ -1140,12 +1271,12 @@ export default function CommunityDetailPage() {
       </div>
     );
   }
-
+  
   const gradient = griefGradients[community.grief_type] || defaultGradient;
   const isAdmin = userRole === 'admin';
   const isModerator = userRole === 'moderator' || isAdmin;
   const authUsername = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Anonymous';
-
+  
   const renderComment = (comment: Comment, postId: string, depth = 0) => {
     const isNested = depth > 0;
     return (
@@ -1166,9 +1297,11 @@ export default function CommunityDetailPage() {
           }}
         >
           {comment.avatar_url ? (
-            <img
+            <Image
               src={comment.avatar_url}
               alt={comment.username}
+              width={32}
+              height={32}
               style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
             />
           ) : (
@@ -1316,13 +1449,14 @@ export default function CommunityDetailPage() {
           borderRadius: borderRadius.md,
         }}
       >
-        <img
+        <Image
           src={
             community.cover_photo_url ||
             `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`
           }
           alt={community.name}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          fill
+          style={{ objectFit: 'cover' }}
           onError={(e) => {
             (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(
               community.name
@@ -1355,7 +1489,7 @@ export default function CommunityDetailPage() {
           </button>
         )}
       </div>
-
+      
       <div style={{ maxWidth: '1152px', margin: '0 auto', display: 'grid', gridTemplateColumns: '2fr 1fr', gap: spacing['2xl'] }}>
         {/* Main Feed */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
@@ -1426,7 +1560,7 @@ export default function CommunityDetailPage() {
               </div>
             </div>
           </div>
-
+          
           {/* Create Post */}
           {isMember && (
             <div style={cardStyle}>
@@ -1448,9 +1582,11 @@ export default function CommunityDetailPage() {
                     }}
                   >
                     {user?.user_metadata?.avatar_url ? (
-                      <img
+                      <Image
                         src={user.user_metadata.avatar_url}
                         alt={authUsername}
+                        width={40}
+                        height={40}
                         style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
                       />
                     ) : (
@@ -1461,7 +1597,7 @@ export default function CommunityDetailPage() {
                     <textarea
                       value={newPostContent}
                       onChange={(e) => setNewPostContent(e.target.value)}
-                      placeholder={`What's on your mind, ${authUsername}? Share your thoughts, memories, or questions with the community...`}
+                      placeholder={`What&apos;s on your mind, ${authUsername}? Share your thoughts, memories, or questions with the community...`}
                       style={{
                         width: '100%',
                         padding: `${spacing.sm} ${spacing.md}`,
@@ -1499,9 +1635,11 @@ export default function CommunityDetailPage() {
                           <X size={12} />
                         </button>
                         {newPostMedia.type.startsWith('image/') ? (
-                          <img
+                          <Image
                             src={URL.createObjectURL(newPostMedia)}
                             alt="Post preview"
+                            width={800}
+                            height={400}
                             style={{ maxHeight: '16rem', width: '100%', objectFit: 'contain', borderRadius: borderRadius.md }}
                           />
                         ) : (
@@ -1569,7 +1707,7 @@ export default function CommunityDetailPage() {
               </form>
             </div>
           )}
-
+          
           {/* Posts */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
             {posts.length === 0 ? (
@@ -1617,9 +1755,11 @@ export default function CommunityDetailPage() {
                       }}
                     >
                       {post.avatar_url ? (
-                        <img
+                        <Image
                           src={post.avatar_url}
                           alt={post.username}
+                          width={40}
+                          height={40}
                           style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
                         />
                       ) : (
@@ -1669,9 +1809,11 @@ export default function CommunityDetailPage() {
                               }}
                             />
                           ) : (
-                            <img
+                            <Image
                               src={post.media_url}
                               alt="Post media"
+                              width={800}
+                              height={400}
                               style={{ width: '100%', height: 'auto', maxHeight: '24rem', objectFit: 'contain', borderRadius: borderRadius.md }}
                               onError={(e) => {
                                 (e.target as HTMLImageElement).parentElement!.style.display = 'none';
@@ -1732,7 +1874,7 @@ export default function CommunityDetailPage() {
                           {post.comments_count}
                         </button>
                       </div>
-
+                      
                       {/* Comments Section - Always visible, but shows different content based on state */}
                       <div style={{ marginTop: spacing.lg, paddingTop: spacing.lg, borderTop: `1px solid ${baseColors.border}` }}>
                         {commentLoading[post.id] && showAllComments[post.id] ? (
@@ -1797,7 +1939,7 @@ export default function CommunityDetailPage() {
                           </>
                         )}
                       </div>
-
+                      
                       {/* Comment input box - always visible */}
                       {user && (
                         <div style={{ marginTop: spacing.lg, display: 'flex', gap: spacing.md }}>
@@ -1817,9 +1959,11 @@ export default function CommunityDetailPage() {
                             }}
                           >
                             {user?.user_metadata?.avatar_url ? (
-                              <img
+                              <Image
                                 src={user.user_metadata.avatar_url}
                                 alt={authUsername}
+                                width={32}
+                                height={32}
                                 style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
                               />
                             ) : (
@@ -1878,7 +2022,7 @@ export default function CommunityDetailPage() {
             )}
           </div>
         </div>
-
+        
         {/* Sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
           {/* Members */}
@@ -1930,9 +2074,11 @@ export default function CommunityDetailPage() {
                         }}
                       >
                         {member.avatar_url ? (
-                          <img
+                          <Image
                             src={member.avatar_url}
                             alt={member.username}
+                            width={36}
+                            height={36}
                             style={{ width: '100%', height: '100%', borderRadius: borderRadius.full, objectFit: 'cover' }}
                           />
                         ) : (
@@ -1993,7 +2139,7 @@ export default function CommunityDetailPage() {
               </button>
             )}
           </div>
-
+          
           {/* Guidelines */}
           <div style={cardStyle}>
             <h2
@@ -2028,7 +2174,7 @@ export default function CommunityDetailPage() {
           </div>
         </div>
       </div>
-
+      
       {/* Banner Modal */}
       {bannerModalOpen && (
         <div
@@ -2084,10 +2230,11 @@ export default function CommunityDetailPage() {
               >
                 {bannerPreview ? (
                   <div style={{ position: 'relative', height: '12rem', borderRadius: borderRadius.md, overflow: 'hidden' }}>
-                    <img
+                    <Image
                       src={bannerPreview}
                       alt="Banner preview"
-                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                      fill
+                      style={{ objectFit: 'contain' }}
                     />
                     <div
                       style={{
@@ -2177,7 +2324,7 @@ export default function CommunityDetailPage() {
           </div>
         </div>
       )}
-
+      
       {/* Animation */}
       <style jsx>{`
         @keyframes spin {
