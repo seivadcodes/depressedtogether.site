@@ -4,6 +4,7 @@ import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+
 import {
   Users,
   Heart,
@@ -172,6 +173,8 @@ const griefGradients: Record<string, string> = {
   suicide: 'linear-gradient(135deg, #ddd6fe, #a78bfa)',
   other: 'linear-gradient(135deg, #e5e7eb, #9ca3af)',
 };
+
+
 
 const defaultGradient = griefGradients.parent;
 
@@ -1276,6 +1279,66 @@ setComments(initialComments);
   const isAdmin = userRole === 'admin';
   const isModerator = userRole === 'moderator' || isAdmin;
   const authUsername = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Anonymous';
+
+const renderCommentPreview = (comment: Comment) => {
+  return (
+    <div style={{ display: 'flex', gap: spacing.md, marginBottom: spacing.md }}>
+      <div
+        style={{
+          width: '2rem',
+          height: '2rem',
+          borderRadius: borderRadius.full,
+          background: gradient,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          color: 'white',
+          position: 'relative', // Required for absolute positioning of Image
+        }}
+      >
+        {comment.avatar_url ? (
+          <Image
+            src={comment.avatar_url}
+            alt={comment.username}
+            fill
+            style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
+          />
+        ) : (
+          comment.username[0]?.toUpperCase() || 'U'
+        )}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            background: '#f8fafc',
+            borderRadius: borderRadius.md,
+            padding: spacing.md,
+          }}
+        >
+          <h4 style={{ fontWeight: 600, color: baseColors.text.primary, fontSize: '0.875rem' }}>
+            {comment.username}
+          </h4>
+          <p style={{ color: baseColors.text.muted, fontSize: '0.75rem', marginTop: '0.125rem' }}>
+            {formatRecentActivity(comment.created_at)}
+          </p>
+          <p
+            style={{
+              color: baseColors.text.primary,
+              fontSize: '0.875rem',
+              marginTop: spacing.sm,
+              whiteSpace: 'pre-line',
+            }}
+          >
+            {comment.content}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
   
   const renderComment = (comment: Comment, postId: string, depth = 0) => {
     const isNested = depth > 0;
@@ -1879,15 +1942,9 @@ setComments(initialComments);
                         ) : (
                           <>
                             {/* Show only the latest comment when not expanded */}
-                            {!showAllComments[post.id] && comments[post.id] && comments[post.id].length > 0 && (
-                              <div style={{ marginBottom: spacing.lg }}>
-                                <p style={{ color: baseColors.primary, fontSize: '0.75rem', marginBottom: spacing.sm, display: 'flex', alignItems: 'center' }}>
-                                  <CornerDownLeft size={14} style={{ marginRight: '0.25rem' }} />
-                                  Latest comment
-                                </p>
-                                {renderComment(comments[post.id][0], post.id, 0)}
-                              </div>
-                            )}
+                           { !showAllComments[post.id] && comments[post.id] && comments[post.id].length > 0 && (
+  renderCommentPreview(comments[post.id][0])
+)}
                             
                             {/* Show all comments when expanded */}
                             {showAllComments[post.id] && (
