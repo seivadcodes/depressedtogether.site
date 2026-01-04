@@ -12,12 +12,9 @@ import {
   useTracks,
   useParticipants,
   useChat,
-
   isTrackReference,
-  
 } from '@livekit/components-react';
-import { Track, } from 'livekit-client';
-
+import { Track } from 'livekit-client';
 
 type Event = {
   id: string;
@@ -40,7 +37,6 @@ export default function LiveEventPage() {
   useEffect(() => {
     const initializeRoom = async () => {
       try {
-        // 1. Fetch event details
         const { data: eventData, error: eventError } = await supabase
           .from('events')
           .select('id, title, host_id')
@@ -50,7 +46,6 @@ export default function LiveEventPage() {
         if (eventError) throw new Error('Failed to load event');
         setEvent(eventData);
 
-        // 2. Fetch host name
         const { data: hostData } = await supabase
           .from('profiles')
           .select('full_name')
@@ -58,11 +53,9 @@ export default function LiveEventPage() {
           .single();
         setHostName(hostData?.full_name || 'Host');
 
-        // 3. Get current user session
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) throw new Error('You must be logged in to join');
 
-        // 4. Get user's profile name
         const { data: profile } = await supabase
           .from('profiles')
           .select('full_name')
@@ -71,7 +64,6 @@ export default function LiveEventPage() {
         
         const userName = profile?.full_name || session.user.email || 'Anonymous';
 
-        // 5. Get LiveKit token
         const response = await fetch('/api/livekit/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -106,20 +98,36 @@ export default function LiveEventPage() {
 
   if (isLoading) {
     return (
-      <div className="pt-16 p-6 text-center">
-        <div className="animate-pulse text-2xl">Joining live event...</div>
+      <div style={{ paddingTop: '4rem', padding: '1.5rem', textAlign: 'center' }}>
+        <div style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite', fontSize: '1.5rem' }}>
+          Joining live event...
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="pt-16 p-6 max-w-2xl mx-auto text-center text-red-500">
-        <h1 className="text-2xl font-bold mb-4">Connection Failed</h1>
-        <p className="text-lg">{error}</p>
+      <div style={{ 
+        paddingTop: '4rem', 
+        padding: '1.5rem', 
+        maxWidth: '42rem', 
+        margin: '0 auto', 
+        textAlign: 'center', 
+        color: '#ef4444' 
+      }}>
+        <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '1rem' }}>Connection Failed</h1>
+        <p style={{ fontSize: '1.125rem' }}>{error}</p>
         <button 
           onClick={() => window.location.reload()}
-          className="mt-6 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          style={{ 
+            marginTop: '1.5rem', 
+            padding: '0.5rem 1rem', 
+            backgroundColor: '#3b82f6', 
+            color: 'white', 
+            borderRadius: '0.5rem',
+            cursor: 'pointer'
+          }}
         >
           Retry Connection
         </button>
@@ -129,7 +137,7 @@ export default function LiveEventPage() {
 
   if (!event) {
     return (
-      <div className="pt-16 p-6 text-center">
+      <div style={{ paddingTop: '4rem', padding: '1.5rem', textAlign: 'center' }}>
         Event not found
       </div>
     );
@@ -137,77 +145,86 @@ export default function LiveEventPage() {
 
   if (!token) {
     return (
-      <div className="pt-16 p-6 text-center">
+      <div style={{ paddingTop: '4rem', padding: '1.5rem', textAlign: 'center' }}>
         Preparing connection...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Header */}
-      <div className="pt-16 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex justify-between items-center mb-4">
+    <div style={{ minHeight: '100vh', backgroundColor: '#111827' }}>
+      <div style={{ paddingTop: '4rem', padding: '1.5rem' }}>
+        <div style={{ maxWidth: '80rem', margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
             <div>
-              <h1 className="text-2xl font-bold text-white">Live: {event.title}</h1>
-              <p className="text-gray-400 mt-1">Hosted by: {hostName}</p>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white' }}>Live: {event.title}</h1>
+              <p style={{ color: '#9ca3af', marginTop: '0.25rem' }}>Hosted by: {hostName}</p>
             </div>
-            <div className="flex gap-4">
+            <div style={{ display: 'flex', gap: '1rem' }}>
               <button 
                 onClick={() => setActiveView('chat')}
-                className={`px-4 py-2 rounded-lg transition ${activeView === 'chat' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'}`}
+                style={{
+                  padding: '0.5rem 1rem',
+                  borderRadius: '0.5rem',
+                  transition: 'background-color 0.2s',
+                  backgroundColor: activeView === 'chat' ? '#2563eb' : '#1f2937',
+                  color: activeView === 'chat' ? 'white' : '#d1d5db',
+                  cursor: 'pointer'
+                }}
               >
                 Chat
               </button>
-              {/* Participants button commented out */}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 pb-8">
+      <div style={{ maxWidth: '80rem', margin: '0 auto', padding: '1.5rem', paddingBottom: '2rem' }}>
         <LiveKitRoom
           token={token}
           serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
           audio={true}
           video={true}
           onDisconnected={() => setError('Disconnected from room')}
-          className="flex flex-col h-[calc(100vh-180px)]"
+          style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 180px)' }}
         >
-          <div className="flex flex-1 gap-6 min-h-0 h-full"> {/* Left Column - Video Grid */}
-            <div className="flex-1 flex flex-col min-w-0">
-              {/* Main Host Video */}
-              <div className="max-h-[60vh] bg-gray-800 rounded-xl overflow-hidden mb-4 flex-shrink-0">
+          <div style={{ display: 'flex', flex: 1, gap: '1.5rem', minHeight: 0, height: '100%' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <div style={{ maxHeight: '60vh', backgroundColor: '#1f2937', borderRadius: '0.75rem', overflow: 'hidden', marginBottom: '1rem', flexShrink: 0 }}>
                 <MainSpeaker hostId={event.host_id} />
               </div>
               
-              {/* Other Participants Grid */}
-              <div className="max-h-[30vh] bg-gray-800 rounded-xl p-4 overflow-y-auto flex-shrink-0">
-                <h3 className="text-white font-semibold mb-3">Other Participants</h3>
-                <div className="grid grid-cols-3 gap-4 auto-rows-min">
+              <div style={{ maxHeight: '30vh', backgroundColor: '#1f2937', padding: '1rem', overflowY: 'auto', flexShrink: 0 }}>
+                <h3 style={{ color: 'white', fontWeight: '600', marginBottom: '0.75rem' }}>Other Participants</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '1rem', gridAutoRows: 'min-content' }}>
                   <OtherParticipants hostId={event.host_id} />
                 </div>
               </div>
             </div>
 
-            {/* Right Column - Chat */}
-            <div className="w-96 bg-gray-800 rounded-xl flex flex-col overflow-hidden flex-shrink-0">
+            <div style={{ width: '24rem', backgroundColor: '#1f2937', borderRadius: '0.75rem', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0 }}>
               <CustomChat />
             </div>
           </div>
           
-          {/* Control Bar with Leave Button */}
-          <div className="mt-4 flex justify-between items-center">
-            <ControlBar 
-              controls={{ microphone: true, camera: true, screenShare: true }}
-              variation='minimal'
-              className="!bg-gray-800 !border-t-0 !rounded-lg"
-            />
+          <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'inline-block' }}>
+              <ControlBar 
+                controls={{ microphone: true, camera: true, screenShare: true }}
+                variation='minimal'
+                style={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '0.5rem' }}
+              />
+            </div>
             <button
               onClick={handleLeave}
-              className="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition ml-3"
+              style={{
+                padding: '0.625rem 1.25rem',
+                backgroundColor: '#dc2626',
+                color: 'white',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                marginLeft: '0.75rem'
+              }}
             >
               Leave Room
             </button>
@@ -219,7 +236,6 @@ export default function LiveEventPage() {
   );
 }
 
-// Main Speaker Component
 function MainSpeaker({ hostId }: { hostId: string }) {
   const participants = useParticipants();
   const host = participants.find(p => p.identity === hostId);
@@ -232,40 +248,50 @@ function MainSpeaker({ hostId }: { hostId: string }) {
 
   if (!mainParticipant) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-gray-900">
-        <div className="text-center">
-          <div className="w-32 h-32 mx-auto rounded-full bg-gray-700 flex items-center justify-center mb-4">
-            <svg className="w-16 h-16 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+      <div style={{ height: '100%', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111827' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: '8rem', height: '8rem', margin: '0 auto', borderRadius: '9999px', backgroundColor: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+            <svg style={{ width: '4rem', height: '4rem', color: '#4b5563' }} fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
             </svg>
           </div>
-          <p className="text-gray-400">Waiting for host to join...</p>
+          <p style={{ color: '#9ca3af' }}>Waiting for host to join...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full w-full relative bg-gray-900">
-      {trackRef && isTrackReference(trackRef) && (
-        <ParticipantTile
-          trackRef={trackRef}
-          className="!h-full !w-full"
-        />
-      )}
-      <div className="absolute bottom-4 left-4 bg-black/50 text-white px-3 py-1 rounded-lg">
+    <div style={{ height: '100%', width: '100%', position: 'relative', backgroundColor: '#111827' }}>
+     {trackRef && isTrackReference(trackRef) && (
+  <video
+    ref={(el) => {
+      if (el && trackRef.publication?.track) {
+        el.srcObject = new MediaStream([trackRef.publication.track.mediaStreamTrack]);
+        el.play().catch(console.error);
+      }
+    }}
+    style={{
+      height: '100%',
+      width: '100%',
+      objectFit: 'cover',
+      objectPosition: 'center',
+      display: 'block',
+      backgroundColor: '#000'
+    }}
+  />
+)}
+      <div style={{ position: 'absolute', bottom: '1rem', left: '1rem', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', padding: '0.25rem 0.75rem', borderRadius: '0.5rem' }}>
         {mainParticipant.name || mainParticipant.identity}
         {mainParticipant.identity === hostId && (
-          <span className="ml-2 px-2 py-0.5 text-xs bg-blue-500 rounded">Host</span>
+          <span style={{ marginLeft: '0.5rem', padding: '0.125rem 0.5rem', fontSize: '0.75rem', backgroundColor: '#3b82f6', borderRadius: '0.25rem' }}>Host</span>
         )}
       </div>
     </div>
   );
 }
 
-// Other Participants Component
 function OtherParticipants({ hostId }: { hostId: string }) {
-  
   const allCameraTracks = useTracks([Track.Source.Camera]);
   
   const otherTracks = allCameraTracks.filter(track => 
@@ -277,22 +303,62 @@ function OtherParticipants({ hostId }: { hostId: string }) {
   return (
     <>
       {otherTracks.map((trackRef) => (
-        <div key={trackRef.participant.sid} className="aspect-video bg-gray-900 rounded-lg overflow-hidden relative">
+        <div 
+          key={trackRef.participant.sid} 
+          style={{ 
+            aspectRatio: '16 / 9', 
+            backgroundColor: '#111827', 
+            borderRadius: '0.5rem', 
+            overflow: 'hidden', 
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+        >
           {isTrackReference(trackRef) && (
             <ParticipantTile
               trackRef={trackRef}
-              className="!h-full !w-full"
+              style={{
+                height: '100%',
+                width: '100%',
+                objectFit: 'contain',
+                display: 'block'
+              }}
             />
           )}
-          <div className="absolute bottom-1 left-1 right-1 bg-black/50 text-white text-xs px-2 py-1 rounded truncate">
+          <div style={{ 
+            position: 'absolute', 
+            bottom: '0.25rem', 
+            left: '0.25rem', 
+            right: '0.25rem', 
+            backgroundColor: 'rgba(0,0,0,0.5)', 
+            color: 'white', 
+            fontSize: '0.75rem', 
+            padding: '0.25rem 0.5rem', 
+            borderRadius: '0.25rem',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
             {trackRef.participant.name || trackRef.participant.identity}
           </div>
         </div>
       ))}
       
       {Array.from({ length: placeholderCount }).map((_, i) => (
-        <div key={`placeholder-${i}`} className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
-          <svg className="w-8 h-8 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
+        <div 
+          key={`placeholder-${i}`} 
+          style={{ 
+            aspectRatio: '16 / 9', 
+            backgroundColor: '#111827', 
+            borderRadius: '0.5rem', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center' 
+          }}
+        >
+          <svg style={{ width: '2rem', height: '2rem', color: '#374151' }} fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
           </svg>
         </div>
@@ -301,7 +367,6 @@ function OtherParticipants({ hostId }: { hostId: string }) {
   );
 }
 
-// Custom Chat Component
 function CustomChat() {
   const { chatMessages, send } = useChat();
   const [message, setMessage] = useState('');
@@ -330,19 +395,24 @@ function CustomChat() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Chat Header */}
-      <div className="p-4 border-b border-gray-700 flex-shrink-0">
-        <h3 className="text-white font-semibold">Live Chat</h3>
-        <p className="text-gray-400 text-sm">Send messages to everyone</p>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ padding: '1rem', borderBottom: '1px solid #374151', flexShrink: 0 }}>
+        <h3 style={{ color: 'white', fontWeight: '600' }}>Live Chat</h3>
+        <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>Send messages to everyone</p>
       </div>
 
-      {/* Messages Container */}
-      {/* Messages Container */}
-<div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[400px]">
+      <div style={{ 
+        flex: 1, 
+        overflowY: 'auto', 
+        padding: '1rem', 
+        display: 'flex', 
+        flexDirection: 'column', 
+        gap: '1rem',
+        maxHeight: '400px'
+      }}>
         {chatMessages.length === 0 ? (
-          <div className="text-center text-gray-500 mt-8">
-            <svg className="w-12 h-12 mx-auto mb-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div style={{ textAlign: 'center', color: '#6b7280', marginTop: '2rem' }}>
+            <svg style={{ width: '3rem', height: '3rem', margin: '0 auto 0.75rem', color: '#4b5563' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
             <p>No messages yet. Start the conversation!</p>
@@ -352,17 +422,24 @@ function CustomChat() {
             {chatMessages.map((msg, idx) => (
               <div 
                 key={idx} 
-                className={`p-3 rounded-lg max-w-[85%] ${msg.from?.isLocal ? 'ml-auto bg-blue-600' : 'bg-gray-700'}`}
+                style={{
+                  padding: '0.75rem',
+                  borderRadius: '0.5rem',
+                  maxWidth: '85%',
+                  marginLeft: msg.from?.isLocal ? 'auto' : '0',
+                  backgroundColor: msg.from?.isLocal ? '#2563eb' : '#374151',
+                  alignSelf: msg.from?.isLocal ? 'flex-end' : 'flex-start'
+                }}
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`font-semibold text-sm ${msg.from?.isLocal ? 'text-blue-100' : 'text-gray-300'}`}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                  <span style={{ fontWeight: '600', fontSize: '0.875rem', color: msg.from?.isLocal ? '#dbeafe' : '#d1d5db' }}>
                     {msg.from?.name || 'Anonymous'}
                   </span>
-                  <span className="text-xs opacity-75">
+                  <span style={{ fontSize: '0.75rem', opacity: 0.75 }}>
                     {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <p className="text-white break-words">{msg.message}</p>
+                <p style={{ color: 'white', wordBreak: 'break-word' }}>{msg.message}</p>
               </div>
             ))}
             <div ref={messagesEndRef} />
@@ -370,26 +447,46 @@ function CustomChat() {
         )}
       </div>
 
-      {/* Message Input */}
-      <div className="p-4 border-t border-gray-700 flex-shrink-0">
-        <div className="flex gap-2">
+      <div style={{ padding: '1rem', borderTop: '1px solid #374151', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
           <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyPress}
             placeholder="Type your message..."
-            className="flex-1 bg-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            style={{
+              flex: 1,
+              backgroundColor: '#374151',
+              color: 'white',
+              borderRadius: '0.5rem',
+              padding: '0.75rem 1rem',
+              border: 'none',
+              outline: 'none',
+              resize: 'none',
+              minHeight: '2.5rem',
+              fontSize: '0.875rem'
+            }}
             rows={2}
           />
           <button
             onClick={handleSend}
             disabled={!message.trim()}
-            className="self-end px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            style={{
+              alignSelf: 'flex-end',
+              padding: '0.75rem 1.5rem',
+              backgroundColor: '#2563eb',
+              color: 'white',
+              borderRadius: '0.5rem',
+              border: 'none',
+              cursor: message.trim() ? 'pointer' : 'not-allowed',
+              opacity: message.trim() ? 1 : 0.5,
+              fontSize: '0.875rem'
+            }}
           >
             Send
           </button>
         </div>
-        <p className="text-gray-400 text-xs mt-2">
+        <p style={{ color: '#9ca3af', fontSize: '0.75rem', marginTop: '0.5rem' }}>
           Press Enter to send, Shift+Enter for new line
         </p>
       </div>

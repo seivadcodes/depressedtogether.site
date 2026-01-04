@@ -1,19 +1,36 @@
-﻿'use client';
+﻿// src/components/layout/Header.tsx
+'use client';
 
 import Link from 'next/link';
 import { Home, User, LogOut } from 'lucide-react';
 
 import { useAuth } from '@/hooks/useAuth';
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 
 export default function Header() {
   
   const { user, loading, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // ✅ Compute initials directly during render — no useEffect needed
-  let initials = 'U';
-  if (user) {
+  // Close menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // ✅ Compute initials during render — no state or effect needed
+  const initials = useMemo(() => {
+    if (!user) return 'U';
+
     let name = '';
     if (user.user_metadata?.full_name) {
       name = user.user_metadata.full_name;
@@ -21,60 +38,21 @@ export default function Header() {
       name = user.email.split('@')[0];
     }
 
-    const computedInitials = name
+    return name
       .split(' ')
       .map((n) => n[0]?.toUpperCase() || '')
       .join('')
       .substring(0, 2) || 'U';
-
-    initials = computedInitials;
-  }
+  }, [user]);
 
   const handleLogout = async () => {
     await signOut();
     setIsMenuOpen(false);
   };
 
+  // If still loading, show nothing
   if (loading) {
-    return (
-      <header
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 50,
-          backgroundColor: 'rgba(253, 230, 138, 0.9)', // amber-50/90 approx
-          backdropFilter: 'blur(4px)',
-          borderBottom: '1px solid #e2e2e2', // stone-200
-          boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-        }}
-      >
-        <div
-          style={{
-            maxWidth: '48rem', // ~2xl
-            margin: '0 auto',
-            padding: '0.75rem 1rem', // py-3 px-4
-          }}
-        >
-          <div
-            style={{
-              height: '1.5rem',
-              width: '8rem',
-              backgroundColor: '#e2e2e2',
-              borderRadius: '0.25rem',
-              animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            }}
-          ></div>
-        </div>
-        <style>{`
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-          }
-        `}</style>
-      </header>
-    );
+    return null;
   }
 
   return (
@@ -86,9 +64,9 @@ export default function Header() {
           left: 0,
           right: 0,
           zIndex: 50,
-          backgroundColor: 'rgba(253, 230, 138, 0.9)',
+          backgroundColor: 'rgba(30, 58, 138, 0.95)', // #1e3a8a (blue-800)
           backdropFilter: 'blur(4px)',
-          borderBottom: '1px solid #e2e2e2',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
           boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
         }}
       >
@@ -108,27 +86,27 @@ export default function Header() {
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
-              color: '#1c1917', // stone-800
+              color: 'white',
               textDecoration: 'none',
               transition: 'color 0.2s',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#b45309')} // amber-700
-            onMouseLeave={(e) => (e.currentTarget.style.color = '#1c1917')}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#bfdbfe')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'white')}
             aria-label="Back to Home"
           >
-            <Home size={20} />
+            <Home size={20} color="white" />
             <span style={{ fontWeight: 500 }}>Healing Shoulder</span>
           </Link>
 
           {user ? (
-            <div style={{ position: 'relative' }}>
+            <div ref={menuRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 style={{
                   width: '2rem',
                   height: '2rem',
                   borderRadius: '9999px',
-                  backgroundColor: '#d97706', // amber-500
+                  backgroundColor: '#60a5fa', // blue-400
                   color: 'white',
                   display: 'flex',
                   alignItems: 'center',
@@ -164,7 +142,7 @@ export default function Header() {
                       display: 'block',
                       padding: '0.5rem 1rem',
                       fontSize: '0.875rem',
-                      color: '#3f3f46', // stone-700
+                      color: '#3f3f46',
                       textDecoration: 'none',
                     }}
                     onClick={() => setIsMenuOpen(false)}
@@ -186,7 +164,7 @@ export default function Header() {
                       alignItems: 'center',
                       gap: '0.5rem',
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f4f4f5')} // stone-100
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f4f4f5')}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                   >
                     <LogOut size={16} />
@@ -202,21 +180,22 @@ export default function Header() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.25rem',
-                color: '#3f3f46',
+                color: 'white',
                 fontSize: '0.875rem',
                 fontWeight: 500,
                 textDecoration: 'none',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#b45309')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#3f3f46')}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#bfdbfe')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = 'white')}
             >
-              <User size={18} />
+              <User size={18} color="white" />
               <span>Sign In</span>
             </Link>
           )}
         </div>
       </header>
 
+      {/* Overlay to close menu on outside tap (mobile-friendly) */}
       {isMenuOpen && (
         <div
           style={{

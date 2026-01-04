@@ -8,7 +8,7 @@ import {
   Users,
   BookOpen,
   Calendar,
-  // Gamepad2, // Removed unused import
+ 
 } from 'lucide-react';
 
 const navItems = [
@@ -22,19 +22,20 @@ const navItems = [
 export default function FooterNav() {
   const pathname = usePathname();
 
-  // Base styles
+  // Dark blue background for footer
+  const darkBlue = '#1e3a8a'; // Tailwind blue-800 — feel free to change
+
   const footerStyle: React.CSSProperties = {
     position: 'fixed',
     bottom: 0,
     left: 0,
     right: 0,
     zIndex: 40,
-    borderTop: '1px solid #e5e7eb', // matches Tailwind's border-gray-200
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
+    backgroundColor: darkBlue,
     backdropFilter: 'blur(8px)',
   };
 
-  // Override for medium screens and up (md:static, etc.)
   const footerStyleMd: React.CSSProperties = {
     position: 'static',
     borderTop: 'none',
@@ -46,12 +47,12 @@ export default function FooterNav() {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-around',
-    height: '3.5rem', // 14 * 0.25rem = 3.5rem (since 1rem = 16px, 14px * 4 = 56px = 3.5rem)
-    padding: '0 0.5rem', // px-2
+    height: '3.5rem',
+    padding: '0 0.5rem',
   };
 
   const navContainerStyleMd: React.CSSProperties = {
-    padding: '0 1rem', // md:px-4
+    padding: '0 1rem',
   };
 
   const linkBaseStyle: React.CSSProperties = {
@@ -59,26 +60,13 @@ export default function FooterNav() {
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '0.25rem',
-    fontSize: '0.75rem', // text-xs
-    fontWeight: 500, // font-medium
+    fontSize: '0.75rem',
+    fontWeight: 500,
     transition: 'color 0.2s ease',
+    padding: '0.25rem 0',
+    color: 'white', // label text is white to match dark footer
   };
 
-  const activeLinkStyle: React.CSSProperties = {
-    color: '#3b82f6', // text-primary (Tailwind default blue-500)
-  };
-
-  const inactiveLinkStyle: React.CSSProperties = {
-    color: '#9ca3af', // text-muted-foreground (Tailwind gray-400)
-  };
-
-  const hoverLinkStyle: React.CSSProperties = {
-    color: '#1f2937', // text-foreground (Tailwind gray-900)
-  };
-
-  // For simplicity, we keep mobile-first styling.
-  // In a real app, you might use a media query hook for true responsiveness.
   const isMd = false;
 
   return (
@@ -92,28 +80,43 @@ export default function FooterNav() {
             <Link
               key={item.name}
               href={item.href}
-              style={{
-                ...linkBaseStyle,
-                ...(isActive ? activeLinkStyle : { ...inactiveLinkStyle }),
-              }}
+              style={linkBaseStyle}
               onMouseEnter={(e) => {
                 if (!isActive) {
-                  (e.target as HTMLElement).style.color = hoverLinkStyle.color as string;
+                  const icon = e.currentTarget.querySelector('svg');
+                  if (icon) icon.style.color = '#1f2937'; // dark gray on hover
                 }
               }}
               onMouseLeave={(e) => {
                 if (!isActive) {
-                  (e.target as HTMLElement).style.color = inactiveLinkStyle.color as string;
+                  const icon = e.currentTarget.querySelector('svg');
+                  if (icon) icon.style.color = '#000000'; // back to black
                 }
               }}
               aria-label={item.name}
             >
-              <Icon
-                size={18}
+              <div
                 style={{
-                  fill: isActive ? 'currentColor' : 'transparent',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  backgroundColor: 'white',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                  marginBottom: '0.25rem',
                 }}
-              />
+              >
+                <Icon
+                  size={18}
+                  strokeWidth={3}
+                  style={{
+                    fill: isActive ? 'currentColor' : 'transparent',
+                    color: isActive ? '#3b82f6' : '#000000', // blue when active, black otherwise
+                  }}
+                />
+              </div>
               <span>{item.name}</span>
             </Link>
           );
