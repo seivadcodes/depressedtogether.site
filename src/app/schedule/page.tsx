@@ -1,7 +1,6 @@
-﻿﻿﻿// app/events/page.tsx
-'use client';
+﻿﻿'use client';
 
-import { useEffect, useState, } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Image from 'next/image';
@@ -142,17 +141,21 @@ export default function EventsPage() {
   };
 
   if (loading) {
-    return <div className="p-6">Loading events...</div>;
+    return (
+      <div style={styles.loadingContainer}>
+        Loading events...
+      </div>
+    );
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Upcoming Events</h1>
+    <div style={styles.pageContainer}>
+      <h1 style={styles.heading}>Upcoming Events</h1>
 
       {events.length === 0 ? (
-        <p>No upcoming events.</p>
+        <p style={styles.noEventsText}>No upcoming events.</p>
       ) : (
-        <div className="space-y-6">
+        <div style={styles.eventsContainer}>
           {events.map((event) => {
             const startTime = new Date(event.start_time);
             const formattedDate = startTime.toLocaleDateString();
@@ -165,36 +168,36 @@ export default function EventsPage() {
             const reserved = isReserved(event.id);
 
             return (
-             <div key={event.id} className="border rounded-lg p-5 bg-white shadow-sm">
-  {event.image_url && (
-    <div className="relative w-full h-40 mb-4 rounded-md overflow-hidden">
-      <Image
-        src={event.image_url}
-        alt={event.title}
-        fill
-        className="object-cover"
-        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-      />
-    </div>
-  )}
-                <h2 className="text-xl font-semibold">{event.title}</h2>
-                <p className="text-gray-600 mt-1">{event.description}</p>
-                <p className="text-sm text-gray-500 mt-2">
+              <div key={event.id} style={styles.eventCard}>
+                {event.image_url && (
+                  <div style={styles.imageContainer}>
+                    <Image
+                      src={event.image_url}
+                      alt={event.title}
+                      fill
+                      style={styles.image}
+                      sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                    />
+                  </div>
+                )}
+                <h2 style={styles.eventTitle}>{event.title}</h2>
+                <p style={styles.eventDescription}>{event.description}</p>
+                <p style={styles.eventDetail}>
                   🕒 {formattedDate} at {formattedTime}
                 </p>
                 {event.host_name && (
-                  <p className="text-sm text-gray-500">🎤 Host: {event.host_name}</p>
+                  <p style={styles.eventDetail}>🎤 Host: {event.host_name}</p>
                 )}
-                <p className="text-sm text-gray-500 mt-1">
+                <p style={styles.attendeeCount}>
                   👥 {currentAttendees} / {event.max_attendees ?? '∞'} attending
                 </p>
 
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div style={styles.buttonsContainer}>
                   {/* Reserve / Cancel button */}
                   {reserved ? (
                     <button
                       onClick={() => handleUnreserve(event.id)}
-                      className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+                      style={styles.cancelButton}
                     >
                       Cancel Reservation
                     </button>
@@ -202,22 +205,23 @@ export default function EventsPage() {
                     <button
                       onClick={() => handleReserve(event.id)}
                       disabled={!user || isFull}
-                      className={`px-4 py-2 rounded-md text-sm font-medium ${
-                        !user
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      style={{
+                        ...styles.baseButton,
+                        ...(!user
+                          ? styles.disabledButton
                           : isFull
-                          ? 'bg-yellow-400 text-gray-700 cursor-not-allowed'
-                          : 'bg-amber-500 hover:bg-amber-600 text-white'
-                      }`}
+                            ? styles.fullButton
+                            : styles.reserveButton)
+                      }}
                     >
                       {isFull ? 'Event Full' : user ? 'Reserve Spot' : 'Sign In to Reserve'}
                     </button>
                   )}
 
-                  {/* Join button — always shown for testing */}
+                  {/* Join button */}
                   <button
                     onClick={() => handleJoin(event.id)}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium"
+                    style={styles.joinButton}
                   >
                     Join Event
                   </button>
@@ -230,3 +234,133 @@ export default function EventsPage() {
     </div>
   );
 }
+
+// Inline CSS styles
+const styles = {
+  pageContainer: {
+    padding: '1.5rem',
+    maxWidth: '1024px',
+    margin: '0 auto',
+  },
+  heading: {
+    fontSize: '1.5rem',
+    fontWeight: 'bold' as const,
+    marginBottom: '1.5rem',
+  },
+  loadingContainer: {
+    padding: '1.5rem',
+    textAlign: 'center' as const,
+    fontSize: '1.125rem',
+  },
+  noEventsText: {
+    textAlign: 'center' as const,
+    color: '#4a5568',
+    fontSize: '1.125rem',
+    marginTop: '2rem',
+  },
+  eventsContainer: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '1.5rem',
+  },
+  eventCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '0.5rem',
+    padding: '1.25rem',
+    backgroundColor: 'white',
+    boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+  },
+  imageContainer: {
+    position: 'relative' as const,
+    width: '100%',
+    height: '10rem',
+    marginBottom: '1rem',
+    borderRadius: '0.375rem',
+    overflow: 'hidden',
+  },
+  image: {
+    objectFit: 'cover' as const,
+  },
+  eventTitle: {
+    fontSize: '1.25rem',
+    fontWeight: '600' as const,
+    marginBottom: '0.25rem',
+  },
+  eventDescription: {
+    color: '#4a5568',
+    marginTop: '0.25rem',
+    marginBottom: '0.5rem',
+    lineHeight: '1.5',
+  },
+  eventDetail: {
+    color: '#718096',
+    fontSize: '0.875rem',
+    marginTop: '0.25rem',
+  },
+  attendeeCount: {
+    color: '#718096',
+    fontSize: '0.875rem',
+    marginTop: '0.25rem',
+    fontWeight: '500' as const,
+  },
+  buttonsContainer: {
+    marginTop: '1rem',
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '0.5rem',
+  },
+  baseButton: {
+    padding: '0.5rem 1rem',
+    borderRadius: '0.375rem',
+    fontSize: '0.875rem',
+    fontWeight: '500' as const,
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  reserveButton: {
+    backgroundColor: '#f59e0b',
+    color: 'white',
+  },
+  reserveButtonHover: {
+    backgroundColor: '#d97706',
+  },
+  fullButton: {
+    backgroundColor: '#f6e05e',
+    color: '#4a5568',
+    cursor: 'not-allowed' as const,
+  },
+  disabledButton: {
+    backgroundColor: '#cbd5e0',
+    color: '#a0aec0',
+    cursor: 'not-allowed' as const,
+  },
+  cancelButton: {
+    backgroundColor: '#ef4444',
+    color: 'white',
+    padding: '0.5rem 1rem',
+    borderRadius: '0.375rem',
+    fontSize: '0.875rem',
+    fontWeight: '500' as const,
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  cancelButtonHover: {
+    backgroundColor: '#dc2626',
+  },
+  joinButton: {
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    padding: '0.5rem 1rem',
+    borderRadius: '0.375rem',
+    fontSize: '0.875rem',
+    fontWeight: '500' as const,
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  joinButtonHover: {
+    backgroundColor: '#2563eb',
+  },
+};

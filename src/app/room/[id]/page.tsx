@@ -1,689 +1,750 @@
-// app/room/[id]/page.tsx
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import type { RealtimeChannel } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
-import Image from 'next/image';
+import { createClient } from '@/lib/supabase/client';
 import {
-  PhoneOff,
-  Mic,
-  MicOff,
-  Clock,
-  AlertTriangle,
-  User as UserIcon,
-} from 'lucide-react';
-import { Room, RoomEvent, Track, ConnectionState } from 'livekit-client';
+  LiveKitRoom,
+  ControlBar,
+  useParticipants,
+  useLocalParticipant,
+  RoomAudioRenderer,
+} from '@livekit/components-react';
+import { Participant } from 'livekit-client';
 
-type Profile = {
-  id: string;
-  full_name?: string;
-  avatar_url?: string | null;
-};
+import { PhoneOff, Timer, User, Mic, MicOff } from 'lucide-react';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
-type RoomRecord = {
+type RoomType = 'one-on-one' | 'group';
+type RoomMetadata = {
   id: string;
-  room_id: string;
-  user_id: string;
-  acceptor_id: string | null;
-  status: string;
+  type: RoomType;
+  hostId: string;
+  title: string;
+  callStartedAt: Date | null;
 };
 
 export default function RoomPage() {
   const params = useParams();
   const router = useRouter();
-  const { user: authUser, loading: authLoading } = useAuth();
-  const supabase = createClient();
   const roomId = params.id as string;
-
-  // State
-  const [user, setUser] = useState<Profile | null>(null);
-  const [, setRoomRecord] = useState<RoomRecord | null>(null);
-  const [participants, setParticipants] = useState<{ id: string; name: string; avatar?: string }[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [roomMeta, setRoomMeta] = useState<RoomMetadata | null>(null);
+  const [token, setToken] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const [isLeaving, setIsLeaving] = useState(false);
-  const [isInCall, setIsInCall] = useState(false);
-  const [room, setRoom] = useState<Room | null>(null);
-  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const [callDuration, setCallDuration] = useState(0);
-  const [remoteMuted, setRemoteMuted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
+  const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
   const [callEndedByPeer, setCallEndedByPeer] = useState(false);
 
-  // Refs
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const supabaseChannelRef = useRef<RealtimeChannel | null>(null);
-  const roomRef = useRef<Room | null>(null); // used to avoid dep cycle with room
+  const supabase = createClient();
+ const broadcastChannelRef = useRef<RealtimeChannel | null>(null);
 
-  // Keep roomRef in sync
+  // 🔴 Set up Supabase broadcast listener for call_ended
   useEffect(() => {
-    roomRef.current = room;
-  }, [room]);
+    if (!roomId || !roomMeta) return;
 
-  // Redirect if not authenticated
+    const channel = supabase
+      .channel(`room:${roomId}`)
+      .on('broadcast', { event: 'call_ended' }, (payload) => {
+        console.log('[RoomPage] Received call_ended:', payload);
+        setCallEndedByPeer(true);
+      })
+      .subscribe();
+
+    broadcastChannelRef.current = channel;
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [roomId, roomMeta, supabase]);
+
+  // 🚪 Auto-redirect if peer ended the call
   useEffect(() => {
-    if (!authLoading && !authUser) {
-      router.push('/auth');
+    if (callEndedByPeer) {
+      router.push('/connect');
     }
-  }, [authUser, authLoading, router]);
+  }, [callEndedByPeer, router]);
 
-  // Cleanup on unmount or leave
-  const cleanupCall = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    if (remoteAudioRef.current) {
-      document.body.removeChild(remoteAudioRef.current);
-      remoteAudioRef.current = null;
-    }
-    if (supabaseChannelRef.current) {
-      supabase.removeChannel(supabaseChannelRef.current);
-      supabaseChannelRef.current = null;
-    }
-    setIsInCall(false);
-    setCallDuration(0);
-  }, [supabase]);
-
-  // Join LiveKit
-  const joinLiveKitRoom = useCallback(async (roomName: string, identity: string) => {
-    const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
-    if (!livekitUrl) {
-      setError('LiveKit URL not configured');
-      return;
-    }
-
-    const newRoom = new Room();
-    setRoom(newRoom);
-    roomRef.current = newRoom;
-    setIsInCall(true);
-
-    newRoom.on(RoomEvent.TrackSubscribed, (track) => {
-      if (track.kind === Track.Kind.Audio) {
-        const element = track.attach();
-        element.autoplay = true;
-        element.muted = false;
-        element.volume = 1.0;
-
-        if (remoteAudioRef.current) {
-          document.body.removeChild(remoteAudioRef.current);
-        }
-        remoteAudioRef.current = element;
-        document.body.appendChild(element);
-        setRemoteMuted(false);
-      }
-    });
-
-    newRoom.on(RoomEvent.TrackUnsubscribed, () => {
-      setRemoteMuted(true);
-    });
-
-    newRoom.on(RoomEvent.Disconnected, () => {
-      cleanupCall();
-    });
-
-    newRoom.on(RoomEvent.ConnectionStateChanged, (state: ConnectionState) => {
-      if (state === ConnectionState.Disconnected) {
-        cleanupCall();
-      }
-    });
-
-    try {
-      const tokenRes = await fetch('/api/livekit/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room: roomName, identity }),
-      });
-
-      if (!tokenRes.ok) throw new Error(`Token error: ${tokenRes.status}`);
-      const { token } = await tokenRes.json();
-
-      await newRoom.connect(livekitUrl, token);
-
-      const tracks = await newRoom.localParticipant.createTracks({ audio: true });
-      tracks.forEach((track) => {
-        newRoom.localParticipant.publishTrack(track);
-      });
-
-      intervalRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1);
-      }, 1000);
-    } catch (err: unknown) {
-      console.error('LiveKit join error:', err);
-      if (err instanceof Error) {
-        setError(`Call failed: ${err.message}`);
-      } else {
-        setError('Call failed: Unknown error');
-      }
-      cleanupCall();
-    }
-  }, [cleanupCall]);
-
-  const leaveRoom = useCallback(
-    async (endedByUser: boolean = true) => {
-      if (isLeaving) return;
-      setIsLeaving(true);
-
+  useEffect(() => {
+    const initializeRoom = async () => {
       try {
-        if (endedByUser && supabaseChannelRef.current) {
-          await supabaseChannelRef.current.send({
-            type: 'broadcast',
-            event: 'call_ended',
-            payload: { by: authUser?.id },
-          });
-
-          await supabase.from('quick_connect_requests').update({ status: 'completed' }).eq('room_id', roomId);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          router.push('/auth');
+          return;
         }
+        const userId = session.user.id;
 
-        if (roomRef.current) {
-          roomRef.current.disconnect();
-        }
+        let roomType: RoomType | null = null;
+        let hostId: string | null = null;
+        let callStartedAt: Date | null = null;
 
-        router.push('/connect');
-      } catch (err) {
-        console.error('Leave room error:', err);
-        setError('Failed to leave room');
-      } finally {
-        setIsLeaving(false);
-      }
-    },
-    [authUser?.id, isLeaving, roomId, router, supabase]
-  );
-
-  // Initialize room & user
-  useEffect(() => {
-    if (!authUser?.id || !roomId) return;
-
-    const initialize = async () => {
-      try {
-        // Load user profile
-        const { data: profile, error: profileErr } = await supabase
-          .from('profiles')
-          .select('id, full_name, avatar_url')
-          .eq('id', authUser.id)
-          .single();
-
-        if (profileErr) throw profileErr;
-        setUser(profile);
-
-        // Verify room access
-        const { data: roomData, error: roomErr } = await supabase
+        // --- Check 1:1 ---
+        const { data: oneOnOne } = await supabase
           .from('quick_connect_requests')
-          .select('id, room_id, user_id, acceptor_id, status')
+          .select('user_id, acceptor_id, status, expires_at, call_started_at')
           .eq('room_id', roomId)
           .single();
 
-        if (roomErr || !roomData) throw new Error('Room not found');
-        if (roomData.status !== 'matched') throw new Error('Room is not active');
-        if (roomData.user_id !== authUser.id && roomData.acceptor_id !== authUser.id) {
-          throw new Error('Not authorized');
+        if (oneOnOne && oneOnOne.status === 'matched') {
+          if (new Date(oneOnOne.expires_at) > new Date()) {
+            roomType = 'one-on-one';
+            hostId = oneOnOne.user_id;
+            callStartedAt = oneOnOne.call_started_at ? new Date(oneOnOne.call_started_at) : null;
+          }
         }
 
-        setRoomRecord(roomData);
+        // --- Check group ---
+        if (!roomType) {
+          const { data: group } = await supabase
+            .from('quick_group_requests')
+            .select('user_id, status, expires_at, call_started_at')
+            .eq('room_id', roomId)
+            .single();
 
-        // Load participant profiles
-        const ids = roomData.acceptor_id ? [roomData.user_id, roomData.acceptor_id] : [roomData.user_id];
+          if (group && new Date(group.expires_at) > new Date()) {
+            if (group.status === 'available' || group.status === 'matched') {
+              roomType = 'group';
+              hostId = group.user_id;
+              callStartedAt = group.call_started_at ? new Date(group.call_started_at) : null;
+            }
+          }
+        }
 
-        const { data: profiles } = await supabase
+        if (!roomType || !hostId) {
+          throw new Error('Room not found or expired');
+        }
+
+        // Ensure user is still a participant
+        const { data: participant } = await supabase
+          .from('room_participants')
+          .select('user_id')
+          .eq('room_id', roomId)
+          .eq('user_id', userId)
+          .single();
+
+        if (!participant) {
+          throw new Error('You are no longer in this room');
+        }
+
+        // Get user name
+        const { data: profile } = await supabase
           .from('profiles')
-          .select('id, full_name, avatar_url')
-          .in('id', ids);
+          .select('full_name')
+          .eq('id', userId)
+          .single();
+        const userName = profile?.full_name || session.user.email || 'Anonymous';
 
-        const profileMap = new Map(profiles?.map((p) => [p.id, p]) || []);
-        const parts = ids.map((id) => {
-          const p = profileMap.get(id);
-          return {
-            id,
-            name: p?.full_name || 'Anonymous',
-            avatar: p?.avatar_url || undefined,
-          };
+        // Get token
+        const tokenRes = await fetch('/api/livekit/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room: roomId, identity: userId, name: userName }),
         });
 
-        setParticipants(parts);
-
-        // Set up Supabase Realtime channel for this room
-        const channelName = `room:${roomId}`;
-        const channel = supabase
-          .channel(channelName)
-          .on('broadcast', { event: 'call_ended' }, () => {
-            console.log('Received call_ended signal from peer');
-            setCallEndedByPeer(true);
-          })
-          .subscribe();
-
-        supabaseChannelRef.current = channel;
-
-        // Join LiveKit room
-        await joinLiveKitRoom(roomId, authUser.id);
-      } catch (err: unknown) {
-        console.error('Init error:', err);
-        if (err instanceof Error) {
-          setError(err.message || 'Failed to join room');
-        } else {
-          setError('Failed to join room');
+        if (!tokenRes.ok) {
+          const errData = await tokenRes.json();
+          throw new Error(errData.error || 'Failed to get LiveKit token');
         }
+        const { token } = await tokenRes.json();
+
+        setRoomMeta({ id: roomId, type: roomType, hostId, title: roomType === 'group' ? 'Group Call' : 'Private Call', callStartedAt });
+        setToken(token);
+
+        // Start or initialize timer
+        await maybeStartCallTimer(roomId, roomType, userId, callStartedAt);
+
+      } catch (err) {
+        console.error('[RoomPage] Init error:', err);
+        setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
         setIsLoading(false);
       }
     };
 
-    initialize();
+    initializeRoom();
+  }, [roomId, router, supabase]);
 
-    return () => {
-      cleanupCall();
-      if (roomRef.current) roomRef.current.disconnect();
-    };
-  }, [roomId, authUser?.id, supabase, joinLiveKitRoom, cleanupCall]);
-
-  // Handle peer ending the call
+  // Clean up timer on unmount
   useEffect(() => {
-    if (callEndedByPeer && isInCall) {
-      console.log('Peer ended the call. Disconnecting...');
-      if (roomRef.current) roomRef.current.disconnect();
-      setTimeout(() => {
-        router.push('/connect');
+    return () => {
+      if (timerInterval) clearInterval(timerInterval);
+    };
+  }, [timerInterval]);
+
+  // Helper: attempt to start timer (and set call_started_at if needed)
+  const maybeStartCallTimer = async (
+    roomId: string,
+    roomType: RoomType,
+    userId: string,
+    existingCallStartedAt: Date | null
+  ) => {
+    // If already set, just start counting
+    if (existingCallStartedAt) {
+      const interval = setInterval(() => {
+        const now = new Date();
+        const diff = Math.floor((now.getTime() - existingCallStartedAt.getTime()) / 1000);
+        setElapsedTime(diff);
       }, 1000);
+      setTimerInterval(interval);
+      return;
     }
-  }, [callEndedByPeer, isInCall, router]);
 
-  const toggleAudio = () => {
-    const currentRoom = roomRef.current;
-    if (!currentRoom) return;
-    const localAudioTrack = currentRoom.localParticipant.audioTrackPublications.values().next().value?.track;
-    if (localAudioTrack) {
-      if (isAudioEnabled) {
-        localAudioTrack.mute();
+    // Otherwise: check participant count
+    const { count } = await supabase
+      .from('room_participants')
+      .select('*', { count: 'exact', head: true })
+      .eq('room_id', roomId);
+
+    const participantCount = count || 0;
+    console.log('[Timer] Participant count:', participantCount, 'roomType:', roomType);
+
+    // Start call only if ≥2 participants (applies to both 1:1 and group)
+    if (participantCount >= 2) {
+      const now = new Date();
+      // Update DB
+      if (roomType === 'one-on-one') {
+        await supabase
+          .from('quick_connect_requests')
+          .update({ call_started_at: now.toISOString() })
+          .eq('room_id', roomId);
       } else {
-        localAudioTrack.unmute();
+        await supabase
+          .from('quick_group_requests')
+          .update({ call_started_at: now.toISOString() })
+          .eq('room_id', roomId);
       }
-      setIsAudioEnabled(!isAudioEnabled);
+
+      // Start timer
+      setElapsedTime(0);
+      const interval = setInterval(() => {
+        setElapsedTime((prev) => prev + 1);
+      }, 1000);
+      setTimerInterval(interval);
+
+      // Refresh roomMeta to reflect new callStartedAt
+      setRoomMeta((prev) =>
+        prev
+          ? { ...prev, callStartedAt: now }
+          : null
+      );
+      console.log('[Timer] Started call timer at:', now);
+    } else {
+      console.log('[Timer] Not enough participants to start timer');
     }
   };
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  // ✅ LEAVE CALL: remove from room_participants, broadcast if 1:1, AND redirect
+  const handleLeave = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push('/auth');
+      return;
+    }
+
+    const userId = session.user.id;
+
+    // 1. Remove self from participants
+    await supabase
+      .from('room_participants')
+      .delete()
+      .eq('room_id', roomId)
+      .eq('user_id', userId);
+
+    // 2. Broadcast call_ended AND mark as completed if it's a one-on-one call
+    if (roomMeta?.type === 'one-on-one' && broadcastChannelRef.current) {
+      try {
+        // Broadcast to peer
+        broadcastChannelRef.current.send({
+          type: 'broadcast',
+          event: 'call_ended',
+          payload: { by: userId },
+        });
+
+        // Mark room as completed in DB
+        await supabase
+          .from('quick_connect_requests')
+          .update({ status: 'completed' })
+          .eq('room_id', roomId);
+      } catch (err) {
+        console.warn('Failed to broadcast call_ended or update room status:', err);
+      }
+    }
+
+    // 3. Redirect
+    router.push('/connect');
   };
 
-  // === Loading State ===
-  if (authLoading || isLoading) {
+  const formatTime = (seconds: number): string => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // === UI Rendering ===
+
+  if (isLoading) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
-        }}
-      >
-        <div style={{ textAlign: 'center' }}>
-          <div
-            style={{
-              width: '3rem',
-              height: '3rem',
-              borderRadius: '50%',
-              border: '4px solid transparent',
-              borderTopColor: '#f59e0b',
-              animation: 'spin 1s linear infinite',
-              margin: '0 auto 1rem',
-            }}
-          ></div>
-          <p style={{ color: '#78716c' }}>Joining room...</p>
-        </div>
-        <style>{`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
+      <div style={{ paddingTop: '4rem', padding: '1.5rem', textAlign: 'center' }}>
+        <div style={{ 
+          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+          fontSize: '1.25rem'
+        }}>Joining room...</div>
       </div>
     );
   }
 
-  // === Error State ===
   if (error) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
-          padding: '1rem',
-        }}
-      >
-        <div
+      <div style={{ 
+        paddingTop: '4rem', 
+        padding: '1.5rem', 
+        maxWidth: '32rem', 
+        margin: '0 auto', 
+        textAlign: 'center'
+      }}>
+        <PhoneOff style={{ width: '4rem', height: '4rem', color: '#ef4444', margin: '0 auto 1rem' }} />
+        <h1 style={{ fontSize: '1.875rem', fontWeight: '700', color: '#dc2626', marginBottom: '0.5rem' }}>Unable to Join</h1>
+        <p style={{ color: '#374151', marginBottom: '1.5rem' }}>{error}</p>
+        <button
+          onClick={() => router.push('/connect')}
           style={{
-            backgroundColor: 'white',
-            borderRadius: '0.75rem',
-            border: '1px solid #e5e5e5',
-            padding: '2rem',
-            maxWidth: '32rem',
-            width: '100%',
-            textAlign: 'center',
+            padding: '0.625rem 1.25rem',
+            backgroundColor: '#2563eb',
+            color: 'white',
+            borderRadius: '0.5rem',
+            border: 'none',
+            cursor: 'pointer',
+            transition: 'background-color 0.3s'
           }}
+          onMouseOver={e => e.currentTarget.style.backgroundColor = '#1d4ed8'}
+          onMouseOut={e => e.currentTarget.style.backgroundColor = '#2563eb'}
         >
-          <div
-            style={{
-              width: '4rem',
-              height: '4rem',
-              borderRadius: '9999px',
-              backgroundColor: '#fee2e2',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1rem',
-            }}
-          >
-            <AlertTriangle size={32} style={{ color: '#ef4444' }} />
-          </div>
-          <h2
-            style={{
-              fontSize: '1.5rem',
-              fontWeight: '700',
-              color: '#1c1917',
-              marginBottom: '0.75rem',
-            }}
-          >
-            Connection Issue
-          </h2>
-          <p style={{ color: '#44403c', marginBottom: '1.5rem' }}>{error}</p>
-          <button
-            onClick={() => router.push('/connect')}
-            style={{
-              backgroundColor: '#f59e0b',
-              color: 'white',
-              fontWeight: '700',
-              padding: '0.75rem 1.5rem',
-              borderRadius: '9999px',
-              border: 'none',
-              cursor: 'pointer',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#d97706')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#f59e0b')}
-          >
-            Return to Connections
-          </button>
-        </div>
+          Back to Connections
+        </button>
       </div>
     );
   }
 
-  // === Main UI ===
-  return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: 'linear-gradient(to bottom, #fffbeb, #f4f4f5)',
-        padding: '1rem',
-        paddingTop: '5rem',
-      }}
-    >
-      <div style={{ maxWidth: '48rem', margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
-          <div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1c1917' }}>Audio Call</h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem' }}>
-              <div style={{ display: 'flex', gap: '0.25rem' }}>
-                {participants.map((p) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      width: '2.5rem',
-                      height: '2.5rem',
-                      borderRadius: '9999px',
-                      border: p.id === user?.id ? '2px solid #f59e0b' : '2px solid #d6d3d1',
-                      backgroundColor: '#e5e5e4',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      overflow: 'hidden',
-                      flexShrink: 0,
-                    }}
-                  >
-                   {p.avatar ? (
-  <Image
-    src={p.avatar}
-    alt={p.name}
-    width={48}   // must specify
-    height={48}  // must specify
-    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '9999px' }}
-    unoptimized // optional: skip optimization if you prefer original
-  />
-) : (
-  <span style={{ color: '#44403c', fontWeight: '600', fontSize: '1.125rem' }}>
-    {p.name.charAt(0)}
-  </span>
-)}
-                  </div>
-                ))}
-              </div>
-              <span style={{ color: '#78716c', fontSize: '0.875rem' }}>
-                {participants.length} participant{participants.length !== 1 ? 's' : ''}
-              </span>
-            </div>
-          </div>
+  if (!roomMeta || !token) {
+    return (
+      <div style={{ paddingTop: '4rem', padding: '1.5rem', textAlign: 'center' }}>
+        Invalid room
+      </div>
+    );
+  }
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                backgroundColor: '#fef3c7',
-                color: '#92400e',
-                borderRadius: '9999px',
-                padding: '0.25rem 0.75rem',
-              }}
-            >
-              <Clock size={16} />
-              <span style={{ fontWeight: '600', fontSize: '0.875rem' }}>{formatDuration(callDuration)}</span>
-            </div>
-            <button
-              onClick={() => leaveRoom(true)}
-              disabled={isLeaving}
-              style={{
-                backgroundColor: isLeaving ? '#d6d3d1' : '#ef4444',
-                color: 'white',
-                fontWeight: '700',
-                padding: '0.5rem 1rem',
-                borderRadius: '9999px',
-                border: 'none',
-                cursor: isLeaving ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}
-              onMouseEnter={(e) => {
-                if (!isLeaving) e.currentTarget.style.backgroundColor = isLeaving ? '#d6d3d1' : '#dc2626';
-              }}
-              onMouseLeave={(e) => {
-                if (!isLeaving) e.currentTarget.style.backgroundColor = '#ef4444';
-              }}
-            >
-              {isLeaving ? (
-                <div
-                  style={{
-                    width: '1rem',
-                    height: '1rem',
-                    borderRadius: '50%',
-                    border: '2px solid transparent',
-                    borderTopColor: 'white',
-                    animation: 'spin 1s linear infinite',
-                  }}
-                ></div>
-              ) : (
-                <PhoneOff size={18} />
-              )}
-              Leave
-            </button>
+  // PHONE CALL INTERFACE FOR ONE-ON-ONE
+  if (roomMeta.type === 'one-on-one') {
+    return (
+      <div style={{ 
+        minHeight: '100vh', 
+        backgroundColor: '#0f172a',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <div style={{ 
+          paddingTop: '2.5rem', 
+          paddingBottom: '1rem',
+          padding: '1.5rem',
+          textAlign: 'center',
+          borderBottom: '1px solid #334155'
+        }}>
+          <h1 style={{ 
+            fontSize: '1.875rem', 
+            fontWeight: '700', 
+            color: 'white',
+            marginBottom: '0.25rem'
+          }}>{roomMeta.title}</h1>
+          <p style={{ color: '#94a3b8', fontSize: '0.875rem' }}>One-on-one conversation</p>
+          
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            gap: '0.5rem', 
+            marginTop: '0.5rem'
+          }}>
+            <Timer style={{ width: '1.25rem', height: '1.25rem', color: '#10b981' }} />
+            <span style={{ 
+              color: '#10b981', 
+              fontFamily: 'monospace', 
+              fontSize: '1.125rem',
+              fontWeight: '600'
+            }}>
+              {formatTime(elapsedTime)}
+            </span>
           </div>
         </div>
 
-        {/* Call Status Card */}
-        <div
-          style={{
-            backgroundColor: 'white',
-            borderRadius: '0.75rem',
-            border: '1px solid #e5e5e5',
-            padding: '2rem',
-            textAlign: 'center',
-            marginBottom: '1.5rem',
-          }}
+        <LiveKitRoom
+          token={token}
+          serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
+          audio={true}
+          video={false}
+          onDisconnected={() => setError('Disconnected from room')}
+          style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
         >
-          <div
-            style={{
-              width: '5rem',
-              height: '5rem',
-              borderRadius: '9999px',
-              backgroundColor: '#fef3c7',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1rem',
-            }}
-          >
-            <UserIcon size={40} style={{ color: '#d97706' }} />
-          </div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1c1917', marginBottom: '0.5rem' }}>
-            {isInCall ? 'Call in Progress' : 'Connecting...'}
-          </h2>
-          <p style={{ color: '#44403c' }}>{remoteMuted ? 'Other participant muted' : 'Listening...'}</p>
-        </div>
-
-        {/* Participants */}
-        <div
-          style={{
-            backgroundColor: 'white',
-            borderRadius: '0.75rem',
-            border: '1px solid #e5e5e5',
+          <div style={{ 
+            flex: 1, 
+            display: 'flex', 
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
             padding: '1.5rem',
-            marginBottom: '1.5rem',
-          }}
-        >
-          <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#1c1917', marginBottom: '1rem' }}>Participants</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {participants.map((p) => (
-              <div
-                key={p.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  padding: '0.75rem',
-                  borderRadius: '0.5rem',
-                  backgroundColor: p.id === user?.id ? '#fffbeb' : 'transparent',
-                }}
-              >
-                <div
-                  style={{
-                    width: '3rem',
-                    height: '3rem',
-                    borderRadius: '9999px',
-                    border: p.id === user?.id ? '2px solid #f59e0b' : '1px solid #d6d3d1',
-                    backgroundColor: '#e5e5e4',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                  }}
-                >
-                  {p.avatar ? (
-  <Image
-    src={p.avatar}
-    alt={p.name}
-    width={48}      // since your container is 3rem = 48px
-    height={48}
-    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '9999px' }}
-  />
-) : (
-  <span style={{ color: '#44403c', fontWeight: '600', fontSize: '1.125rem' }}>
-    {p.name.charAt(0)}
-  </span>
-)}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3
-                    style={{
-                      fontWeight: '600',
-                      color: '#1c1917',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {p.name}
-                  </h3>
-                  <p
-                    style={{
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      color:
-                        p.id === user?.id
-                          ? '#d97706'
-                          : callEndedByPeer
-                          ? '#64748b'
-                          : remoteMuted
-                          ? '#64748b'
-                          : '#16a34a',
-                    }}
-                  >
-                    {p.id === user?.id
-                      ? 'You'
-                      : callEndedByPeer
-                      ? 'Left'
-                      : remoteMuted
-                      ? 'Muted'
-                      : 'Connected'}
-                  </p>
-                </div>
-              </div>
-            ))}
+            gap: '3rem'
+          }}>
+            <PhoneCallParticipants hostId={roomMeta.hostId} />
           </div>
-        </div>
 
-        {/* Audio Control */}
-        <div
-          style={{
-            backgroundColor: 'white',
-            borderRadius: '0.75rem',
-            border: '1px solid #e5e5e5',
+          <div style={{ 
             padding: '1.5rem',
-            marginBottom: '1.5rem',
-          }}
-        >
-          <h3 style={{ fontWeight: '700', color: '#1c1917', marginBottom: '1rem' }}>Audio Control</h3>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            borderTop: '1px solid #334155',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '2rem'
+          }}>
+            {/* Mute Button - Bottom Left */}
+            <MuteButton />
+            
+            {/* End Call Button - Centered */}
             <button
-              onClick={toggleAudio}
-              disabled={!isInCall || callEndedByPeer}
+              onClick={handleLeave}
               style={{
-                padding: '1rem',
-                borderRadius: '0.75rem',
-                border: 'none',
-                cursor: !isInCall || callEndedByPeer ? 'not-allowed' : 'pointer',
+                width: '4.5rem',
+                height: '4.5rem',
+                borderRadius: '50%',
+                backgroundColor: '#ef4444',
                 display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
                 justifyContent: 'center',
-                gap: '0.5rem',
-                backgroundColor: !isInCall || callEndedByPeer ? '#f5f5f4' : isAudioEnabled ? '#dbeafe' : '#f5f5f4',
-                color: !isInCall || callEndedByPeer ? '#a8a29e' : isAudioEnabled ? '#1e40af' : '#64748b',
+                alignItems: 'center',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'background-color 0.3s',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
               }}
+              onMouseOver={e => e.currentTarget.style.backgroundColor = '#dc2626'}
+              onMouseOut={e => e.currentTarget.style.backgroundColor = '#ef4444'}
             >
-              {isAudioEnabled ? <Mic size={28} /> : <MicOff size={28} />}
-              <span style={{ fontSize: '0.875rem', fontWeight: '600' }}>{isAudioEnabled ? 'Mute' : 'Unmute'}</span>
+              <PhoneOff style={{ width: '2rem', height: '2rem', color: 'white' }} />
             </button>
           </div>
+          <RoomAudioRenderer />
+        </LiveKitRoom>
+      </div>
+    );
+  }
+
+  // GROUP CALL INTERFACE (with inline CSS)
+  return (
+    <div style={{ 
+      minHeight: '100vh', 
+      backgroundColor: '#0f172a'
+    }}>
+      <div style={{ 
+        paddingTop: '4rem', 
+        padding: '1.5rem'
+      }}>
+        <div style={{ 
+          maxWidth: '80rem', 
+          margin: '0 auto'
+        }}>
+          <h1 style={{ 
+            fontSize: '1.875rem', 
+            fontWeight: '700', 
+            color: 'white'
+          }}>{roomMeta.title}</h1>
+          <p style={{ 
+            color: '#94a3b8', 
+            marginTop: '0.25rem'
+          }}>
+            Group support call
+          </p>
+          {/* 🔴 TIMER DISPLAY */}
+          {roomMeta.callStartedAt || elapsedTime > 0 ? (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              marginTop: '0.5rem',
+              color: '#10b981',
+              fontFamily: 'monospace',
+              fontSize: '0.875rem'
+            }}>
+              <Timer style={{ width: '1rem', height: '1rem' }} />
+              <span>Call duration: {formatTime(elapsedTime)}</span>
+            </div>
+          ) : (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              marginTop: '0.5rem',
+              color: '#f59e0b',
+              fontSize: '0.875rem'
+            }}>
+              <Timer style={{ width: '1rem', height: '1rem' }} />
+              <span>Waiting for participants...</span>
+            </div>
+          )}
         </div>
       </div>
+
+      <div style={{ 
+        maxWidth: '80rem', 
+        margin: '0 auto', 
+        padding: '1.5rem', 
+        paddingBottom: '2rem'
+      }}>
+        <LiveKitRoom
+          token={token}
+          serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
+          audio={true}
+          video={false}
+          onDisconnected={() => setError('Disconnected from room')}
+          style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            height: 'calc(100vh - 16rem)'
+          }}
+        >
+          <div style={{ 
+            flex: 1, 
+            backgroundColor: '#1e293b', 
+            borderRadius: '0.75rem', 
+            padding: '1.5rem', 
+            overflowY: 'auto', 
+            marginBottom: '1rem'
+          }}>
+            <h2 style={{ 
+              fontSize: '1.25rem', 
+              fontWeight: '700', 
+              color: 'white', 
+              marginBottom: '1rem'
+            }}>
+              Participants
+            </h2>
+            <AudioParticipantsList hostId={roomMeta.hostId} />
+          </div>
+
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center'
+          }}>
+            <ControlBar
+              controls={{ microphone: true, camera: false, screenShare: false, chat: false }}
+              variation="minimal"
+              style={{ 
+                backgroundColor: '#1e293b', 
+                border: 'none', 
+                borderRadius: '0.75rem',
+                padding: '0.5rem 1rem'
+              }}
+            />
+            <button
+              onClick={handleLeave}
+              style={{
+                marginLeft: '0.75rem',
+                padding: '0.625rem 1.25rem',
+                backgroundColor: '#ef4444',
+                color: 'white',
+                borderRadius: '0.5rem',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'background-color 0.3s'
+              }}
+              onMouseOver={e => e.currentTarget.style.backgroundColor = '#dc2626'}
+              onMouseOut={e => e.currentTarget.style.backgroundColor = '#ef4444'}
+            >
+              Leave Call
+            </button>
+          </div>
+          <RoomAudioRenderer />
+        </LiveKitRoom>
+      </div>
+    </div>
+  );
+}
+
+// Mute Button Component for one-on-one calls
+function MuteButton() {
+  const { localParticipant } = useLocalParticipant();
+  const [isMuted, setIsMuted] = useState(false);
+
+  const toggleMute = () => {
+    if (localParticipant) {
+      const newState = !localParticipant.isMicrophoneEnabled;
+      localParticipant.setMicrophoneEnabled(newState);
+      setIsMuted(!newState);
+    }
+  };
+
+  return (
+    <button
+      onClick={toggleMute}
+      style={{
+        width: '3.5rem',
+        height: '3.5rem',
+        borderRadius: '50%',
+        backgroundColor: isMuted ? '#ef4444' : '#4b5563',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        border: 'none',
+        cursor: 'pointer',
+        transition: 'background-color 0.3s',
+        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+      }}
+      onMouseOver={e => e.currentTarget.style.backgroundColor = isMuted ? '#dc2626' : '#374151'}
+      onMouseOut={e => e.currentTarget.style.backgroundColor = isMuted ? '#ef4444' : '#4b5563'}
+    >
+      {isMuted ? (
+        <MicOff style={{ width: '1.5rem', height: '1.5rem', color: 'white' }} />
+      ) : (
+        <Mic style={{ width: '1.5rem', height: '1.5rem', color: 'white' }} />
+      )}
+    </button>
+  );
+}
+
+// Phone call specific participant component (now only shows the other participant)
+function PhoneCallParticipants({ hostId }: { hostId: string }) {
+  const participants = useParticipants();
+  
+  // In one-on-one calls, we expect exactly 2 participants
+  if (participants.length < 2) {
+    return (
+      <div style={{ 
+        textAlign: 'center', 
+        color: '#94a3b8',
+        fontSize: '1.125rem'
+      }}>
+        Waiting for the other participant to join...
+      </div>
+    );
+  }
+
+  // Get the other participant (not the current user/host)
+  const otherParticipant = participants.find(p => p.identity !== hostId) || participants[0];
+  
+  return (
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center',
+      gap: '2.5rem'
+    }}>
+      {/* Show only the other participant */}
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column', 
+        alignItems: 'center'
+      }}>
+        <div style={{ 
+          width: '12rem',
+          height: '12rem',
+          borderRadius: '50%',
+          backgroundColor: otherParticipant.isSpeaking ? '#10b981' : '#334155',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          transition: 'background-color 0.3s',
+          marginBottom: '1rem',
+          border: otherParticipant.isSpeaking ? '3px solid #059669' : 'none'
+        }}>
+          <User style={{ 
+            width: '5rem', 
+            height: '5rem', 
+            color: 'white' 
+          }} />
+        </div>
+        <div style={{ 
+          textAlign: 'center',
+          color: 'white',
+          fontSize: '1.25rem',
+          fontWeight: '600'
+        }}>
+          {otherParticipant.name || 'Participant'}
+          {otherParticipant.isSpeaking && (
+            <span style={{ 
+              display: 'block', 
+              color: '#10b981',
+              fontSize: '0.875rem',
+              marginTop: '0.25rem'
+            }}>
+              Speaking
+            </span>
+          )}
+          {!otherParticipant.isMicrophoneEnabled && (
+            <span style={{ 
+              display: 'block', 
+              color: '#f87171',
+              fontSize: '0.875rem',
+              marginTop: '0.25rem'
+            }}>
+              Microphone off
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Participant components for group calls
+function AudioParticipantsList({ hostId }: { hostId: string }) {
+  const participants = useParticipants();
+  const sorted = [...participants].sort((a, b) => {
+    if (a.identity === hostId) return -1;
+    if (b.identity === hostId) return 1;
+    if (a.isSpeaking && !b.isSpeaking) return -1;
+    if (!a.isSpeaking && b.isSpeaking) return 1;
+    return (a.name || a.identity).localeCompare(b.name || b.identity);
+  });
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      {sorted.map((p) => (
+        <ParticipantItem key={p.sid} participant={p} isHost={p.identity === hostId} />
+      ))}
+    </div>
+  );
+}
+
+function ParticipantItem({ participant, isHost }: { participant: Participant; isHost: boolean }) {
+  return (
+    <div style={{ 
+      display: 'flex', 
+      alignItems: 'center', 
+      gap: '1rem', 
+      padding: '0.75rem', 
+      backgroundColor: '#334155', 
+      borderRadius: '0.5rem'
+    }}>
+      <div style={{ 
+        width: '0.75rem', 
+        height: '0.75rem', 
+        borderRadius: '9999px', 
+        backgroundColor: participant.isSpeaking ? '#10b981' : '#94a3b8'
+      }} />
+      <span style={{ 
+        color: 'white', 
+        fontWeight: '500', 
+        flex: 1 
+      }}>{participant.name || participant.identity}</span>
+      {isHost && <span style={{ 
+        padding: '0.25rem 0.5rem', 
+        fontSize: '0.75rem', 
+        backgroundColor: '#3b82f6', 
+        color: 'white', 
+        borderRadius: '9999px'
+      }}>Host</span>}
+      {!participant.isMicrophoneEnabled && <span style={{ 
+        color: '#94a3b8', 
+        fontSize: '0.875rem'
+      }}>(muted)</span>}
     </div>
   );
 }
