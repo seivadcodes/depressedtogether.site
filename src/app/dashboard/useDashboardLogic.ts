@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { createClient } from '@/lib/supabase';
+import { usePresence } from '@/hooks/usePresence';
 
 export type GriefType =
   | 'parent'
@@ -16,6 +17,19 @@ export type GriefType =
   | 'caregiver'
   | 'suicide'
   | 'other';
+
+  export interface ProfileUpdate {
+  grief_types?: GriefType[];
+  accepts_calls?: boolean;
+  accepts_video_calls?: boolean;
+  accept_from_genders?: ('male' | 'female' | 'nonbinary' | 'any')[];
+  accept_from_countries?: string[];
+  accept_from_languages?: string[];
+  is_anonymous?: boolean;
+  full_name?: string;
+  avatar_url?: string;
+  // Add other writable profile fields as needed
+}
 
 export interface UserProfile {
   id: string;
@@ -47,13 +61,6 @@ export interface Post {
     fullName: string;
     avatarUrl: string | null;
   };
-}
-
-interface ProfileUpdate {
-  full_name?: string;
-  avatar_url?: string;
-  // Add other optional fields your profile supports
-  [key: string]: unknown; // Optional: allows extra fields if needed without breaking type safety
 }
 
 export interface DashboardUIProps {
@@ -90,9 +97,10 @@ export interface DashboardUIProps {
 }
 
 export function useDashboardLogic(): DashboardUIProps {
-  const supabase = createClient();
+ const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
   
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>({
@@ -114,99 +122,98 @@ export function useDashboardLogic(): DashboardUIProps {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+ usePresence(profile?.id ?? null);
   useEffect(() => {
-    const init = async () => {
-      const { data: { session }, error: authError } = await supabase.auth.getSession();
-      
-      if (authError || !session?.user) {
-        router.push('/auth');
-        return;
-      }
+  const init = async () => {
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    
+    if (authError || !session?.user) {
+      router.push('/auth');
+      return;
+    }
 
-      const { data, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
+    const { data, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', session.user.id)
+      .single();
 
-      if (profileError || !data) {
-  // ❌ TEMP: Just log and redirect — but know this breaks new users
-  console.warn('No profile found for user:', session.user.id);
-  router.push('/auth');
-  return;
-}
+    if (profileError || !data) {
+      console.warn('No profile found for user:', session.user.id);
+      router.push('/auth');
+      return;
+    }
 
-      // Set up profile with full name and email
-      setProfile({
-        id: data.id,
-        griefTypes: data.grief_types || [],
-        avatarUrl: data.avatar_url,
-        fullName: data.full_name || session.user.email?.split('@')[0] || 'Friend',
-        email: session.user.email || data.email,
-      });
+    setProfile({
+      id: data.id,
+      griefTypes: data.grief_types || [],
+      avatarUrl: data.avatar_url,
+      fullName: data.full_name || session.user.email?.split('@')[0] || 'Friend',
+      email: session.user.email || data.email,
+    });
 
-      setPreferences({
-        acceptsCalls: data.accepts_calls ?? true,
-        acceptsVideoCalls: data.accepts_video_calls ?? false,
-        acceptFromGenders: data.accept_from_genders || ['any'],
-        acceptFromCountries: data.accept_from_countries || [],
-        acceptFromLanguages: data.accept_from_languages || [],
-        isAnonymous: data.is_anonymous ?? false,
-      });
+    setPreferences({
+      acceptsCalls: data.accepts_calls ?? true,
+      acceptsVideoCalls: data.accepts_video_calls ?? false,
+      acceptFromGenders: data.accept_from_genders || ['any'],
+      acceptFromCountries: data.accept_from_countries || [],
+      acceptFromLanguages: data.accept_from_languages || [],
+      isAnonymous: data.is_anonymous ?? false,
+    });
 
-      if ((data.grief_types?.length || 0) === 0) {
-        setShowGriefSetup(true);
-      }
+    if ((data.grief_types?.length || 0) === 0) {
+      setShowGriefSetup(true);
+    }
 
-      setIsLoading(false);
-    };
+    setIsLoading(false);
+  };
 
-    init();
-  }, [router]);
+  init();
+}, [router, supabase]); // ✅ Add `supabase` here
 
-  useEffect(() => {
-    if (!profile || isLoading) return;
+ useEffect(() => {
+  if (!profile || isLoading) return;
 
-    const loadPosts = async () => {
-      const { data, error } = await supabase
-        .from('posts')
-        .select(`
-          *,
-          profiles: user_id (
-            full_name,
-            avatar_url
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(20);
+  const loadPosts = async () => {
+    const { data, error } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        profiles: user_id (
+          full_name,
+          avatar_url
+        )
+      `)
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
 
-      if (error) {
-        console.error('Failed to fetch posts:', error);
-        setError('Failed to load posts. Please try again later.');
-        return;
-      }
+    if (error) {
+      console.error('Failed to fetch your posts:', error);
+      setError('Failed to load your posts. Please try again later.');
+      return;
+    }
 
-      const mapped = data.map((p) => ({
-        id: p.id,
-        userId: p.user_id,
-        text: p.text,
-        mediaUrls: p.media_urls || undefined,
-        griefTypes: p.grief_types as GriefType[],
-        createdAt: new Date(p.created_at),
-        likes: p.likes_count || 0,
-        isAnonymous: p.is_anonymous,
-        user: p.profiles ? {
-          fullName: p.profiles.full_name,
-          avatarUrl: p.profiles.avatar_url
-        } : undefined
-      }));
+    const mapped = data.map((p) => ({
+      id: p.id,
+      userId: p.user_id,
+      text: p.text,
+      mediaUrls: p.media_urls || undefined,
+      griefTypes: p.grief_types as GriefType[],
+      createdAt: new Date(p.created_at),
+      likes: p.likes_count || 0,
+      isAnonymous: p.is_anonymous,
+      user: p.profiles ? {
+        fullName: p.profiles.full_name,
+        avatarUrl: p.profiles.avatar_url
+      } : undefined
+    }));
 
-      setPosts(mapped);
-    };
+    setPosts(mapped);
+  };
 
-    loadPosts();
-  }, [profile, isLoading]);
+  loadPosts();
+}, [profile, isLoading, supabase]);
 
   useEffect(() => {
     return () => {
@@ -220,12 +227,13 @@ export function useDashboardLogic(): DashboardUIProps {
     );
   };
 
-  const saveProfileToDB = async (updates: ProfileUpdate) => {
-  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError || !session?.user) {
-    router.push('/auth');
-    return;
-  }
+ const saveProfileToDB = async (updates: ProfileUpdate) => {
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session?.user) {
+      router.push('/auth');
+      return;
+    }
+
     const { error } = await supabase
       .from('profiles')
       .upsert({

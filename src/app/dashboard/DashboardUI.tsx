@@ -20,6 +20,7 @@ import type {
   UserPreferences,
   DashboardUIProps
 } from './useDashboardLogic';
+
 import Image from 'next/image';
 
 const griefTypeLabels: Record<GriefType, string> = {
@@ -796,16 +797,18 @@ const NewPostForm = ({
         border: '1px solid #fde68a',
       }}>
         {profile?.avatarUrl ? (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div style={{ width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
   <Image
     src={profile.avatarUrl}
     alt="Your avatar"
-    fill
+    width={40}   // approximate logical size; actual rendering handled by CSS
+    height={40}
     style={{
+      width: '100%',
+      height: '100%',
       objectFit: 'cover',
-      borderRadius: '9999px',
     }}
-    unoptimized
+    unoptimized // needed if avatars are dynamic/user-uploaded from Supabase
   />
 </div>
         ) : (
@@ -846,13 +849,17 @@ const NewPostForm = ({
                 overflow: 'hidden',
                 border: '1px solid #e7e5e4',
               }}>
-                
-<div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: '0.5rem' }}>
   <Image
     src={url}
     alt={`Attachment ${i + 1}`}
-    fill
-    style={{ objectFit: 'cover' }}
+    width={80}
+    height={80}
+    style={{
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+    }}
     unoptimized
   />
 </div>
@@ -1030,12 +1037,17 @@ const PostItem = ({ post }: { post: Post }) => (
           overflow: 'hidden',
         }}>
           {post.user?.avatarUrl && !post.isAnonymous ? (
-            <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
+            <div style={{ width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
   <Image
     src={post.user.avatarUrl}
-    alt={post.user.fullName ?? "User avatar"}
-    fill
-    style={{ objectFit: 'cover' }}
+    alt={post.user.fullName || 'User'}
+    width={40}
+    height={40}
+    style={{
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+    }}
     unoptimized
   />
 </div>
@@ -1118,16 +1130,20 @@ const PostItem = ({ post }: { post: Post }) => (
                 border: '1px solid #e7e5e4',
               }}
             >
-           <Image
-  src={url}
-  alt={`Post media ${i + 1}`}
-  fill
-  style={{
-    objectFit: 'cover',
-    transition: 'transform 0.2s',
-  }}
-  unoptimized
-/>
+             <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: '0.5rem' }}>
+  <Image
+    src={url}
+    alt={`Attachment ${i + 1}`}
+    width={80}
+    height={80}
+    style={{
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+    }}
+    unoptimized
+  />
+</div>
             </div>
           ))}
         </div>

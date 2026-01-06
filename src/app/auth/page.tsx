@@ -11,24 +11,23 @@ export default function AuthPage() {
   const { user, loading, signIn, signUp } = useAuth();
   const router = useRouter();
 
-  const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-up'); // Default to sign-up
+  const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-up');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Redirect after auth — handled by showing a message instead of blank screen
+  // Redirect if authenticated
   useEffect(() => {
     if (!loading && user) {
       router.replace('/dashboard');
     }
   }, [user, loading, router]);
 
-  // On initial load (post-auth check), detect if user might be returning
+  // Detect returning user via saved email
   useEffect(() => {
     if (loading) return;
-
     if (typeof window !== 'undefined') {
       const savedEmail = localStorage.getItem(EMAIL_STORAGE_KEY);
       if (savedEmail && savedEmail.includes('@')) {
@@ -68,10 +67,9 @@ export default function AuthPage() {
       }
       setSubmitting(false);
     }
-    // Note: do NOT setSubmitting(false) here if auth succeeded — let redirect handle it
   };
 
-  // Show loading screen while checking session
+  // Show loading only while initial auth session is being checked
   if (loading) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', fontSize: '1.1rem' }}>
@@ -80,27 +78,10 @@ export default function AuthPage() {
     );
   }
 
-  // ✅ CRITICAL FIX: Don't return null when user exists — show a friendly message!
+  // If user is authenticated (and loading is done), redirect has been triggered.
+  // Returning null here is safe and brief — no need to render anything.
   if (user) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '100vh',
-          margin: 0,
-          padding: '1rem',
-          textAlign: 'center',
-          fontSize: '1.1rem',
-          color: '#4f46e5',
-          backgroundColor: '#f9fafb',
-        }}
-      >
-        Welcome! Taking you to your dashboard...
-      </div>
-    );
+    return null;
   }
 
   return (
