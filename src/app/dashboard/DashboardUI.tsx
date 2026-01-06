@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, CSSProperties } from 'react';
+import { useState, useEffect, } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -20,6 +20,7 @@ import type {
   UserPreferences,
   DashboardUIProps
 } from './useDashboardLogic';
+import Image from 'next/image';
 
 const griefTypeLabels: Record<GriefType, string> = {
   parent: 'Loss of a Parent',
@@ -609,8 +610,8 @@ const SettingsModal = ({
               <div>
                 <div style={{ fontWeight: 500, color: '#1c1917' }}>Post anonymously</div>
                 <div style={{ fontSize: '0.875rem', color: '#78716c', marginTop: '0.25rem' }}>
-  Your name and profile picture won&apos;t be shown on your posts
-</div>
+                  Your name and profile picture will not be shown on your posts
+                </div>
               </div>
             </label>
             
@@ -795,11 +796,18 @@ const NewPostForm = ({
         border: '1px solid #fde68a',
       }}>
         {profile?.avatarUrl ? (
-          <img 
-            src={profile.avatarUrl} 
-            alt="Your avatar" 
-            style={{ width: '100%', height: '100%', borderRadius: '9999px', objectFit: 'cover' }}
-          />
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+  <Image
+    src={profile.avatarUrl}
+    alt="Your avatar"
+    fill
+    style={{
+      objectFit: 'cover',
+      borderRadius: '9999px',
+    }}
+    unoptimized
+  />
+</div>
         ) : (
           <div style={{ color: '#92400e', fontWeight: 500, fontSize: '0.875rem' }}>
             {(profile?.fullName || 'U').charAt(0).toUpperCase()}
@@ -838,11 +846,16 @@ const NewPostForm = ({
                 overflow: 'hidden',
                 border: '1px solid #e7e5e4',
               }}>
-                <img
-                  src={url}
-                  alt={`Attachment ${i + 1}`}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
+                
+<div style={{ position: 'relative', width: '100%', height: '100%' }}>
+  <Image
+    src={url}
+    alt={`Attachment ${i + 1}`}
+    fill
+    style={{ objectFit: 'cover' }}
+    unoptimized
+  />
+</div>
                 <button
                   onClick={() => removeMedia(i)}
                   style={{
@@ -982,7 +995,7 @@ const PostsSection = ({ posts }: { posts: Post[] }) => (
         padding: '2rem',
       }}>
         <MessageCircle style={{ color: '#d6d3d1', margin: '0 auto', width: '3rem', height: '3rem' }} />
-        <p style={{ color: '#78716c', marginTop: '0.5rem' }}>No posts yet. Be the first to share.</p>
+        <p style={{ color: '#78716c', marginTop: '0.5rem' }}>No posts yet. Post something up above.</p>
         <p style={{ color: '#a8a29e', fontSize: '0.875rem', marginTop: '0.25rem' }}>Your words can comfort others walking a similar path</p>
       </div>
     ) : (
@@ -1017,11 +1030,15 @@ const PostItem = ({ post }: { post: Post }) => (
           overflow: 'hidden',
         }}>
           {post.user?.avatarUrl && !post.isAnonymous ? (
-            <img 
-              src={post.user.avatarUrl} 
-              alt={post.user.fullName} 
-              style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '9999px' }}
-            />
+            <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
+  <Image
+    src={post.user.avatarUrl}
+    alt={post.user.fullName ?? "User avatar"}
+    fill
+    style={{ objectFit: 'cover' }}
+    unoptimized
+  />
+</div>
           ) : (
             <div style={{ color: '#92400e', fontWeight: 500 }}>
               {post.isAnonymous ? 'A' : post.user?.fullName?.charAt(0) || 'C'}
@@ -1101,16 +1118,16 @@ const PostItem = ({ post }: { post: Post }) => (
                 border: '1px solid #e7e5e4',
               }}
             >
-              <img
-                src={url}
-                alt={`Post media ${i + 1}`}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  transition: 'transform 0.2s',
-                }}
-              />
+           <Image
+  src={url}
+  alt={`Post media ${i + 1}`}
+  fill
+  style={{
+    objectFit: 'cover',
+    transition: 'transform 0.2s',
+  }}
+  unoptimized
+/>
             </div>
           ))}
         </div>

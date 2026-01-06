@@ -1,62 +1,107 @@
 // src/app/auth/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+
+const EMAIL_STORAGE_KEY = 'auth.email';
 
 export default function AuthPage() {
   const { user, loading, signIn, signUp } = useAuth();
   const router = useRouter();
 
-  const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-in');
+  const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-up'); // Default to sign-up
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState(''); // 👈 added
+  const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Redirect if already authenticated
+  // Redirect after auth — handled by showing a message instead of blank screen
   useEffect(() => {
     if (!loading && user) {
       router.replace('/dashboard');
     }
   }, [user, loading, router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError('');
-  setSubmitting(true);
+  // On initial load (post-auth check), detect if user might be returning
+  useEffect(() => {
+    if (loading) return;
 
-  try {
-    if (authMode === 'sign-in') {
-      await signIn(email, password);
-    } else {
-      if (!fullName.trim()) {
-        throw new Error('Please enter your name.');
+    if (typeof window !== 'undefined') {
+      const savedEmail = localStorage.getItem(EMAIL_STORAGE_KEY);
+      if (savedEmail && savedEmail.includes('@')) {
+        setEmail(savedEmail);
+        setAuthMode('sign-in');
       }
-      await signUp(email, password, fullName.trim());
     }
-  } catch (err: unknown) {
-    if (err instanceof Error) {
-      setError(err.message);
-    } else {
-      setError('Authentication failed. Please try again.');
-    }
-  } finally {
-    setSubmitting(false);
-  }
-};
+  }, [loading]);
 
+  const handleEmailChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEmail(value);
+    if (typeof window !== 'undefined' && value.includes('@')) {
+      localStorage.setItem(EMAIL_STORAGE_KEY, value);
+    }
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSubmitting(true);
+
+    try {
+      if (authMode === 'sign-in') {
+        await signIn(email, password);
+      } else {
+        if (!fullName.trim()) {
+          throw new Error('Please enter your name.');
+        }
+        await signUp(email, password, fullName.trim());
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Authentication failed. Please try again.');
+      }
+      setSubmitting(false);
+    }
+    // Note: do NOT setSubmitting(false) here if auth succeeded — let redirect handle it
+  };
+
+  // Show loading screen while checking session
   if (loading) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        Checking session...
+      <div style={{ padding: '2rem', textAlign: 'center', fontSize: '1.1rem' }}>
+        Checking your session...
       </div>
     );
   }
 
-  if (user) return null; // should have redirected
+  // ✅ CRITICAL FIX: Don't return null when user exists — show a friendly message!
+  if (user) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          margin: 0,
+          padding: '1rem',
+          textAlign: 'center',
+          fontSize: '1.1rem',
+          color: '#4f46e5',
+          backgroundColor: '#f9fafb',
+        }}
+      >
+        Welcome! Taking you to your dashboard...
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '2rem', maxWidth: '400px', margin: '0 auto' }}>
@@ -103,7 +148,7 @@ export default function AuthPage() {
           <input
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={handleEmailChange}
             placeholder="Email"
             required
             style={{
@@ -152,8 +197,8 @@ export default function AuthPage() {
           {submitting
             ? 'Processing...'
             : authMode === 'sign-in'
-              ? 'Sign In'
-              : 'Create Account'}
+            ? 'Sign In'
+            : 'Create Account'}
         </button>
       </form>
 

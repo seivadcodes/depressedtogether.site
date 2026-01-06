@@ -140,6 +140,10 @@ export default function EventsPage() {
     router.push(`/events/${eventId}/live`);
   };
 
+  const handleCreateEvent = () => {
+    router.push('/schedule/create');
+  };
+
   if (loading) {
     return (
       <div style={styles.loadingContainer}>
@@ -150,10 +154,26 @@ export default function EventsPage() {
 
   return (
     <div style={styles.pageContainer}>
-      <h1 style={styles.heading}>Upcoming Events</h1>
+      <div style={styles.headerContainer}>
+        <h1 style={styles.heading}>Upcoming Events</h1>
+        <button 
+          onClick={handleCreateEvent}
+          style={styles.createEventButton}
+        >
+          Create Event
+        </button>
+      </div>
 
       {events.length === 0 ? (
-        <p style={styles.noEventsText}>No upcoming events.</p>
+        <div style={styles.noEventsContainer}>
+          <p style={styles.noEventsText}>No upcoming events.</p>
+          <button 
+            onClick={handleCreateEvent}
+            style={styles.createEventButtonLarge}
+          >
+            Create Your First Event
+          </button>
+        </div>
       ) : (
         <div style={styles.eventsContainer}>
           {events.map((event) => {
@@ -238,25 +258,41 @@ export default function EventsPage() {
 // Inline CSS styles
 const styles = {
   pageContainer: {
-    padding: '1.5rem',
+    padding: '80px 1.5rem 1.5rem',
     maxWidth: '1024px',
     margin: '0 auto',
+  },
+  headerContainer: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '1.5rem',
+    flexWrap: 'wrap' as const,
+    gap: '1rem',
   },
   heading: {
     fontSize: '1.5rem',
     fontWeight: 'bold' as const,
-    marginBottom: '1.5rem',
+    margin: 0,
   },
   loadingContainer: {
-    padding: '1.5rem',
+    padding: '80px 1.5rem',
     textAlign: 'center' as const,
     fontSize: '1.125rem',
   },
-  noEventsText: {
+  noEventsContainer: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '3rem 1rem',
     textAlign: 'center' as const,
+    gap: '1.5rem',
+  },
+  noEventsText: {
     color: '#4a5568',
     fontSize: '1.125rem',
-    marginTop: '2rem',
+    margin: 0,
   },
   eventsContainer: {
     display: 'flex',
@@ -363,4 +399,26 @@ const styles = {
   joinButtonHover: {
     backgroundColor: '#2563eb',
   },
-};
+  createEventButton: {
+    backgroundColor: '#10b981',
+    color: 'white',
+    padding: '0.5rem 1rem',
+    borderRadius: '0.375rem',
+    fontSize: '0.875rem',
+    fontWeight: '500' as const,
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  createEventButtonLarge: {
+    backgroundColor: '#10b981',
+    color: 'white',
+    padding: '0.75rem 1.5rem',
+    borderRadius: '0.375rem',
+    fontSize: '1rem',
+    fontWeight: '500' as const,
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+} as const;

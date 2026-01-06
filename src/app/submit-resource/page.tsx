@@ -5,7 +5,7 @@ import { useState, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
 import { BookOpen, Upload, Link as LinkIcon, AlertTriangle } from 'lucide-react';
-
+import Image from 'next/image';
 const CATEGORIES: Record<string, string> = {
   Story: 'Personal Stories',
   Guide: 'Guidance',
@@ -20,9 +20,7 @@ const TAG_SUGGESTIONS = [
   'holidays', 'guilt', 'anger', 'memory', 'ritual', 'hope'
 ];
 
-const VIDEO_PLATFORMS = [
-  'YouTube', 'Vimeo', 'Loom', 'Google Drive', 'Dropbox', 'Direct Upload'
-];
+
 
 export default function SubmitResourcePage() {
   const supabase = createClient();
@@ -166,7 +164,7 @@ const uploadBookCover = async (file: File) => {
   if (!user) throw new Error('User not authenticated');
 
   const fileName = `${user.id}/${Date.now()}_cover_${file.name}`;
-  const { data, error } = await supabase.storage
+  const {  error } = await supabase.storage
     .from('book-covers')
     .upload(fileName, file, {
       upsert: true,
@@ -709,16 +707,19 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
       onChange={handleBookCoverChange}
     />
     {formData.bookCoverPreview ? (
-      <img
-        src={formData.bookCoverPreview}
-        alt="Book cover preview"
-        style={{
-          maxHeight: '150px',
-          maxWidth: '100%',
-          borderRadius: '0.25rem',
-          objectFit: 'contain',
-        }}
-      />
+  <Image
+    src={formData.bookCoverPreview}
+    alt="Book cover preview"
+    height={150} // Max height you want
+    width={100}  // You may need to adjust based on aspect ratio or use layout='responsive'
+    style={{
+      maxHeight: '150px',
+      maxWidth: '100%',
+      borderRadius: '0.25rem',
+      objectFit: 'contain',
+    }}
+    unoptimized // Optional: if you're using dynamic/local/blob URLs that can't be optimized
+  />
     ) : (
       <div>
         <Upload size={24} style={{ color: '#9ca3af', margin: '0 auto 0.5rem' }} />

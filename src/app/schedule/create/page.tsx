@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-
+import Image from 'next/image';
 const GRIEF_TYPES = [
   'loss_of_parent',
   'loss_of_child',
@@ -246,13 +246,15 @@ export default function CreateEventPage() {
               }}
             >
               {imagePreview ? (
-                <div style={styles.imagePreviewContainer}>
-                  <img
-                    src={imagePreview}
-                    alt="Preview"
-                    style={styles.imagePreview}
-                  />
-                </div>
+  <div style={styles.imagePreviewContainer}>
+    <Image
+      src={imagePreview}
+      alt="Preview"
+      fill
+      style={styles.imagePreview} // Ensure this includes objectFit if needed
+      unoptimized
+    />
+  </div>
               ) : (
                 <div style={styles.imagePlaceholder}>
                   <p style={styles.imagePlaceholderText}>
@@ -330,7 +332,7 @@ export default function CreateEventPage() {
               required
             />
             <p style={styles.helperText}>
-              Saved in UTC — shown in yourlocal time.
+              Shown in your local time.
             </p>
           </div>
 

@@ -264,7 +264,8 @@ if (checkError) {
                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all opacity-0 group-hover:opacity-100 pointer-events-none rounded-lg"></div>
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
                       <div className="text-white bg-black bg-opacity-50 px-4 py-2 rounded-full flex items-center text-sm">
-                        <Image className="h-4 w-4 mr-2" />
+                      {/* eslint-disable-next-line jsx-a11y/alt-text */}
+<Image className="h-8 w-8 text-amber-700" />
                         <span>Change banner</span>
                       </div>
                     </div>
@@ -286,6 +287,8 @@ if (checkError) {
                     onClick={() => document.getElementById('banner-upload')?.click()}
                   >
                     <div className="mx-auto w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-3">
+                      
+                      {/* eslint-disable-next-line jsx-a11y/alt-text */}
                       <Image className="h-8 w-8 text-amber-700" />
                     </div>
                     <p className="text-stone-700 font-medium mb-1">

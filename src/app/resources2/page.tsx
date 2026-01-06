@@ -1,11 +1,11 @@
 // src/app/resources/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
 import Image from 'next/image';
-import { BookOpen, Tag, AlertTriangle, ExternalLink } from 'lucide-react';
+import { BookOpen, Tag, AlertTriangle, ExternalLink, Search, Filter } from 'lucide-react';
 
 function getYouTubeEmbedUrl(url: string): string | null {
   const regExp = /^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
@@ -33,8 +33,6 @@ interface Resource {
   user_id: string;
   video_url: string | null;
   video_type: 'link' | 'upload';
-  helpful_count: number | null;
-  unhelpful_count: number | null;
 }
 
 const CATEGORIES: Record<ResourceType, string> = {
@@ -45,6 +43,10 @@ const CATEGORIES: Record<ResourceType, string> = {
   Book: 'Books',
 };
 
+// Define filter options
+const ALL_TYPES = 'All';
+type FilterType = ResourceType | 'All';
+
 export default function ResourcesPage() {
   const supabase = createClient();
   const [resources, setResources] = useState<Resource[]>([]);
@@ -52,148 +54,252 @@ export default function ResourcesPage() {
   const [error, setError] = useState<string | null>(null);
   const [userVotes, setUserVotes] = useState<Record<string, 'helpful' | 'unhelpful'>>({});
   const [resourceCounts, setResourceCounts] = useState<Record<string, { helpful: number; unhelpful: number }>>({});
+  
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedType, setSelectedType] = useState<FilterType>(ALL_TYPES);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
+  // Get all unique tags from resources
+  
+ 
+
+  // Filter resources based on search, type, and tag
+  const filteredResources = useMemo(() => {
+    return resources.filter(resource => {
+      // Filter by type
+      if (selectedType !== ALL_TYPES && resource.type !== selectedType) {
+        return false;
+      }
+      
+      // Filter by tag
+      if (selectedTag && !resource.tags.includes(selectedTag)) {
+        return false;
+      }
+      
+      // Filter by search query
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        return (
+          resource.title.toLowerCase().includes(query) ||
+          resource.excerpt.toLowerCase().includes(query) ||
+          resource.tags.some(tag => tag.toLowerCase().includes(query)) ||
+          (resource.book_author && resource.book_author.toLowerCase().includes(query)) ||
+          (resource.community_source && resource.community_source.toLowerCase().includes(query))
+        );
+      }
+      
+      return true;
+    });
+  }, [resources, searchQuery, selectedType, selectedTag]);
 
   useEffect(() => {
     const fetchResourcesAndVotes = async () => {
-      const { data: resourcesData, error: resourcesError } = await supabase
-        .from('resources')
-        .select('*')
-        .eq('status', 'approved')
-        .order('created_at', { ascending: false });
+      try {
+        // Fetch approved resources
+        const { data: resourcesData, error: resourcesError } = await supabase
+          .from('resources')
+          .select('*')
+          .eq('status', 'approved')
+          .order('created_at', { ascending: false });
 
-      if (resourcesError) {
-        console.error('Error fetching resources:', resourcesError);
-        setError('Failed to load resources.');
-        setLoading(false);
-        return;
-      }
+        if (resourcesError) {
+          console.error('Error fetching resources:', resourcesError);
+          setError('Failed to load resources.');
+          setLoading(false);
+          return;
+        }
 
-      setResources(resourcesData as Resource[]);
+        setResources(resourcesData as Resource[]);
 
-      // Initialize counts from DB
-      const initialCounts: Record<string, { helpful: number; unhelpful: number }> = {};
-      resourcesData.forEach((r: Resource) => {
-        initialCounts[r.id] = {
-          helpful: r.helpful_count ?? 0,
-          unhelpful: r.unhelpful_count ?? 0,
-        };
-      });
-      setResourceCounts(initialCounts);
+        // Get resource IDs for batch queries
+        const resourceIds = resourcesData.map((r: Resource) => r.id);
 
-      // Fetch user's votes
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user && resourcesData.length > 0) {
-        const resourceIds = resourcesData.map(r => r.id);
-        const { data: votes, error: votesError } = await supabase
+        // Fetch all votes for these resources to calculate counts
+        const { data: allVotes, error: votesError } = await supabase
           .from('resource_votes')
           .select('resource_id, vote_type')
-          .in('resource_id', resourceIds)
-          .eq('user_id', user.id);
+          .in('resource_id', resourceIds);
 
-        if (!votesError) {
-          const voteMap: Record<string, 'helpful' | 'unhelpful'> = {};
-          votes.forEach(v => {
-            voteMap[v.resource_id] = v.vote_type as 'helpful' | 'unhelpful';
+        if (votesError) {
+          console.error('Error fetching votes:', votesError);
+        } else {
+          // Calculate counts from votes
+          const counts: Record<string, { helpful: number; unhelpful: number }> = {};
+          
+          // Initialize all counts to 0
+          resourcesData.forEach((r: Resource) => {
+            counts[r.id] = { helpful: 0, unhelpful: 0 };
           });
-          setUserVotes(voteMap);
+
+          // Count votes
+          allVotes?.forEach(vote => {
+            if (counts[vote.resource_id]) {
+              if (vote.vote_type === 'helpful') {
+                counts[vote.resource_id].helpful += 1;
+              } else if (vote.vote_type === 'unhelpful') {
+                counts[vote.resource_id].unhelpful += 1;
+              }
+            }
+          });
+
+          setResourceCounts(counts);
         }
+
+        // Fetch current user's votes if logged in
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && resourceIds.length > 0) {
+          const { data: userVotesData, error: userVotesError } = await supabase
+            .from('resource_votes')
+            .select('resource_id, vote_type')
+            .in('resource_id', resourceIds)
+            .eq('user_id', user.id);
+
+          if (!userVotesError && userVotesData) {
+            const voteMap: Record<string, 'helpful' | 'unhelpful'> = {};
+            userVotesData.forEach(v => {
+              voteMap[v.resource_id] = v.vote_type as 'helpful' | 'unhelpful';
+            });
+            setUserVotes(voteMap);
+          }
+        }
+
+        setLoading(false);
+      } catch (err) {
+        console.error('Error in fetchResourcesAndVotes:', err);
+        setError('Failed to load resources.');
+        setLoading(false);
       }
-
-      setLoading(false);
     };
-
-    
 
     fetchResourcesAndVotes();
   }, [supabase]);
 
   const handleVote = async (resourceId: string, newVoteType: 'helpful' | 'unhelpful') => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    alert('Please log in to vote.');
-    return;
-  }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      alert('Please log in to vote.');
+      return;
+    }
 
-  const currentVote = userVotes[resourceId];
-  const currentCount = resourceCounts[resourceId] || { 
-    helpful: 0, 
-    unhelpful: 0 
-  };
+    const currentVote = userVotes[resourceId];
+    const currentCount = resourceCounts[resourceId] || { 
+      helpful: 0, 
+      unhelpful: 0 
+    };
 
-  // Optimistic UI update
-  const newCounts = { ...currentCount };
-  const newUserVotes = { ...userVotes };
+    // Optimistic UI update
+    const newCounts = { ...currentCount };
+    const newUserVotes = { ...userVotes };
 
-  if (currentVote === newVoteType) {
-    // Toggle OFF
-    if (newVoteType === 'helpful') newCounts.helpful = Math.max(0, newCounts.helpful - 1);
-    else newCounts.unhelpful = Math.max(0, newCounts.unhelpful - 1);
-    delete newUserVotes[resourceId];
-  } else {
-    // Remove old vote if exists
-    if (currentVote === 'helpful') newCounts.helpful = Math.max(0, newCounts.helpful - 1);
-    else if (currentVote === 'unhelpful') newCounts.unhelpful = Math.max(0, newCounts.unhelpful - 1);
-    // Add new vote
-    if (newVoteType === 'helpful') newCounts.helpful += 1;
-    else newCounts.unhelpful += 1;
-    newUserVotes[resourceId] = newVoteType;
-  }
-
-  // Apply optimistic updates
-  setResourceCounts(prev => ({ ...prev, [resourceId]: newCounts }));
-  setUserVotes(newUserVotes);
-
-  // Sync with database
-  try {
     if (currentVote === newVoteType) {
-      await supabase
-        .from('resource_votes')
-        .delete()
-        .match({ resource_id: resourceId, user_id: user.id });
+      // Toggle OFF
+      if (newVoteType === 'helpful') {
+        newCounts.helpful = Math.max(0, newCounts.helpful - 1);
+      } else {
+        newCounts.unhelpful = Math.max(0, newCounts.unhelpful - 1);
+      }
+      delete newUserVotes[resourceId];
     } else {
-      await supabase
-        .from('resource_votes')
-        .upsert(
-          {
+      // Remove old vote if exists
+      if (currentVote === 'helpful') {
+        newCounts.helpful = Math.max(0, newCounts.helpful - 1);
+      } else if (currentVote === 'unhelpful') {
+        newCounts.unhelpful = Math.max(0, newCounts.unhelpful - 1);
+      }
+      // Add new vote
+      if (newVoteType === 'helpful') {
+        newCounts.helpful += 1;
+      } else {
+        newCounts.unhelpful += 1;
+      }
+      newUserVotes[resourceId] = newVoteType;
+    }
+
+    // Apply optimistic updates
+    setResourceCounts(prev => ({ ...prev, [resourceId]: newCounts }));
+    setUserVotes(newUserVotes);
+
+    try {
+      if (currentVote === newVoteType) {
+        // Remove vote
+        await supabase
+          .from('resource_votes')
+          .delete()
+          .eq('resource_id', resourceId)
+          .eq('user_id', user.id);
+      } else {
+        // Upsert vote
+        await supabase
+          .from('resource_votes')
+          .upsert({
             resource_id: resourceId,
             user_id: user.id,
             vote_type: newVoteType,
-          },
-          { onConflict: 'resource_id,user_id' }
-        );
-    }
-    
-    // After successful sync, you might want to refresh the counts from DB
-    // to ensure consistency
-    const { data: updatedResource } = await supabase
-      .from('resources')
-      .select('helpful_count, unhelpful_count')
-      .eq('id', resourceId)
-      .single();
-      
-    if (updatedResource) {
-      setResourceCounts(prev => ({
-        ...prev,
-        [resourceId]: {
-          helpful: updatedResource.helpful_count ?? 0,
-          unhelpful: updatedResource.unhelpful_count ?? 0
+            created_at: new Date().toISOString(),
+          }, {
+            onConflict: 'resource_id,user_id'
+          });
+      }
+
+      // Verify the update by fetching fresh counts for this resource
+      const { data: freshVotes, error: fetchError } = await supabase
+        .from('resource_votes')
+        .select('vote_type')
+        .eq('resource_id', resourceId);
+
+      if (!fetchError && freshVotes) {
+        const freshCounts = { helpful: 0, unhelpful: 0 };
+        freshVotes.forEach(vote => {
+          if (vote.vote_type === 'helpful') {
+            freshCounts.helpful += 1;
+          } else if (vote.vote_type === 'unhelpful') {
+            freshCounts.unhelpful += 1;
+          }
+        });
+
+        // Update with fresh counts from database
+        setResourceCounts(prev => ({
+          ...prev,
+          [resourceId]: freshCounts
+        }));
+      } else {
+        console.error('Failed to fetch fresh votes:', fetchError);
+        // Revert on error
+        setResourceCounts(prev => ({ ...prev, [resourceId]: currentCount }));
+        setUserVotes(prev => {
+          const reverted = { ...prev };
+          if (currentVote) {
+            reverted[resourceId] = currentVote;
+          } else {
+            delete reverted[resourceId];
+          }
+          return reverted;
+        });
+        alert('Failed to save your vote. Please try again.');
+      }
+    } catch (err) {
+      console.error('Vote sync failed:', err);
+      // Revert optimistic update on error
+      setResourceCounts(prev => ({ ...prev, [resourceId]: currentCount }));
+      setUserVotes(prev => {
+        const reverted = { ...prev };
+        if (currentVote) {
+          reverted[resourceId] = currentVote;
+        } else {
+          delete reverted[resourceId];
         }
-      }));
+        return reverted;
+      });
+      alert('Failed to save your vote. Please try again.');
     }
-    
-  } catch (err) {
-    console.error('Vote sync failed:', err);
-    // Revert optimistic update
-    setResourceCounts(prev => ({ ...prev, [resourceId]: currentCount }));
-    setUserVotes(prev => {
-      const reverted = { ...prev };
-      if (currentVote) reverted[resourceId] = currentVote;
-      else delete reverted[resourceId];
-      return reverted;
-    });
-    alert('Failed to save your vote. Please try again.');
-  }
-};
+  };
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedType(ALL_TYPES);
+    setSelectedTag(null);
+  };
 
   if (loading) {
     return (
@@ -206,7 +312,7 @@ export default function ResourcesPage() {
   if (error) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 1rem' }}>
-        <div style={{ maxWidth: '640px', margin: '0 auto', backgroundColor: '#fee2e2', padding: '1rem', borderRadius: '0.5rem' }}>
+        <div style={{ maxWidth: '768px', margin: '0 auto', backgroundColor: '#fee2e2', padding: '1rem', borderRadius: '0.5rem' }}>
           <p style={{ color: '#b91c1c' }}>{error}</p>
         </div>
       </div>
@@ -240,17 +346,146 @@ export default function ResourcesPage() {
           </p>
         </div>
 
-        {resources.length === 0 ? (
+        {/* Search Bar */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <div style={{ position: 'relative' }}>
+            <Search 
+              size={20} 
+              style={{ 
+                position: 'absolute', 
+                left: '0.75rem', 
+                top: '50%', 
+                transform: 'translateY(-50%)', 
+                color: '#9ca3af' 
+              }} 
+            />
+            <input
+              type="text"
+              placeholder="Search resources by title, tags, author..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.625rem 0.75rem 0.625rem 2.5rem',
+                borderRadius: '0.5rem',
+                border: '1px solid #d1d5db',
+                backgroundColor: 'white',
+                fontSize: '0.875rem',
+                color: '#374151',
+                outline: 'none',
+                transition: 'all 150ms ease-in-out',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Category Filters */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <Filter size={16} style={{ color: '#92400e' }} />
+            <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#92400e' }}>Filter by Type</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+            <button
+              onClick={() => setSelectedType(ALL_TYPES)}
+              style={{
+                padding: '0.375rem 0.75rem',
+                borderRadius: '9999px',
+                border: selectedType === ALL_TYPES ? '2px solid #f59e0b' : '1px solid #d1d5db',
+                backgroundColor: selectedType === ALL_TYPES ? '#fef3c7' : 'white',
+                color: selectedType === ALL_TYPES ? '#92400e' : '#4b5563',
+                fontSize: '0.875rem',
+                fontWeight: selectedType === ALL_TYPES ? '600' : '400',
+                cursor: 'pointer',
+                transition: 'all 150ms ease-in-out',
+              }}
+            >
+              All Resources ({resources.length})
+            </button>
+            {Object.entries(CATEGORIES).map(([type, label]) => {
+              const count = resources.filter(r => r.type === type).length;
+              return (
+                <button
+                  key={type}
+                  onClick={() => setSelectedType(type as ResourceType)}
+                  style={{
+                    padding: '0.375rem 0.75rem',
+                    borderRadius: '9999px',
+                    border: selectedType === type ? '2px solid #f59e0b' : '1px solid #d1d5db',
+                    backgroundColor: selectedType === type ? '#fef3c7' : 'white',
+                    color: selectedType === type ? '#92400e' : '#4b5563',
+                    fontSize: '0.875rem',
+                    fontWeight: selectedType === type ? '600' : '400',
+                    cursor: 'pointer',
+                    transition: 'all 150ms ease-in-out',
+                  }}
+                >
+                  {label} ({count})
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Filters & Clear Button */}
+          {(searchQuery || selectedType !== ALL_TYPES || selectedTag) && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                  Showing {filteredResources.length} of {resources.length} resources
+                  {searchQuery && ` for "${searchQuery}"`}
+                  {selectedType !== ALL_TYPES && ` in ${CATEGORIES[selectedType as ResourceType]}`}
+                  {selectedTag && ` tagged "${selectedTag}"`}
+                </span>
+              </div>
+              <button
+                onClick={clearFilters}
+                style={{
+                  padding: '0.25rem 0.75rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid #d1d5db',
+                  backgroundColor: 'white',
+                  color: '#6b7280',
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  transition: 'all 150ms ease-in-out',
+                }}
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
+        </div>
+
+        {filteredResources.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem', backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <p style={{ color: '#6b7280' }}>No resources available yet.</p>
+            <p style={{ color: '#6b7280', marginBottom: '0.5rem' }}>
+              No resources found{searchQuery ? ` for "${searchQuery}"` : ''}.
+            </p>
+            {(searchQuery || selectedType !== ALL_TYPES || selectedTag) && (
+              <button
+                onClick={clearFilters}
+                style={{
+                  padding: '0.375rem 0.75rem',
+                  borderRadius: '0.375rem',
+                  border: '1px solid #d1d5db',
+                  backgroundColor: 'white',
+                  color: '#6b7280',
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  transition: 'all 150ms ease-in-out',
+                }}
+              >
+                Clear filters to show all resources
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {resources.map((resource) => {
+            {filteredResources.map((resource) => {
               const currentVote = userVotes[resource.id];
               const counts = resourceCounts[resource.id] || {
-                helpful: resource.helpful_count ?? 0,
-                unhelpful: resource.unhelpful_count ?? 0,
+                helpful: 0,
+                unhelpful: 0,
               };
 
               return (
@@ -288,8 +523,8 @@ export default function ResourcesPage() {
                       {resource.book_cover_url && (
                         <div
                           style={{
-                            width: '80px',
-                            height: '112px',
+                            width: '200px',
+                            height: '260px',
                             marginBottom: '0.75rem',
                             overflow: 'hidden',
                             borderRadius: '0.25rem',
@@ -313,7 +548,7 @@ export default function ResourcesPage() {
                       )}
                       {resource.book_quote && (
                         <p style={{ color: '#374151', fontStyle: 'normal', margin: 0 }}>
-                          {`“${resource.book_quote}”`}
+                          {`"${resource.book_quote}"`}
                         </p>
                       )}
                     </div>
@@ -492,7 +727,7 @@ export default function ResourcesPage() {
                         fontWeight: currentVote === 'unhelpful' ? 'bold' : 'normal',
                       }}
                     >
-                      👎 Not Helpful
+                      👎 Not Helpful ({counts.unhelpful})
                     </button>
                   </div>
                 </div>
