@@ -6,38 +6,57 @@ import { useRouter } from 'next/navigation';
 import { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase';
 
-// Helper to ensure profile exists and has full_name
+// Helper to ensure profile exists and has full_name + last_seen
 async function ensureProfileExists(user: User) {
   if (!user?.id) return;
 
   const supabase = createClient();
 
-  const { error: fetchError } = await supabase
+  const { data: existingProfile, error: fetchError } = await supabase
     .from('profiles')
     .select('id')
     .eq('id', user.id)
     .single();
 
-  // If profile doesn't exist (PGRST116 = no rows returned), create it
-  if (fetchError?.code === 'PGRST116') {
-    const metadata = user.user_metadata;
-    const fullName =
-      (typeof metadata?.full_name === 'string' ? metadata.full_name : null) ||
-      user.email?.split('@')[0] ||
-      'Friend';
+  const now = new Date().toISOString();
+  const metadata = user.user_metadata;
+  const fullName =
+    (typeof metadata?.full_name === 'string' ? metadata.full_name : null) ||
+    user.email?.split('@')[0] ||
+    'Friend';
 
+  if (fetchError?.code === 'PGRST116') {
+    // Profile doesn't exist → create it with last_seen
     const { error: insertError } = await supabase
       .from('profiles')
       .insert({
         id: user.id,
         email: user.email,
         full_name: fullName,
-        created_at: new Date().toISOString(),
+        last_seen: now, // ✅ Set on signup
+        created_at: now,
+        // Add default values for other required fields if needed
+        grief_types: [],
+        accepts_calls: true,
+        accepts_video_calls: false,
+        is_anonymous: false,
+        accept_from_genders: ['any'],
+        accept_from_countries: [],
+        accept_from_languages: [],
       });
 
-    // Ignore duplicate key errors (in case of race condition)
     if (insertError && insertError.code !== '23505') {
       console.error('Failed to create profile:', insertError);
+    }
+  } else if (existingProfile) {
+    // Profile exists → update last_seen on every auth event
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ last_seen: now })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.warn('Failed to update last_seen:', updateError);
     }
   }
 }
@@ -118,7 +137,7 @@ export function useAuth() {
       }
 
       if (isSubscribed && session?.user) {
-        ensureProfileExists(session.user);
+        ensureProfileExists(session.user); // ✅ Updates last_seen
         setUser(session.user);
       } else if (isSubscribed) {
         setUser(null);
@@ -146,15 +165,9 @@ export function useAuth() {
         ) {
           router.push('/auth');
         }
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         if (session?.user) {
-          ensureProfileExists(session.user);
-          setUser(session.user);
-        }
-        setLoading(false);
-        setSessionChecked(true);
-      } else if (event === 'USER_UPDATED') {
-        if (session?.user) {
+          ensureProfileExists(session.user); // ✅ Always refresh last_seen on auth events
           setUser(session.user);
         }
         setLoading(false);

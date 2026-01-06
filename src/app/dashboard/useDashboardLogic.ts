@@ -73,7 +73,7 @@ export interface DashboardUIProps {
   mediaFiles: File[];
   mediaPreviews: string[];
   posts: Post[];
-  onlineCount: number;
+onlineCount: number; 
   isLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
@@ -88,7 +88,9 @@ export interface DashboardUIProps {
   toggleAcceptsCalls: () => Promise<void>;
   toggleAcceptsVideoCalls: () => Promise<void>;
   toggleAnonymity: () => Promise<void>;
-  updateFullName: (firstName: string, lastName: string) => Promise<void>; // New function
+  updateFullName: (firstName: string, lastName: string) => Promise<void>; 
+   updateAvatar: (file: File) => Promise<void>; 
+  // New function
   setShowSettings: (show: boolean) => void;
   setShowGriefSetup: (show: boolean) => void;
   setNewPostText: (text: string) => void;
@@ -118,7 +120,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
   const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [onlineCount, setOnlineCount] = useState(87);
+const [onlineCount, setOnlineCount] = useState(0); // ✅ always a number
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +172,24 @@ export function useDashboardLogic(): DashboardUIProps {
 
   init();
 }, [router, supabase]); // ✅ Add `supabase` here
+
+// Add this useEffect — place it after your "loadPosts" useEffect
+useEffect(() => {
+  if (isLoading) return;
+
+  const fetchOnlineCount = async () => {
+    const { count, error } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .gte('last_seen', new Date(Date.now() - 60_000).toISOString());
+
+    setOnlineCount(error ? 0 : count ?? 0); // ✅ always a number
+  };
+
+  fetchOnlineCount();
+  const interval = setInterval(fetchOnlineCount, 30_000);
+  return () => clearInterval(interval);
+}, [isLoading, supabase]);
 
  useEffect(() => {
   if (!profile || isLoading) return;
@@ -451,6 +471,42 @@ export function useDashboardLogic(): DashboardUIProps {
     }
   };
 
+  const updateAvatar = async (file: File) => {
+  if (!profile) throw new Error('Profile not loaded');
+
+  try {
+    // 1. Upload to Supabase Storage
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${uuidv4()}.${fileExt}`;
+    const filePath = `avatars/${profile.id}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, {
+        upsert: false,
+        contentType: file.type,
+      });
+
+    if (uploadError) throw uploadError;
+
+    // 2. Get public URL
+    // ✅ CORRECT
+// ✅ Correct
+const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+const avatarUrl = data.publicUrl;
+
+    // 3. Save URL to profile in DB
+    await saveProfileToDB({ avatar_url: avatarUrl });
+
+    // 4. Update local profile state
+    setProfile((prev) => (prev ? { ...prev, avatarUrl } : null));
+    setError(null);
+  } catch (err) {
+    console.error('Avatar upload failed:', err);
+    throw new Error('Failed to update profile picture. Please try again.');
+  }
+};
+
   const onConnectClick = () => {
     router.push('/connect');
   };
@@ -482,7 +538,8 @@ export function useDashboardLogic(): DashboardUIProps {
     toggleAcceptsCalls,
     toggleAcceptsVideoCalls,
     toggleAnonymity,
-    updateFullName, // Expose the new function
+    updateFullName,
+    updateAvatar,
     setShowSettings,
     setShowGriefSetup,
     setNewPostText,

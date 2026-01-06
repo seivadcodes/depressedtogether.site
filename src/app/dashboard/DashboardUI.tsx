@@ -98,6 +98,7 @@ export function DashboardUI({
   toggleAcceptsVideoCalls,
   toggleAnonymity,
   updateFullName,
+  updateAvatar, 
   setShowSettings,
   setShowGriefSetup,
   setNewPostText,
@@ -147,6 +148,8 @@ export function DashboardUI({
         toggleAcceptsVideoCalls={toggleAcceptsVideoCalls}
         toggleAnonymity={toggleAnonymity}
         updateFullName={updateFullName}
+         updateAvatar={updateAvatar} 
+        
       />
     );
   }
@@ -340,7 +343,9 @@ const SettingsModal = ({
   toggleAcceptsCalls,
   toggleAcceptsVideoCalls,
   toggleAnonymity,
-  updateFullName
+  
+  updateFullName,
+    updateAvatar,
 }: {
   profile: UserProfile | null;
   preferences: UserPreferences;
@@ -351,11 +356,15 @@ const SettingsModal = ({
   toggleAcceptsVideoCalls: () => Promise<void>;
   toggleAnonymity: () => Promise<void>;
   updateFullName: (firstName: string, lastName: string) => Promise<void>;
+    updateAvatar: (file: File) => Promise<void>; 
+  
 }) => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [isSavingName, setIsSavingName] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   useEffect(() => {
     if (profile?.fullName) {
@@ -427,6 +436,100 @@ const SettingsModal = ({
             {error}
           </div>
         )}
+
+        {/* Profile Picture Section */}
+<div style={{ ...baseStyles.card, marginBottom: '1.5rem' }}>
+  <div style={{ display: 'flex', gap: '0.75rem' }}>
+    <div style={{ padding: '0.5rem', backgroundColor: '#fef3c7', borderRadius: '0.5rem' }}>
+      <Camera size={20} style={{ color: '#92400e' }} />
+    </div>
+    <div style={{ flex: 1 }}>
+      <h3 style={{ fontWeight: 500, color: '#1c1917', marginBottom: '0.75rem' }}>Profile Picture</h3>
+      
+      {/* Preview */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <div style={{
+          width: '3rem',
+          height: '3rem',
+          borderRadius: '9999px',
+          overflow: 'hidden',
+          border: '1px solid #e7e5e4',
+        }}>
+          {profile?.avatarUrl ? (
+            <Image
+              src={profile.avatarUrl}
+              alt="Profile"
+              width={48}
+              height={48}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              unoptimized
+            />
+          ) : (
+            <div style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: '#f5f5f4',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#78716c',
+              fontSize: '1rem',
+            }}>
+              {(profile?.fullName || 'U').charAt(0).toUpperCase()}
+            </div>
+          )}
+        </div>
+        <span style={{ fontSize: '0.875rem', color: '#44403c' }}>
+          {profile?.avatarUrl ? 'Change photo' : 'Add a photo'}
+        </span>
+      </div>
+
+      {/* Hidden file input */}
+      <input
+        type="file"
+        accept="image/*"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            setIsUploadingAvatar(true);
+            setAvatarError(null);
+            try {
+              await updateAvatar(file);
+            } catch (err) {
+              setAvatarError(err instanceof Error ? err.message : 'Upload failed');
+            } finally {
+              setIsUploadingAvatar(false);
+              // Reset input
+              if (e.target) e.target.value = '';
+            }
+          }
+        }}
+        style={{ display: 'none' }}
+        id="avatar-upload"
+      />
+
+      <button
+        onClick={() => document.getElementById('avatar-upload')?.click()}
+        style={{
+          ...baseStyles.buttonBase,
+          padding: '0.5rem 0.75rem',
+          backgroundColor: '#f59e0b',
+          color: '#fff',
+          fontSize: '0.875rem',
+        }}
+        disabled={isUploadingAvatar}
+      >
+        {isUploadingAvatar ? 'Uploading...' : profile?.avatarUrl ? 'Change Photo' : 'Add Photo'}
+      </button>
+
+      {avatarError && (
+        <div style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.5rem' }}>
+          {avatarError}
+        </div>
+      )}
+    </div>
+  </div>
+</div>
 
         {/* Display Name Section */}
         <div style={{ ...baseStyles.card, marginBottom: '1.5rem' }}>
