@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase';
 import Picker from '@emoji-mart/react';
 import data from '@emoji-mart/data';
 import { toast } from 'react-hot-toast';
-import { CallModal } from './handleCall';
 
 type User = {
   id: string;
@@ -1558,18 +1557,7 @@ export default function MessagesPage() {
         </div>
 
         {/* Call Modal */}
-        {showCallModal && selectedConversation && currentUserId && (
-          <CallModal
-            isOpen={showCallModal}
-            onClose={() => setShowCallModal(false)}
-            conversationId={selectedConversation.id}
-            otherUserId={selectedConversation.other_user_id}
-            otherUserName={selectedConversation.other_user_full_name}
-            currentUserId={currentUserId}
-            currentUserName={currentUserName}
-            callType={callType}
-          />
-        )}
+       
       </>
     );
   }
@@ -2745,19 +2733,7 @@ export default function MessagesPage() {
         ) : null}
       </div>
 
-      {/* Call Modal */}
-      {showCallModal && selectedConversation && currentUserId && (
-        <CallModal
-          isOpen={showCallModal}
-          onClose={() => setShowCallModal(false)}
-          conversationId={selectedConversation.id}
-          otherUserId={selectedConversation.other_user_id}
-          otherUserName={selectedConversation.other_user_full_name}
-          currentUserId={currentUserId}
-          currentUserName={currentUserName}
-          callType={callType}
-        />
-      )}
+     
     </>
   );
 }
