@@ -3,7 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import Header from '@/components/layout/header';
 import FooterNav from '@/components/layout/FooterNav';
-import { SupabaseProvider } from '@/components/SupabaseProvider'; // ✅ Add this
+import { SupabaseProvider } from '@/components/SupabaseProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -14,7 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${inter.className} flex flex-col h-full bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 text-stone-900`}>
+      <body 
+        className={`${inter.className} flex flex-col h-full bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 text-stone-900`}
+        suppressHydrationWarning // ← ADD THIS LINE
+      >
         {/* Wrap everything that needs auth in SupabaseProvider */}
         <SupabaseProvider>
           <Header />

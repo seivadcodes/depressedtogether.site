@@ -558,17 +558,48 @@ const isUserOnline = useCallback((lastOnline: string | null): boolean => {
 }, [communityId, user, supabase, isUserOnline]); // ✅ include isUserOnline in deps
 
 useEffect(() => {
-  const interval = setInterval(() => {
-    setMembers(prev =>
-      prev.map(member => ({
-        ...member,
-        is_online: isUserOnline(member.last_online),
-      }))
-    );
-  }, 30_000);
+  if (!communityId) return;
 
+  const fetchMembersAndOnlineCount = async () => {
+    const { data: membersData, error } = await supabase
+      .from('community_members')
+      .select(`
+        role,
+        joined_at,
+        user_id,
+        user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
+      `)
+      .eq('community_id', communityId);
+
+    if (error) {
+      console.error('Failed to refresh members:', error);
+      return;
+    }
+
+    const formattedMembers = membersData.map((member) => {
+      const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+      const isAnonymous = profile?.is_anonymous || false;
+      return {
+        user_id: member.user_id,
+        username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+        avatar_url: isAnonymous ? null : profile?.avatar_url || null,
+        last_online: profile?.last_online || null,
+        is_online: isUserOnline(profile?.last_online || null),
+        role: member.role,
+        joined_at: member.joined_at,
+      };
+    });
+
+    setMembers(formattedMembers);
+
+    const newOnlineCount = formattedMembers.filter(m => m.is_online).length;
+    setCommunity(prev => prev ? { ...prev, online_count: newOnlineCount } : null);
+  };
+
+  fetchMembersAndOnlineCount();
+  const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
   return () => clearInterval(interval);
-}, [isUserOnline]);
+}, [communityId, supabase, isUserOnline]);
 
 useEffect(() => {
   if (!user) return;
@@ -611,16 +642,7 @@ useEffect(() => {
 }, []);
 
 
-useEffect(() => {
-  if (!community || members.length === 0) return;
 
-  const currentOnline = members.filter(m => m.is_online).length;
-
-  // ✅ Only update if count changed
-  if (community.online_count !== currentOnline) {
-    setCommunity(prev => prev ? { ...prev, online_count: currentOnline } : null);
-  }
-}, [members, community]);
   const handleMembership = async () => {
     if (!user) {
       router.push(`/auth?redirectTo=/communities/${communityId}`);
@@ -2244,20 +2266,30 @@ const renderCommentPreview = (comment: Comment) => {
                       <p style={{ color: baseColors.text.muted, fontSize: '0.75rem' }}>Joined {formatRecentActivity(member.joined_at)}</p>
                     </div>
                   </div>
-                  {member.role !== 'member' && (
-                    <span
-                      style={{
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        padding: `${spacing.sm} ${spacing.sm}`,
-                        borderRadius: borderRadius.full,
-                        background: member.role === 'admin' ? '#fef3c7' : '#ede9fe',
-                        color: member.role === 'admin' ? '#d97706' : '#7c3aed',
-                      }}
-                    >
-                      {member.role}
-                    </span>
-                  )}
+                 {member.role !== 'member' && (
+  <span
+    style={{
+      fontSize: '0.6875rem',
+      fontWeight: 600,
+      // 👇 Reduce padding to avoid pushing height up
+      padding: '0.0625rem 0.375rem', // 1px top/bottom, 6px left/right
+      borderRadius: '0.375rem',
+      background: member.role === 'admin' ? '#fef9c3' : '#ede9fe',
+      color: member.role === 'admin' ? '#92400e' : '#6d28d9',
+      border: member.role === 'admin' ? '1px solid #fde68a' : '1px solid #ddd6fe',
+      lineHeight: '1.2', // 👈 Match text line height better
+      whiteSpace: 'nowrap',
+      
+      alignSelf: 'center', // 👈 Key fix: aligns with parent's text
+      height: '20px',     // 👈 Explicit height
+      display: 'flex',
+      alignItems: 'center', // 👈 Center content vertically inside badge
+      justifyContent: 'center', // 👈 Optional: centers text horizontally too
+    }}
+  >
+    {member.role}
+  </span>
+)}
                 </div>
               ))}
             </div>

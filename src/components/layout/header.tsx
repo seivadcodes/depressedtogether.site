@@ -2,17 +2,27 @@
 'use client';
 
 import Link from 'next/link';
-import { Home, User, LogOut } from 'lucide-react';
+import { Home, User, LogOut, Phone, X } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import Image from 'next/image';
-import { createClient } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useRouter } from 'next/navigation';
+
+type CallInvitation = {
+  caller_id: string;
+  caller_name: string;
+  room_id: string;
+};
 
 export default function Header() {
   const { user, loading: authLoading, signOut } = useAuth();
+  const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [profile, setProfile] = useState<{ full_name?: string; avatar_url?: string } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [incomingCall, setIncomingCall] = useState<CallInvitation | null>(null);
+  const [showCallBanner, setShowCallBanner] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const supabase = useMemo(() => createClient(), []);
@@ -30,7 +40,7 @@ export default function Header() {
         .from('profiles')
         .select('full_name, avatar_url')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error('Failed to load profile in header:', error);
@@ -43,6 +53,25 @@ export default function Header() {
 
     fetchProfile();
   }, [user, supabase]);
+
+  // 🔔 Listen for incoming call invitations
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const userId = user.id;
+    const channel = supabase
+      .channel(`user:${userId}`)
+      .on('broadcast', { event: 'call_invitation' }, (payload) => {
+        const { caller_id, caller_name, room_id } = payload.payload;
+        setIncomingCall({ caller_id, caller_name, room_id });
+        setShowCallBanner(true);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, supabase]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -58,7 +87,7 @@ export default function Header() {
     };
   }, []);
 
-  // ✅ Compute initials at top level — no conditional hook
+  // Compute user initials safely
   const initials = useMemo(() => {
     if (!user) return 'U';
     const name = profile?.full_name || user.email?.split('@')[0] || 'User';
@@ -74,7 +103,49 @@ export default function Header() {
     setIsMenuOpen(false);
   };
 
-  // Show nothing while auth is loading
+  // 📞 Handle call actions
+  const handleAcceptCall = async () => {
+    if (!incomingCall || !user?.id) return;
+
+    // Optional: mark as accepted in DB
+    await supabase
+      .from('call_notifications')
+      .insert({
+        recipient_id: user.id,
+        caller_id: incomingCall.caller_id,
+        room_id: incomingCall.room_id,
+        status: 'accepted',
+      });
+
+    setShowCallBanner(false);
+    router.push(`/room/${incomingCall.room_id}`);
+  };
+
+  const handleDeclineCall = async () => {
+    if (!incomingCall || !user?.id) return;
+
+    // Mark as declined
+    await supabase
+      .from('call_notifications')
+      .insert({
+        recipient_id: user.id,
+        caller_id: incomingCall.caller_id,
+        room_id: incomingCall.room_id,
+        status: 'declined',
+      });
+
+    // Notify caller (optional but recommended)
+    const channel = supabase.channel(`user:${incomingCall.caller_id}`);
+    await channel.send({
+      type: 'broadcast',
+      event: 'call_declined',
+      payload: { by: user.id },
+    });
+
+    setShowCallBanner(false);
+  };
+
+  // Don't render while auth state is loading
   if (authLoading) {
     return null;
   }
@@ -266,6 +337,83 @@ export default function Header() {
         </div>
       </header>
 
+      {/* 🔔 Incoming Call Notification Banner */}
+      {user && showCallBanner && incomingCall && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '4rem', // directly below header
+            left: 0,
+            right: 0,
+            zIndex: 45,
+            backgroundColor: '#1e3a8a',
+            color: 'white',
+            padding: '0.75rem 1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+            maxWidth: '48rem',
+            margin: '0 auto',
+            borderRadius: '0 0 0.5rem 0.5rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Phone size={20} />
+            <span>
+              Incoming call from <strong>{incomingCall.caller_name}</strong>
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={handleAcceptCall}
+              style={{
+                padding: '0.25rem 0.75rem',
+                backgroundColor: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.375rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+              }}
+            >
+              Accept
+            </button>
+            <button
+              onClick={handleDeclineCall}
+              style={{
+                padding: '0.25rem 0.75rem',
+                backgroundColor: '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.375rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+              }}
+            >
+              Decline
+            </button>
+            <button
+              onClick={() => setShowCallBanner(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'white',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile menu overlay */}
       {isMenuOpen && (
         <div
           style={{

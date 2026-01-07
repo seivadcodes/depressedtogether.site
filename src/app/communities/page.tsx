@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Users, MessageCircle, Heart, Plus } from 'lucide-react';
+import { Users, MessageCircle, Plus } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import Button from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+
 import { useAuth } from '@/hooks/useAuth';
 
 interface Community {
@@ -36,22 +36,52 @@ const griefGradients: Record<string, string> = {
 
 const defaultGradient = 'linear-gradient(135deg, #fcd34d, #f97316)';
 
+
+
 export default function CommunitiesPage() {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [totalOnline, setTotalOnline] = useState(0);
+ 
   const router = useRouter();
   const supabase = createClient();
   const { user } = useAuth();
+
+
+  const [totalOnline, setTotalOnline] = useState(0);
+
+useEffect(() => {
+  const fetchOnlineCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .gte('last_seen', new Date(Date.now() - 60_000).toISOString());
+
+      if (error) {
+        console.error('Failed to fetch online count:', error);
+        setTotalOnline(0);
+      } else {
+        setTotalOnline(count || 0);
+      }
+    } catch (err) {
+      console.error('Unexpected error fetching online count:', err);
+      setTotalOnline(0);
+    }
+  };
+
+  fetchOnlineCount();
+  const interval = setInterval(fetchOnlineCount, 30_000);
+  return () => clearInterval(interval);
+}, [supabase]);
 
   useEffect(() => {
     const fetchCommunities = async () => {
       try {
         const { data, error } = await supabase
-          .from('communities')
-          .select('*')
-          .order('member_count', { ascending: false });
+  .from('communities_with_counts')
+  .select('*')
+  .order('member_count', { ascending: false });
 
         if (error) throw error;
 
@@ -79,16 +109,31 @@ export default function CommunitiesPage() {
   }, [supabase]);
 
   const formatRecentActivity = (createdAt: string) => {
-    const now = new Date();
-    const created = new Date(createdAt);
-    const diffMinutes = Math.floor((now.getTime() - created.getTime()) / 60000);
-    if (diffMinutes < 1) return 'Just now';
-    if (diffMinutes < 2) return '1 minute ago';
-    if (diffMinutes < 60) return `${diffMinutes} minutes ago`;
-    if (diffMinutes < 120) return '1 hour ago';
-    const hours = Math.floor(diffMinutes / 60);
-    return `${hours} hours ago`;
-  };
+  const now = new Date();
+  const created = new Date(createdAt);
+  const diffMs = now.getTime() - created.getTime();
+  const diffMinutes = Math.floor(diffMs / 60_000);
+  const diffHours = Math.floor(diffMs / 3_600_000);
+  const diffDays = Math.floor(diffMs / 86_400_000);
+  const diffWeeks = Math.floor(diffDays / 7);
+
+  if (diffMinutes < 1) return 'Just now';
+  if (diffMinutes < 2) return '1 minute ago';
+  if (diffMinutes < 60) return `${diffMinutes} minutes ago`;
+  if (diffHours < 2) return '1 hour ago';
+  if (diffHours < 24) return `${diffHours} hours ago`;
+  if (diffDays < 2) return '1 day ago';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffWeeks < 2) return '1 week ago';
+  if (diffWeeks < 4) return `${diffWeeks} weeks ago`;
+  // Optional: add months/years if needed
+  const months = Math.floor(diffDays / 30);
+  if (months < 2) return '1 month ago';
+  if (months < 12) return `${months} months ago`;
+  
+  const years = Math.floor(diffDays / 365);
+  return `${years} ${years === 1 ? 'year' : 'years'} ago`;
+};
 
   const handleRequestCommunity = () => {
     if (!user) {
@@ -333,13 +378,12 @@ export default function CommunitiesPage() {
                 {/* Stats */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.75rem' }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Users size={14} style={{ color: '#94a3b8' }} />
-                    {community.member_count.toLocaleString()} members
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Heart size={14} style={{ color: '#16a34a' }} />
-                    {community.online_count} online
-                  </span>
+  <Users size={14} style={{ color: '#94a3b8' }} />
+  {community.member_count === 1
+    ? '1 member'
+    : `${community.member_count.toLocaleString()} members`}
+</span>
+                 
                 </div>
 
                 {/* Activity */}
