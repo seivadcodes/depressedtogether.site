@@ -34,7 +34,15 @@ type CallContextType = {
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
 
-export function CallProvider({ children }: { children: ReactNode }) {
+export function CallProvider({
+  children,
+  userId,
+  fullName,
+}: {
+  children: ReactNode;
+  userId: string;
+  fullName: string;
+}) {
   const [callState, setCallState] = useState<CallState>('idle');
   const [callType, setCallType] = useState<CallType>('audio');
   const [calleeName, setCalleeName] = useState<string | null>(null);
