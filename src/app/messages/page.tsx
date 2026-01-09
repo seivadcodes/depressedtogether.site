@@ -162,7 +162,8 @@ const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   setIsCameraOff,
   hangUp,
    incomingCall,        // ✅ now from context
-  setIncomingCall,     // ✅ essential
+  setIncomingCall, 
+  setCalleeName,    // ✅ essential
   acceptCall,          // ✅ needed for overlay
   rejectCall,          // ✅ needed for overlay
 } = useCall();
@@ -367,16 +368,44 @@ useEffect(() => {
     }
   }, [messages]);
 
-// 🔔 Listen for incoming call notifications via WebSocket
+/// 🔔 Listen for incoming call notifications via WebSocket (with debug)
 useEffect(() => {
-  if (!currentUserId) return;
+  // Only connect if currentUserId is a non-empty string (and looks like a UUID)
+  if (!currentUserId || typeof currentUserId !== 'string' || currentUserId.trim() === '') {
+    console.warn('CallCheck: currentUserId is invalid — skipping WebSocket setup', { currentUserId });
+    return;
+  }
 
-  const ws = new WebSocket(`ws://178.128.210.229:8084?userId=${currentUserId}`);
+  // Validate UUID format (Supabase user IDs are UUIDs)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(currentUserId)) {
+    console.error('CallCheck: currentUserId is not a valid UUID:', currentUserId);
+    toast.error('Invalid user session — cannot receive calls.');
+    return;
+  }
+
+  const wsUrl = `ws://178.128.210.229:8084?userId=${encodeURIComponent(currentUserId)}`;
+  console.log('CallCheck: Connecting WebSocket with URL:', wsUrl);
+
+  const ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    console.log('✅ CallCheck WebSocket connected successfully');
+  };
 
   ws.onmessage = (event) => {
+    console.log('CallCheck: Raw message received:', event.data); // 🔍 Critical for debugging
     try {
       const msg = JSON.parse(event.data);
+      console.log('CallCheck: Parsed message:', msg);
+
       if (msg.type === 'incoming_call') {
+        // Validate required fields
+        if (!msg.roomName || !msg.callerId || !msg.callerName || !msg.callType) {
+          console.warn('CallCheck: Incoming call missing required fields:', msg);
+          return;
+        }
+
         setIncomingCall({
           roomName: msg.roomName,
           callerId: msg.callerId,
@@ -384,21 +413,40 @@ useEffect(() => {
           callType: msg.callType,
           conversationId: msg.conversationId,
         });
-        // Ensure overlay shows
-        setCallState('idle');
+        setCallState('idle'); // Ensure popup shows
+        console.log('CallCheck: Popup triggered for incoming call');
       } else if (msg.type === 'call_ended') {
+        console.log('CallCheck: Received call_ended signal');
         hangUp();
+      } else {
+        console.warn('CallCheck: Unknown message type:', msg.type, msg);
       }
     } catch (e) {
-      console.error('CallCheck WebSocket message error:', e);
+      console.error('CallCheck: Failed to parse WebSocket message:', e, event.data);
     }
   };
 
-  ws.onopen = () => console.log('✅ Call WebSocket connected');
-  ws.onerror = (err) => console.error('CallCheck WebSocket error:', err);
-  ws.onclose = () => console.log('CallCheck WebSocket closed');
+  ws.onerror = (err) => {
+    console.error('CallCheck: WebSocket error:', err);
+    toast.error('Call system connection failed.');
+  };
 
-  return () => ws.close();
+  ws.onclose = (event) => {
+    console.log('CallCheck: WebSocket closed', {
+      code: event.code,
+      reason: event.reason,
+      wasClean: event.wasClean,
+    });
+    if (event.code === 4001) {
+      console.error('CallCheck: Server rejected due to invalid/missing userId');
+      toast.error('Call service unavailable: invalid user ID.');
+    }
+  };
+
+  return () => {
+    console.log('CallCheck: Cleaning up WebSocket');
+    ws.close();
+  };
 }, [currentUserId, setIncomingCall, setCallState, hangUp]);
 
 
@@ -893,6 +941,7 @@ const handleCallUser = async () => {
     return;
   }
   
+setCalleeName(selectedConversation.other_user_full_name);
   // Get caller's name
   const self = users.find(u => u.id === currentUserId);
   const fromUserName = self?.full_name || 'Anonymous';
@@ -907,17 +956,18 @@ const handleCallUser = async () => {
     
     // First, notify the other user
     const notifyRes = await fetch('/api/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        toUserId: selectedConversation.other_user_id,
-        fromUserId: currentUserId,
-        fromUserName,
-        roomName,
-        callType: 'audio',
-        conversationId: selectedConversation.id,
-      }),
-    });
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    type: 'initial_call',             // optional but helpful
+    toUserId: selectedConversation.other_user_id,
+    callerId: currentUserId,          // ✅
+    callerName: fromUserName,         // ✅
+    roomName,
+    callType: 'audio',
+    conversationId: selectedConversation.id,
+  }),
+});
     
     if (!notifyRes.ok) {
       console.warn('CallCheck: Notification sent but recipient may not be available');

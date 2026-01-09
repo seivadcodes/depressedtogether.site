@@ -23,6 +23,10 @@ type CallContextType = {
   
   callType: 'audio' | 'video';
   setCallType: (type: 'audio' | 'video') => void;
+
+  // 👇 Add this line
+  calleeName: string | null;
+  setCalleeName: (name: string | null) => void;
   
   // Incoming call
   incomingCall: IncomingCall | null;
@@ -60,7 +64,7 @@ type CallContextType = {
   // Timer controls
   startCallTimer: () => void;
   resetCallTimer: () => void;
-  
+
   // Call actions
   acceptCall: () => Promise<void>;
   rejectCall: () => void;
@@ -84,6 +88,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
+   const [calleeName, setCalleeName] = useState<string | null>(null);
 
   // Start the timer when call is connected
   const startCallTimer = () => {
@@ -232,6 +237,8 @@ useEffect(() => {
       value={{
         callState,
         setCallState,
+        calleeName, 
+        setCalleeName,
         callType,
         setCallType,
         callDuration,
