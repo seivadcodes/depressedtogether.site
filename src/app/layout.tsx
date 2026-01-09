@@ -1,3 +1,4 @@
+// src/app/layout.tsx
 'use client';
 
 import { Inter } from 'next/font/google';
@@ -10,10 +11,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { ReactNode, Suspense } from 'react';
 import { Toaster } from 'react-hot-toast';
 
-// ✅ Import both CallProvider and UI components
+// ✅ Call system
 import { CallProvider } from '@/context/CallContext';
-import CallNotificationPopup from '@/components/CallNotificationPopup';
-import CallOverlay from '@/components/calling/CallOverlay'; // ✅ Add this
+import CallOverlay from '@/components/calling/CallOverlay';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -28,21 +28,38 @@ export function LayoutContent({ children }: { children: ReactNode }) {
     );
   }
 
-  const currentUserId = user?.id || null;
+  // Don't render CallProvider if not logged in
+  if (!user) {
+    return (
+      <>
+        <Header />
+        <main className="flex-grow pb-16 md:pb-0 pt-16 md:pt-16">{children}</main>
+        <FooterNav />
+      </>
+    );
+  }
 
+  // Validate user.id before passing to CallProvider
+  if (!user.id || typeof user.id !== 'string' || user.id.trim() === '') {
+    console.error('Layout: Invalid user.id — skipping CallProvider', user.id);
+    return (
+      <>
+        <Header />
+        <main className="flex-grow pb-16 md:pb-0 pt-16 md:pt-16">{children}</main>
+        <FooterNav />
+      </>
+    );
+  }
+
+  // ✅ Only render CallProvider when we have a valid user
   return (
-    <CallProvider>
+    <CallProvider userId={user.id} fullName={user.user_metadata?.full_name || 'Anonymous'}>
       <Toaster />
-      
-      {/* ✅ Render both popup (for incoming alert) AND overlay (for active call) */}
-      <CallNotificationPopup />
-      <CallOverlay /> {/* 👈 This renders the actual call screen */}
-
-      <SignalingProvider currentUserId={currentUserId} />
+      <CallOverlay />
+      {/* Optional: keep SignalingProvider only if it does non-call work */}
+      {/* <SignalingProvider currentUserId={user.id} /> */}
       <Header />
-      <main className="flex-grow pb-16 md:pb-0 pt-16 md:pt-16">
-        {children}
-      </main>
+      <main className="flex-grow pb-16 md:pb-0 pt-16 md:pt-16">{children}</main>
       <FooterNav />
     </CallProvider>
   );

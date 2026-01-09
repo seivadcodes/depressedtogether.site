@@ -148,31 +148,19 @@ const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const {
   callState,
-  setCallState,
-  callType,
-  setCallType,
-  callRoom,
-  setCallRoom,
-  remoteAudioTrack,
-  setRemoteAudioTrack,
-  localAudioTrack,
-  setLocalAudioTrack,
-  isMuted,
-  setIsMuted,
-  isCameraOff,
-  setIsCameraOff,
+  incomingCall,
+  startCall,   // 👈 this is the key new function
+  acceptCall,
+  rejectCall,
   hangUp,
-   incomingCall,        // ✅ now from context
-  setIncomingCall, 
-  setCalleeName,    // ✅ essential
-  acceptCall,          // ✅ needed for overlay
-  rejectCall,          // ✅ needed for overlay
 } = useCall();
   
 
 
 
-
+useEffect(() => {
+  console.log('MessagesPage: currentUserId =', currentUserId);
+}, [currentUserId]);
 
 
   // Live-update other user's last_seen for accurate presence
@@ -369,114 +357,6 @@ useEffect(() => {
     }
   }, [messages]);
 
-/// 🔔 Listen for incoming call notifications via WebSocket (with debug)
-useEffect(() => {
-  // Only connect if currentUserId is a non-empty string (and looks like a UUID)
-  if (!currentUserId || typeof currentUserId !== 'string' || currentUserId.trim() === '') {
-    console.warn('CallCheck: currentUserId is invalid — skipping WebSocket setup', { currentUserId });
-    return;
-  }
-
-  // Validate UUID format (Supabase user IDs are UUIDs)
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(currentUserId)) {
-    console.error('CallCheck: currentUserId is not a valid UUID:', currentUserId);
-    toast.error('Invalid user session — cannot receive calls.');
-    return;
-  }
-
-  const wsUrl = `ws://178.128.210.229:8084?userId=${encodeURIComponent(currentUserId)}`;
-  console.log('CallCheck: Connecting WebSocket with URL:', wsUrl);
-
-  const ws = new WebSocket(wsUrl);
-
-  ws.onopen = () => {
-    console.log('✅ CallCheck WebSocket connected successfully');
-  };
-
-  ws.onmessage = (event) => {
-  console.log('CallCheck: Raw message received:', event.data); // 🔍 Critical for debugging
-  try {
-    const msg = JSON.parse(event.data);
-    console.log('CallCheck: Parsed message:', msg);
-
-    if (msg.type === 'incoming_call') {
-      // Validate required fields
-      if (!msg.roomName || !msg.callerId || !msg.callerName || !msg.callType) {
-        console.warn('CallCheck: Incoming call missing required fields:', msg);
-        return;
-      }
-
-      setIncomingCall({
-        roomName: msg.roomName,
-        callerId: msg.callerId,
-        callerName: msg.callerName,
-        callType: msg.callType,
-        conversationId: msg.conversationId,
-      });
-      setCallState('idle'); // Ensure popup shows
-      console.log('CallCheck: Popup triggered for incoming call');
-    } else if (msg.type === 'call_ended') {
-      console.log('CallCheck: Received call_ended signal');
-      hangUp();
-    } else if (msg.type === 'call_accepted') {
-      console.log('CallCheck: Call accepted by remote participant');
-      setCallState('connected');
-    } else {
-      console.warn('CallCheck: Unknown message type:', msg.type, msg);
-    }
-  } catch (e) {
-    console.error('CallCheck: Failed to parse WebSocket message:', e, event.data);
-  }
-};
-
-  ws.onerror = (err) => {
-    console.error('CallCheck: WebSocket error:', err);
-    toast.error('Call system connection failed.');
-  };
-
-  ws.onclose = (event) => {
-    console.log('CallCheck: WebSocket closed', {
-      code: event.code,
-      reason: event.reason,
-      wasClean: event.wasClean,
-    });
-    if (event.code === 4001) {
-      console.error('CallCheck: Server rejected due to invalid/missing userId');
-      toast.error('Call service unavailable: invalid user ID.');
-    }
-  };
-
-  return () => {
-    console.log('CallCheck: Cleaning up WebSocket');
-    ws.close();
-  };
-}, [currentUserId, setIncomingCall, setCallState, hangUp]);
-
-
-// 🔁 Sync call state with LiveKit participant presence
-useEffect(() => {
-  if (!callRoom || !currentUserId) return;
-
-  const handleParticipantConnected = (participant: RemoteParticipant) => {
-    // Only react to remote participants (not self)
-    if (participant.identity !== currentUserId) {
-      console.log('CallCheck: Remote participant joined — call answered!');
-      setCallState('connected'); // ✅ Transition to connected state
-      // Optional: remove listener after first join (for 1:1 calls)
-      callRoom.off('participantConnected', handleParticipantConnected);
-    }
-  };
-
-  // Only listen if we're in ringing/calling state
-  if (callState === 'calling' || callState === 'ringing') {
-    callRoom.on('participantConnected', handleParticipantConnected);
-  }
-
-  return () => {
-    callRoom.off('participantConnected', handleParticipantConnected);
-  };
-}, [callRoom, currentUserId, callState]);
 
 
   // Handle long press for reactions (only on others' messages)
@@ -965,85 +845,13 @@ const trackActivity = useCallback(() => {
     messageInputRef.current?.focus();
   };
 const handleCallUser = async () => {
-  if (!selectedConversation || !currentUserId) {
-    toast.error('Unable to start call: missing conversation or user');
+  if (!selectedConversation || !currentUserId || !currentUserId) {
+    toast.error('Unable to start call');
     return;
   }
-  
-setCalleeName(selectedConversation.other_user_full_name);
-  // Get caller's name
-  const self = users.find(u => u.id === currentUserId);
-  const fromUserName = self?.full_name || 'Anonymous';
-  
-  // Generate a unique room name
-  const roomName = `call-${selectedConversation.id}-${Date.now()}`;
-  
-  try {
-    // Set UI state to "calling" immediately
-    setCallState('calling');
-    setCallType('audio');
-    
-    // First, notify the other user
-    const notifyRes = await fetch('/api/notify', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    type: 'incoming_call',             // optional but helpful
-    toUserId: selectedConversation.other_user_id,
-    callerId: currentUserId,          // ✅
-    callerName: fromUserName,         // ✅
-    roomName,
-    callType: 'audio',
-    conversationId: selectedConversation.id,
-  }),
-});
-    
-    if (!notifyRes.ok) {
-      console.warn('CallCheck: Notification sent but recipient may not be available');
-      toast.success(`Calling ${selectedConversation.other_user_full_name}... (they might be offline)`);
-    }
-    
-    // Set state to ringing after notification is sent
-    setCallState('ringing');
-    toast.success(`Calling ${selectedConversation.other_user_full_name}...`);
-    
-    // Now join the room
-    const { room, localAudioTrack } = await joinCallRoom(roomName);
-    
-    // Update call state and tracks
-    setCallRoom(room);
-    setLocalAudioTrack(localAudioTrack);
-    
-    // Subscribe to remote tracks
-  room.on('trackSubscribed', (track: RemoteTrack) => {
-  console.log('📥 Subscribed to remote track:', track.kind);
-  if (track.kind === 'audio') {
-    setRemoteAudioTrack(track);
-    // Also transition to connected state if still in ringing/calling
-    if (callState === 'calling' || callState === 'ringing') {
-      setCallState('connected');
-    }
-  }
-});
-    
-    // After 30 seconds, automatically hang up if not connected
-    const timeoutId = setTimeout(() => {
-      if (callState === 'calling' || callState === 'ringing') {
-        toast.error('Call not answered');
-        hangUp();
-      }
-    }, 30000);
-    
-    // Don't clean up the timeout here - it should persist
-    // Instead, handle cleanup in a useEffect or in hangUp
-  } catch (err) {
-    console.error('CallCheck failed:', err);
-    toast.error('Failed to start call');
-    setCallState('ended');
-    setTimeout(() => {
-      setCallState('idle');
-    }, 1000);
-  }
+  const roomName = selectedConversation.id; // Use conversation ID as room name
+  startCall(selectedConversation.other_user_id, 'audio', roomName);
+  toast.success(`Calling ${selectedConversation.other_user_full_name}...`);
 };
   const scrollToMessage = (messageId: string) => {
     const messageElement = messageRefs.current.get(messageId);

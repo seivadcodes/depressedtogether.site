@@ -1,291 +1,212 @@
+// src/context/CallContext.tsx
 'use client';
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { Room } from 'livekit-client';
-import type { RemoteTrack, LocalTrack } from 'livekit-client';
-// Add these imports at the top of the file
+
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import toast from 'react-hot-toast';
-import type { LocalAudioTrack } from 'livekit-client';
 
-type CallState = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended';
+type CallState = 'idle' | 'ringing' | 'calling' | 'connected' | 'minimized';
+type CallType = 'audio' | 'video';
 
-type IncomingCall = {
-  roomName: string;
+interface IncomingCall {
   callerId: string;
   callerName: string;
-  callType: 'audio' | 'video';
-  conversationId: string;
-};
+  roomName: string;
+  callType: CallType;
+  conversationId?: string;
+}
 
-type CallContextType = {
-  // Call state
+interface CallContextType {
   callState: CallState;
-  setCallState: (state: CallState) => void;
-  
-  callType: 'audio' | 'video';
-  setCallType: (type: 'audio' | 'video') => void;
-
-  // 👇 Add this 
-  calleeName: string | null;
-  setCalleeName: (name: string | null) => void;
-  
-  // Incoming call
   incomingCall: IncomingCall | null;
-  setIncomingCall: (call: IncomingCall | null) => void;
-  
-  // Room & tracks
-  callRoom: Room | null;
-  setCallRoom: (room: Room | null) => void;
-  
-  // Audio tracks
-  remoteAudioTrack: RemoteTrack | null;
-  setRemoteAudioTrack: (track: RemoteTrack | null) => void;
-  
-  localAudioTrack: LocalTrack | null;
-  setLocalAudioTrack: (track: LocalTrack | null) => void;
-  
-  // Video tracks (for video calls)
-  remoteVideoTrack: RemoteTrack | null;
-  setRemoteVideoTrack: (track: RemoteTrack | null) => void;
-  
-  localVideoTrack: LocalTrack | null;
-  setLocalVideoTrack: (track: LocalTrack | null) => void;
-  
-  // Controls
-  isMuted: boolean;
-  setIsMuted: (muted: boolean) => void;
-  
-  isCameraOff: boolean;
-  setIsCameraOff: (off: boolean) => void;
-  
-  // Call duration (in seconds)
-  callDuration: number;
-  setCallDuration: (duration: number) => void;
-  
-  // Timer controls
-  startCallTimer: () => void;
-  resetCallTimer: () => void;
-
-  // Call actions
-  acceptCall: () => Promise<void>;
+  startCall: (toUserId: string, callType: CallType, roomName: string) => void;
+  acceptCall: () => void;
   rejectCall: () => void;
   hangUp: () => void;
-};
+  minimizeCall: () => void;
+  restoreCall: () => void;
+  currentCallToken: string | null;
+  currentCallRoom: string | null;
+}
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
 
-export function CallProvider({ children }: { children: ReactNode }) {
+export function CallProvider({
+  children,
+  userId,
+  fullName,
+}: {
+  children: ReactNode;
+  userId: string;
+  fullName: string;
+}) {
   const [callState, setCallState] = useState<CallState>('idle');
-  const [callType, setCallType] = useState<'audio' | 'video'>('audio');
-  const [callDuration, setCallDuration] = useState(0);
-  const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
-  
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
-  const [callRoom, setCallRoom] = useState<Room | null>(null);
-  const [remoteAudioTrack, setRemoteAudioTrack] = useState<RemoteTrack | null>(null);
-  const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
-  const [remoteVideoTrack, setRemoteVideoTrack] = useState<RemoteTrack | null>(null);
-  const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
-  
-  const [isMuted, setIsMuted] = useState(false);
-  const [isCameraOff, setIsCameraOff] = useState(false);
-   const [calleeName, setCalleeName] = useState<string | null>(null);
+  const [currentCallToken, setCurrentCallToken] = useState<string | null>(null);
+  const [currentCallRoom, setCurrentCallRoom] = useState<string | null>(null);
+  const [ws, setWs] = useState<WebSocket | null>(null);
+  const supabase = createClient();
 
-  // Start the timer when call is connected
-  const startCallTimer = () => {
-    resetCallTimer();
-    const interval = setInterval(() => {
-      setCallDuration(prev => prev + 1);
-    }, 1000);
-    setTimerInterval(interval);
-  };
-useEffect(() => {
-  if (localAudioTrack) {
-    // Type assertion with a more specific, known type
-    const audioTrack = localAudioTrack as LocalAudioTrack;
-    const mediaStreamTrack = audioTrack.mediaStreamTrack;
+  // 🔌 Setup WebSocket only if userId is valid
+  useEffect(() => {
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') return;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(userId)) return;
+    if (typeof window === 'undefined') return;
 
-    if (mediaStreamTrack && 'enabled' in mediaStreamTrack) {
-      mediaStreamTrack.enabled = !isMuted;
-    }
-  }
-}, [isMuted, localAudioTrack]);
-  // Reset the timer
-  const resetCallTimer = () => {
-    if (timerInterval) {
-      clearInterval(timerInterval);
-      setTimerInterval(null);
-    }
-    setCallDuration(0);
-  };
+    const wsUrl = `ws://178.128.210.229:8084?userId=${encodeURIComponent(userId)}`;
+    console.log('CallCheck: Connecting WebSocket with URL:', wsUrl);
 
-  // Cleanup on unmount
-useEffect(() => {
-  return () => {
-    resetCallTimer();
-    if (callRoom) {
-      callRoom.disconnect();
-    }
-  };
-}, [callRoom, resetCallTimer]); // Add resetCallTimer to dependencies
+    const socket = new WebSocket(wsUrl);
 
-  const acceptCall = async () => {
-  if (!incomingCall) return;
-  
-  try {
-    const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) {
-      toast.error('You must be logged in');
-      return;
-    }
+    socket.onopen = () => {
+      console.log(`✅ CallCheck: WebSocket OPEN for user: ${userId}`);
+    };
 
-    const currentUserId = session.user.id;
-    const userName = session.user.user_metadata?.full_name || session.user.email || 'Anonymous';
+    socket.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        console.log('CallCheck: Message:', msg);
 
-    // Set UI state
-    setCallType(incomingCall.callType);
-    setCallState('connecting');
-    
-    // Get token and connect to room
-    const tokenRes = await fetch('/api/livekit/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        room: incomingCall.roomName,
-        identity: currentUserId,
-        name: userName,
-      }),
-    });
-
-    if (!tokenRes.ok) {
-      const err = await tokenRes.json().catch(() => ({}));
-      throw new Error(err.error || 'Token failed');
-    }
-
-    const { token } = await tokenRes.json();
-    const room = new Room();
-    setCallRoom(room);
-    
-    // Subscribe to track events
-    room.on('trackSubscribed', (track: RemoteTrack) => {
-      console.log('📥 Subscribed to remote track:', track.kind);
-      if (track.kind === 'audio') {
-        setRemoteAudioTrack(track);
+        if (msg.type === 'incoming_call') {
+          setCallState('ringing');
+          setIncomingCall(msg);
+        } else if (msg.type === 'call_accepted') {
+          setCallState('connected');
+          setCurrentCallRoom(msg.roomName);
+          fetchLiveKitToken(msg.roomName, userId, fullName);
+        } else if (msg.type === 'call_rejected' || msg.type === 'call_ended') {
+          resetCall();
+        }
+      } catch (e) {
+        console.error('CallCheck: Parse error:', e);
       }
-    });
+    };
 
-    // Connect to room
-    await room.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
-    console.log('CallCheck: Callee joined room successfully');
+    socket.onclose = (e) => {
+      if (e.code !== 1000) {
+        console.warn('CallCheck: WebSocket closed abnormally', e.code, e.reason);
+      }
+    };
 
-    // ✅ NOTIFY CALLER THAT THE CALL WAS ACCEPTED
-    await fetch('/api/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'call_accepted',
-        toUserId: incomingCall.callerId,      // ← send to caller
-        roomName: incomingCall.roomName,
-      }),
-    });
+    socket.onerror = (e) => {
+      console.error('CallCheck: WebSocket error', e);
+    };
 
-    // Publish local audio track
-    let audioTrack: LocalTrack | null = null;
+    setWs(socket);
+
+    return () => {
+      socket.close();
+    };
+  }, [userId, fullName]);
+
+  const fetchLiveKitToken = async (roomName: string, identity: string, name: string) => {
     try {
-      const tracks = await room.localParticipant.createTracks({ audio: true });
-      if (tracks[0]) {
-        await room.localParticipant.publishTrack(tracks[0]);
-        audioTrack = tracks[0];
-        setLocalAudioTrack(audioTrack);
-      }
-    } catch (e) {
-      console.warn('Audio track creation failed:', e);
+      const res = await fetch('/api/livekit/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room: roomName, identity, name }),
+      });
+      if (!res.ok) throw new Error('Failed to get LiveKit token');
+      const { token } = await res.json();
+      setCurrentCallToken(token);
+    } catch (err) {
+      console.error('Token fetch failed:', err);
+      hangUp();
     }
+  };
 
-    // Set state to connected
-    setCallState('connected');
-    startCallTimer();
-    
-    // Clear incoming call state
+  const resetCall = useCallback(() => {
+    setCallState('idle');
     setIncomingCall(null);
-  } catch (error) {
-    console.error('Failed to accept call:', error);
-    toast.error(error instanceof Error ? error.message : 'Failed to join call');
-    setCallState('ended');
-    setTimeout(() => setCallState('idle'), 1000);
-  }
-};
+    setCurrentCallToken(null);
+    setCurrentCallRoom(null);
+  }, []);
+
+  const sendNotification = async (body: Record<string, unknown>) => {
+    try {
+      const res = await fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw await res.json();
+    } catch (err) {
+      console.error('Failed to send notification:', err);
+    }
+  };
+
+  const startCall = (toUserId: string, callType: CallType, roomName: string) => {
+    setCallState('calling');
+    sendNotification({
+      type: 'incoming_call',
+      toUserId,
+      callerId: userId,
+      callerName: fullName,
+      roomName,
+      callType,
+    });
+  };
+
+  const acceptCall = () => {
+    if (!incomingCall) return;
+    setCallState('connected');
+    setCurrentCallRoom(incomingCall.roomName);
+    fetchLiveKitToken(incomingCall.roomName, userId, fullName);
+    sendNotification({
+      type: 'call_accepted',
+      toUserId: incomingCall.callerId,
+      roomName: incomingCall.roomName,
+    });
+    setIncomingCall(null);
+  };
+
   const rejectCall = () => {
     if (!incomingCall) return;
-    
-    // Notify caller that call was rejected
-    console.log('Rejecting call from:', incomingCall.callerName);
-    
-    // Clear incoming call state
-    setIncomingCall(null);
-    setCallState('idle');
+    sendNotification({
+      type: 'call_rejected',
+      toUserId: incomingCall.callerId,
+      roomName: incomingCall.roomName,
+    });
+    resetCall();
   };
 
   const hangUp = () => {
-    if (callRoom) {
-      // Unpublish all tracks before disconnecting
-      Array.from(callRoom.localParticipant.trackPublications.values()).forEach((publication) => {
-        if (publication.track) {
-          callRoom.localParticipant.unpublishTrack(publication.track);
-        }
+    const otherUserId = incomingCall ? incomingCall.callerId : null;
+    if (otherUserId && currentCallRoom) {
+      sendNotification({
+        type: 'call_ended',
+        toUserId: otherUserId,
+        roomName: currentCallRoom,
       });
-      
-      callRoom.disconnect();
-      setCallRoom(null);
     }
-    
-    // Reset all call states
-    setRemoteAudioTrack(null);
-    setLocalAudioTrack(null);
-    setRemoteVideoTrack(null);
-    setLocalVideoTrack(null);
-    resetCallTimer();
-    setCallState('ended');
-    
-    // After a brief delay, return to idle state
-    setTimeout(() => {
-      setCallState('idle');
-    }, 1000);
+    resetCall();
+  };
+
+  const minimizeCall = () => {
+    if (callState === 'connected') {
+      setCallState('minimized');
+    }
+  };
+
+  const restoreCall = () => {
+    if (callState === 'minimized') {
+      setCallState('connected');
+    }
   };
 
   return (
     <CallContext.Provider
       value={{
         callState,
-        setCallState,
-        calleeName, 
-        setCalleeName,
-        callType,
-        setCallType,
-        callDuration,
-        setCallDuration,
-        startCallTimer,
-        resetCallTimer,
         incomingCall,
-        setIncomingCall,
-        callRoom,
-        setCallRoom,
-        remoteAudioTrack,
-        setRemoteAudioTrack,
-        localAudioTrack,
-        setLocalAudioTrack,
-        remoteVideoTrack,
-        setRemoteVideoTrack,
-        localVideoTrack,
-        setLocalVideoTrack,
-        isMuted,
-        setIsMuted,
-        isCameraOff,
-        setIsCameraOff,
+        startCall,
         acceptCall,
         rejectCall,
         hangUp,
+        minimizeCall,
+        restoreCall,
+        currentCallToken,
+        currentCallRoom,
       }}
     >
       {children}
@@ -296,7 +217,7 @@ useEffect(() => {
 export const useCall = () => {
   const context = useContext(CallContext);
   if (!context) {
-    throw new Error('useCall must be used within CallProvider');
+    throw new Error('useCall must be used within a CallProvider');
   }
   return context;
 };
