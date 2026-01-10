@@ -1,10 +1,9 @@
-// app/profile/[id]/page.tsx
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useCall } from '@/context/CallContext'; 
-import { setPendingConversation } from '@/lib/conversationHandoff';
+import { useCall } from '@/context/CallContext';
+import SendMessageOverlay from '@/components/modals/SendMessageOverlay';
 
 interface Profile {
   id: string;
@@ -29,11 +28,12 @@ const griefLabels: Record<string, string> = {
 export default function PublicProfile() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { startCall } = useCall(); // ✅ Your existing call system
+  const { startCall } = useCall();
 
   const [data, setData] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showMessageOverlay, setShowMessageOverlay] = useState(false);
 
   const isValidId = useMemo(() => {
     return id && typeof id === 'string' && id.trim() !== '';
@@ -97,7 +97,6 @@ export default function PublicProfile() {
     fetchProfile();
   }, [fetchProfile]);
 
-  // ✅ Call handler (unchanged)
   const handleCall = async () => {
     if (!data?.id) return;
     await startCall(
@@ -109,12 +108,10 @@ export default function PublicProfile() {
     );
   };
 
-  // ✅ Message handler — navigates to a chat/conversation page
   const handleMessage = () => {
-  if (!data?.id) return;
-  setPendingConversation(data.id);
-  router.push('/messages');
-};
+    if (!data?.id) return;
+    setShowMessageOverlay(true);
+  };
 
   if (loading) {
     return (
@@ -200,7 +197,7 @@ export default function PublicProfile() {
           A space to share and be heard.
         </p>
 
-        {/* ✅ Dual Action Buttons */}
+        {/* Dual Action Buttons */}
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={handleCall}
@@ -226,7 +223,7 @@ export default function PublicProfile() {
             style={{
               backgroundColor: '#10b981',
               color: 'white',
-              border: '-none',
+              border: 'none',
               borderRadius: '8px',
               padding: '0.6rem 1.25rem',
               fontSize: '1rem',
@@ -241,6 +238,16 @@ export default function PublicProfile() {
           </button>
         </div>
       </div>
+      
+      {/* Message Overlay */}
+      {showMessageOverlay && (
+        <SendMessageOverlay
+          isOpen={true}
+          targetUserId={data.id}
+          targetName={data.full_name || 'Anonymous'}
+          onClose={() => setShowMessageOverlay(false)}
+        />
+      )}
     </div>
   );
 }

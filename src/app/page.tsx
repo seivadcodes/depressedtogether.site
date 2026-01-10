@@ -17,20 +17,11 @@ const mockLiveActivities = [
 
 export default function HomePage() {
   const router = useRouter();
-  const [onlineCount, setOnlineCount] = useState(42);
+ 
   const [isConnecting, setIsConnecting] = useState(false);
   const heartbeatRef = useRef<HTMLDivElement>(null);
 
-  // Simulate online count fluctuation
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setOnlineCount((prev) => {
-        const fluctuation = Math.floor(Math.random() * 6) - 2;
-        return Math.max(10, prev + fluctuation);
-      });
-    }, 8000);
-    return () => clearInterval(interval);
-  }, []);
+ 
 
   // Manual heartbeat animation via JS (since inline styles can't do keyframes easily)
  useEffect(() => {
