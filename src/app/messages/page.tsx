@@ -1,7 +1,7 @@
 // app/messages/page.tsx
 'use client';
 
-import { useState, useEffect, useMemo, useRef, useCallback, useLayoutEffect } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import Picker from '@emoji-mart/react';
@@ -9,7 +9,6 @@ import data from '@emoji-mart/data';
 import { toast } from 'react-hot-toast';
 import CallOverlay from '@/components/calling/CallOverlay';
 import Image from 'next/image';
-
 
 
 
@@ -32,7 +31,6 @@ type ConversationSummary = {
   last_message_at?: string | null;
   other_user_last_seen?: string;
   other_user_is_online?: boolean;
-  unread_count?: number;
 };
 
 type Message = {
@@ -128,7 +126,6 @@ export default function MessagesPage() {
 
   const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-  const [isMarkingAsRead, setIsMarkingAsRead] = useState(false);
 
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -240,10 +237,7 @@ export default function MessagesPage() {
           user_id: userId,
         });
 
-        // In loadInitialData, after:
         setConversations(convData || []);
-
-
         setIsLoading(false);
       } catch (err) {
         console.error('Load error:', err);
@@ -360,13 +354,12 @@ export default function MessagesPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Replace your existing scroll effect with this:
-  useLayoutEffect(() => {
+  // Scroll to bottom when messages change
+  useEffect(() => {
     if (messagesEndRef.current && messages.length > 0) {
-      // Instant scroll on initial load — no animation = no visible jump
-      messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages.length]); // Only depend on length to avoid unnecessary calls
+  }, [messages]);
 
 
   useEffect(() => {
@@ -386,161 +379,113 @@ export default function MessagesPage() {
     };
 
     socket.onmessage = async (event) => {
-  try {
-    const data = JSON.parse(event.data.toString());
-    console.log('📩 Received message via WS:', data);
+      try {
+        const data = JSON.parse(event.data.toString());
+        console.log('📩 Received message via WS:', data);
 
-    // Handle user presence updates
-    if (data.type === 'user_presence') {
-      console.log(`👤 User presence update: ${data.userId} is ${data.isOnline ? 'online' : 'offline'}`);
-      // Update the conversations list with new presence data
-      setConversations(prev => prev.map(conv =>
-        conv.other_user_id === data.userId
-          ? {
-              ...conv,
-              other_user_is_online: data.isOnline,
-              other_user_last_seen: data.timestamp
-            }
-          : conv
-      ));
-      // If this is the currently selected conversation, update the local state too
-      if (selectedConversation?.other_user_id === data.userId) {
-        setOtherUserLastSeen(data.timestamp);
-        setOtherUserPresenceLoaded(true);
-      }
-      return;
-    }
+        // Handle user presence updates
+        if (data.type === 'user_presence') {
+          console.log(`👤 User presence update: ${data.userId} is ${data.isOnline ? 'online' : 'offline'}`);
 
-    // Handle message reactions
-    if (data.type === 'message_reaction' && data.conversationId === selectedConversation?.id) {
-      console.log(`👍 Reaction update for message: ${data.messageId}`);
-      // Update local state with the reaction
-      setMessages(prev => prev.map(msg => {
-        if (msg.id !== data.messageId) return msg;
-        // Clone reactions to avoid mutation
-        const updatedReactions = { ...msg.reactions };
-        if (data.action === 'add') {
-          // Add reaction for this user
-          updatedReactions[data.userId] = [
-            ...(updatedReactions[data.userId] || []),
-            data.emoji
-          ].filter((v, i, a) => a.indexOf(v) === i); // Remove duplicates
-        } else if (data.action === 'remove') {
-          // Remove reaction for this user
-          if (updatedReactions[data.userId]) {
-            updatedReactions[data.userId] = updatedReactions[data.userId]
-              .filter(emoji => emoji !== data.emoji);
-            // Clean up empty arrays
-            if (updatedReactions[data.userId].length === 0) {
-              delete updatedReactions[data.userId];
-            }
-          }
-        }
-        return { ...msg, reactions: updatedReactions };
-      }));
-      return;
-    }
-
-    // Handle typing notifications
-    if (data.type === 'user_typing' && data.conversationId === selectedConversation?.id) {
-      console.log(`⌨️ ${data.userId} is typing: ${data.isTyping}`);
-      setIsOtherUserTyping(data.isTyping);
-      return;
-    }
-
-    // Handle new messages - FIXED PAYLOAD STRUCTURE AND TIMING
-    if (data.type === 'new_message' && data.conversationId) {
-      console.log(`💬 New message in conversation: ${data.conversationId}`);
-      
-      // Extract message data from the payload (handle nested structure)
-      // Your logs show the data is nested under "me" object
-      const messageData = data.me || data;
-      const content = messageData.content;
-      const senderId = messageData.senderId;
-      const messageId = messageData.messageId || messageData.msgId;
-      const timestamp = messageData.timestamp || new Date().toISOString();
-      
-      // PROPER UNREAD COUNT HANDLING
-      const isCurrentConversation = selectedConversation?.id === data.conversationId;
-      
-      // Optimistic UI update for conversations list
-      if (!isCurrentConversation) {
-        // This is not the active conversation - increment unread count immediately
-        setConversations(prev => prev.map(conv => {
-          if (conv.id === data.conversationId) {
-            return {
-              ...conv,
-              unread_count: (conv.unread_count || 0) + 1,
-              last_message: content || conv.last_message,
-              last_message_at: timestamp
-            };
-          }
-          return conv;
-        }));
-      }
-
-      // Always fetch fresh conversations data to ensure accuracy
-      setTimeout(async () => {
-        console.log('🔄 Fetching conversations after delay to ensure DB consistency');
-        await fetchConversations();
-        
-        // If this is the active conversation, also reload its messages
-        if (isCurrentConversation) {
-          console.log('🔄 Reloading messages for active conversation');
-          await loadMessagesForConversation(data.conversationId);
-          
-          // MARK MESSAGES AS READ FOR ACTIVE CONVERSATION
-          if (currentUserId) {
-            try {
-              const { data: newUnreadCount, error: markError } = await supabase
-                .rpc('mark_messages_as_read', {
-                  p_conversation_id: data.conversationId,
-                  p_user_id: currentUserId,
-                });
-              
-              if (!markError) {
-                console.log('✅ Messages marked as read after new message');
-                
-                // Broadcast updated unread count
-                await supabase
-                  .channel(`user:${currentUserId}:messages`)
-                  .send({
-                    type: 'broadcast',
-                    event: 'unread_count_update',
-                    payload: { count: newUnreadCount || 0 },
-                  });
+          // Update the conversations list with new presence data
+          setConversations(prev => prev.map(conv =>
+            conv.other_user_id === data.userId
+              ? {
+                ...conv,
+                other_user_is_online: data.isOnline,
+                other_user_last_seen: data.timestamp
               }
-            } catch (err) {
-              console.error('Failed to mark messages as read:', err);
-            }
+              : conv
+          ));
+
+          // If this is the currently selected conversation, update the local state too
+          if (selectedConversation?.other_user_id === data.userId) {
+            setOtherUserLastSeen(data.timestamp);
+            setOtherUserPresenceLoaded(true);
           }
+          return;
         }
-      }, 300); // 300ms delay to allow DB to process
-      
-      return;
-    }
 
-    // Handle call notifications
-    if (data.type === 'incoming_call') {
-      console.log(`📞 Incoming call from ${data.callerName}`);
-      toast.success(`Incoming call from ${data.callerName}`);
-    }
+        // Add this inside your socket.onmessage handler
+        if (data.type === 'message_reaction' && data.conversationId === selectedConversation?.id) {
+          console.log(`👍 Reaction update for message: ${data.messageId}`);
 
-    if (data.type === 'call_accepted') {
-      console.log(`✅ Call accepted for room: ${data.roomName}`);
-    }
+          // Update local state with the reaction
+          setMessages(prev => prev.map(msg => {
+            if (msg.id !== data.messageId) return msg;
 
-    if (data.type === 'call_ended') {
-      console.log(`📴 Call ended for room: ${data.roomName}`);
-    }
+            // Clone reactions to avoid mutation
+            const updatedReactions = { ...msg.reactions };
 
-  } catch (error) {
-    console.error('Error processing WebSocket message:', error);
-    if (error instanceof Error) {
-      console.error('Error details:', error.message);
-    }
-  }
-};
+            if (data.action === 'add') {
+              // Add reaction for this user
+              updatedReactions[data.userId] = [
+                ...(updatedReactions[data.userId] || []),
+                data.emoji
+              ].filter((v, i, a) => a.indexOf(v) === i); // Remove duplicates
+            } else if (data.action === 'remove') {
+              // Remove reaction for this user
+              if (updatedReactions[data.userId]) {
+                updatedReactions[data.userId] = updatedReactions[data.userId]
+                  .filter(emoji => emoji !== data.emoji);
+
+                // Clean up empty arrays
+                if (updatedReactions[data.userId].length === 0) {
+                  delete updatedReactions[data.userId];
+                }
+              }
+            }
+
+            return { ...msg, reactions: updatedReactions };
+          }));
+
+          return;
+        }
+
+        // Handle typing notifications
+        if (data.type === 'user_typing' && data.conversationId === selectedConversation?.id) {
+          console.log(`⌨️ ${data.userId} is typing: ${data.isTyping}`);
+          setIsOtherUserTyping(data.isTyping);
+          return;
+        }
+
+        // Handle new messages
+        if (data.type === 'new_message' && data.conversationId) {
+          console.log(`💬 New message in conversation: ${data.conversationId}`);
+          // Only fetch new messages if this is the active conversation
+          if (selectedConversation?.id === data.conversationId) {
+            await loadMessagesForConversation(data.conversationId);
+          } else {
+            // Refresh conversation list to update last message
+            fetchConversations();
+          }
+          return;
+        }
+
+        // Handle call notifications
+        if (data.type === 'incoming_call') {
+          console.log(`📞 Incoming call from ${data.callerName}`);
+          toast.success(`Incoming call from ${data.callerName}`);
+          // Handle call UI logic here
+        }
+
+        if (data.type === 'call_accepted') {
+          console.log(`✅ Call accepted for room: ${data.roomName}`);
+          // Handle call accepted logic
+        }
+
+        if (data.type === 'call_ended') {
+          console.log(`📴 Call ended for room: ${data.roomName}`);
+          // Handle call ended logic
+        }
+
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+        if (error instanceof Error) {
+          console.error('Error details:', error.message);
+        }
+      }
+    };
 
     socket.onerror = (error) => {
       console.error('WebSocket error:', error);
@@ -663,83 +608,6 @@ export default function MessagesPage() {
     };
   }, [currentUserId, supabase]);
 
-  // Add this useEffect near your other channel listeners
-  useEffect(() => {
-    if (!currentUserId) return;
-
-    // Listen for global unread count updates (already exists in Header)
-    // But also refetch conversations when ANY message is marked as read
-    const channel = supabase
-      .channel(`user:${currentUserId}:messages`)
-      .on('broadcast', { event: 'unread_count_update' }, async (payload) => {
-  console.log('📥 Global unread count updated:', payload.payload.count);
-  if (!isMarkingAsRead) {
-    await fetchConversations();
-  } else {
-    console.log('⚠️ Skipped unread_count_update refetch due to marking lock');
-  }
-})
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [currentUserId, supabase]);
-
-
-
-
-
-  // ADD THIS TO YOUR EXISTING USE EFFECTS
-  useEffect(() => {
-    if (!currentUserId) return;
-
-    // Subscribe to conversation updates
-    const conversationsChannel = supabase
-      .channel(`conversations:${currentUserId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `receiver_id=eq.${currentUserId}`
-      }, async (payload) => {
-        console.log('📩 New message inserted - updating conversations');
-        await fetchConversations();
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'messages',
-        filter: `receiver_id=eq.${currentUserId}`
-      }, async (payload) => {
-        console.log('🔄 Message updated - updating conversations');
-        await fetchConversations();
-      })
-      .subscribe();
-
-    // Subscribe to message read status changes
-    const messageReadsChannel = supabase
-      .channel(`message_reads:${currentUserId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'message_reads',
-        filter: `user_id=eq.${currentUserId}`
-      }, async (payload) => {
-        console.log('✅ Message marked as read - updating conversations');
-        await fetchConversations();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(conversationsChannel);
-      supabase.removeChannel(messageReadsChannel);
-    };
-  }, [currentUserId, supabase]);
-
-
-
-
   // Handle when user starts typing
   const handleUserTyping = useCallback(() => {
     if (!selectedConversation || !currentUserId) return;
@@ -750,7 +618,7 @@ export default function MessagesPage() {
       toUserId: selectedConversation.other_user_id,
       conversationId: selectedConversation.id,
       isTyping: true,
-      userId: currentUserId // 
+      userId: currentUserId // 👈 Add this missing field
     });
 
     // Clear existing timeout
@@ -765,7 +633,7 @@ export default function MessagesPage() {
         toUserId: selectedConversation.other_user_id,
         conversationId: selectedConversation.id,
         isTyping: false,
-        userId: currentUserId 
+        userId: currentUserId // 👈 Add this missing field
       });
     }, 2500);
   }, [currentUserId, selectedConversation]);
@@ -919,85 +787,54 @@ export default function MessagesPage() {
   };
 
   const openConversation = async (conv: ConversationSummary) => {
-  if (!currentUserId) return;
+    if (!currentUserId) return;
 
-  // 🔒 Start marking-as-read flow
-  setIsMarkingAsRead(true);
+    setSelectedConversation(conv);
+    setMessages([]);
+    setReplyingTo(null);
+    setShowConversationMenu(null);
 
-  setSelectedConversation(conv);
-  setMessages([]);
-  setReplyingTo(null);
-  setShowConversationMenu(null);
-
-  try {
-    // Optimistic UI: clear unread badge immediately
-    setConversations(prev =>
-      prev.map(c => (c.id === conv.id ? { ...c, unread_count: 0 } : c))
-    );
-
-    // Actual DB update
-    const { data: newUnreadCount, error: markError } = await supabase
-      .rpc('mark_messages_as_read', {
-        p_conversation_id: conv.id,
-        p_user_id: currentUserId,
-      });
-
-    if (markError) {
-      console.error('❌ [RPC ERROR] mark_messages_as_read failed:', markError);
-      throw markError;
+    if (isMobileView) {
+      setShowChatView(true);
     }
 
-    // Broadcast update
-    await supabase
-      .channel(`user:${currentUserId}:messages`)
-      .send({
-        type: 'broadcast',
-        event: 'unread_count_update',
-        payload: { count: newUnreadCount || 0 },
+    try {
+      // Get all messages, including those marked as deleted
+      const { data: allMessages, error: msgError } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          sender:sender_id (
+            full_name,
+            avatar_url
+          )
+        `)
+        .eq('conversation_id', conv.id)
+        .order('created_at', { ascending: true });
+
+      if (msgError) throw msgError;
+
+      // Filter messages based on deletion status
+      const filteredMessages = (allMessages || []).filter(msg => {
+        // If message is deleted for everyone, always show it as tombstone
+        if (msg.deleted_for_everyone) {
+          return true;
+        }
+
+        // If message is deleted for me, hide it
+        if (msg.deleted_for_me?.includes(currentUserId)) {
+          return false;
+        }
+
+        return true;
       });
 
-  } catch (err) {
-    console.error('💥 [ERROR] Failed to mark messages as read:', err);
-    // Roll back optimistic update
-    setConversations(prev =>
-      prev.map(c => (c.id === conv.id ? { ...c, unread_count: conv.unread_count } : c))
-    );
-    toast.error('Failed to update read status');
-  } finally {
-    // 🔓 Always release the lock
-    setIsMarkingAsRead(false);
-  }
-
-  // Mobile view logic
-  if (isMobileView) {
-    setShowChatView(true);
-  }
-
-  // Load messages (outside try/catch so it always runs)
-  try {
-    const { data: allMessages, error: msgError } = await supabase
-      .from('messages')
-      .select(`
-        *,
-        sender:sender_id (full_name, avatar_url)
-      `)
-      .eq('conversation_id', conv.id)
-      .order('created_at', { ascending: true });
-
-    if (msgError) throw msgError;
-
-    const filteredMessages = (allMessages || []).filter(msg => {
-      if (msg.deleted_for_everyone) return false;
-      if (msg.deleted_for_me?.includes(currentUserId)) return false;
-      return true;
-    });
-
-    setMessages(filteredMessages);
-  } catch (err) {
-    console.error('Error loading messages:', err);
-    toast.error('Failed to load conversation');
-  }
-};
+      setMessages(filteredMessages);
+    } catch (err) {
+      console.error('Error loading messages:', err);
+      toast.error('Failed to load conversation');
+    }
+  };
 
 
   const handleStartNewConversation = useCallback(async (userId: string) => {
@@ -1076,11 +913,13 @@ export default function MessagesPage() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation || !currentUserId) return;
+
     trackActivity();
     const content = newMessage.trim();
     setNewMessage('');
     setIsSending(true);
     setReplyingTo(null);
+
     const tempId = `temp-${Date.now()}`;
     const now = new Date().toISOString();
 
@@ -1095,6 +934,7 @@ export default function MessagesPage() {
       conversation_id: selectedConversation.id,
       reactions: {},
     };
+
     setMessages(prev => [...prev, optimisticMessage]);
 
     try {
@@ -1104,7 +944,6 @@ export default function MessagesPage() {
         .insert({
           conversation_id: selectedConversation.id,
           sender_id: currentUserId,
-          receiver_id: selectedConversation.other_user_id, // ADD THIS
           content,
           reply_to: replyingTo?.id || null,
         })
@@ -1130,11 +969,12 @@ export default function MessagesPage() {
         last_message: content,
         last_message_at: now
       };
+
       setConversations(prev => prev.map(conv =>
-        conv.id === selectedConversation.id ? { ...conv, ...updatedConv, unread_count: 0 } : conv
+        conv.id === selectedConversation.id ? { ...conv, ...updatedConv } : conv
       ));
 
-      // Send real-time notification to the recipient - CORRECT PAYLOAD
+      // Send real-time notification to the recipient
       await sendNotification({
         type: 'new_message',
         toUserId: selectedConversation.other_user_id,
@@ -1188,25 +1028,20 @@ export default function MessagesPage() {
     }
   };
 
- const fetchConversations = async () => {
-  if (!currentUserId) return;
-  
-  // ⛔ Skip if we're in the middle of marking as read
-  if (isMarkingAsRead) {
-    console.log('⚠️ Skipping fetchConversations due to isMarkingAsRead lock');
-    return;
-  }
+  const fetchConversations = async () => {
+    if (!currentUserId) return;
 
-  try {
-    const { data: convData, error } = await supabase.rpc('get_user_conversations', {
-      user_id: currentUserId,
-    });
-    if (error) throw error;
-    setConversations(convData || []);
-  } catch (err) {
-    console.error('Error fetching conversations:', err);
-  }
-};
+    try {
+      const { data: convData, error } = await supabase.rpc('get_user_conversations', {
+        user_id: currentUserId,
+      });
+
+      if (error) throw error;
+      setConversations(convData || []);
+    } catch (err) {
+      console.error('Error fetching conversations:', err);
+    }
+  };
 
 
   // Mark user as active
@@ -2616,197 +2451,163 @@ export default function MessagesPage() {
                   </p>
                 </div>
               ) : (
-                conversations.map(conv => {
-                  const hasUnread = (conv.unread_count || 0) > 0;
-                  console.log('🔍 Rendering conv:', conv.id, 'unread_count:', conv.unread_count, 'hasUnread:', hasUnread);
-                  const isSelected = selectedConversation?.id === conv.id;
-
-                  return (
-                    <div
-                      key={conv.id}
-                      onClick={() => openConversation(conv)}
-                      style={{
-                        padding: isMobileView ? '12px 16px' : '16px 20px',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        gap: '12px',
-                        borderBottom: '1px solid #f1f5f6',
-                        backgroundColor: isSelected ? '#f0f4ff' : (hasUnread ? '#f8fafc' : 'transparent'),
-                        position: 'relative',
-                        borderLeft: hasUnread && !isSelected ? '3px solid #4f46e5' : '3px solid transparent',
-                      }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = isSelected ? '#f0f4ff' : (hasUnread ? '#f1f8ff' : '#f8fafc')}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = isSelected ? '#f0f4ff' : (hasUnread ? '#f8fafc' : 'transparent')}
-                    >
-                      {conv.other_user_avatar_url ? (
-                        <Image
-                          src={conv.other_user_avatar_url}
-                          alt=""
-                          width={isMobileView ? 44 : 50}
-                          height={isMobileView ? 44 : 50}
-                          style={{
-                            borderRadius: '50%',
-                            objectFit: 'cover',
-                            border: '2px solid #e2e8f0',
-                            opacity: hasUnread ? 1 : 0.8,
-                          }}
-                        />
-                      ) : (
-                        <div style={{
-                          width: isMobileView ? '44px' : '50px',
-                          height: isMobileView ? '44px' : '50px',
+                conversations.map(conv => (
+                  <div
+                    key={conv.id}
+                    onClick={() => openConversation(conv)}
+                    style={{
+                      padding: isMobileView ? '12px 16px' : '16px 20px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      gap: '12px',
+                      borderBottom: '1px solid #f1f5f6',
+                      backgroundColor: selectedConversation?.id === conv.id ? '#f0f4ff' : 'transparent',
+                      position: 'relative'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = selectedConversation?.id === conv.id ? '#f0f4ff' : '#f8fafc'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedConversation?.id === conv.id ? '#f0f4ff' : 'transparent'}
+                  >
+                    {conv.other_user_avatar_url ? (
+                      <Image
+                        src={conv.other_user_avatar_url}
+                        alt=""
+                        width={isMobileView ? 44 : 50}
+                        height={isMobileView ? 44 : 50}
+                        style={{
                           borderRadius: '50%',
-                          backgroundColor: '#e0e7ff',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: '600',
-                          fontSize: isMobileView ? '16px' : '18px',
-                          color: '#4f46e5',
-                          opacity: hasUnread ? 1 : 0.8,
-                        }}>
-                          {getInitials(conv.other_user_full_name)}
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                          objectFit: 'cover',
+                          border: '2px solid #e2e8f0'
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: isMobileView ? '44px' : '50px',
+                        height: isMobileView ? '44px' : '50px',
+                        borderRadius: '50%',
+                        backgroundColor: '#e0e7ff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: '600',
+                        fontSize: isMobileView ? '16px' : '18px',
+                        color: '#4f46e5'
+                      }}>
+                        {getInitials(conv.other_user_full_name)}
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: isMobileView ? '15px' : '16px',
+                        fontWeight: '600',
+                        color: '#1e293b',
+                        marginBottom: '4px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}>
+                        {conv.other_user_full_name}
+                        {isUserOnline(conv.other_user_last_seen) && (
+                          <span style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: '#10b981',
+                            display: 'inline-block'
+                          }}></span>
+                        )}
+                      </div>
+                      {conv.last_message && (
                         <div style={{
-                          fontSize: isMobileView ? '15px' : '16px',
-                          fontWeight: hasUnread ? '700' : '600',
-                          color: '#1e293b',
-                          marginBottom: '4px',
+                          fontSize: isMobileView ? '13px' : '14px',
+                          color: '#64748b',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
+                          marginBottom: '2px'
                         }}>
-                          {conv.other_user_full_name}
-                          {isUserOnline(conv.other_user_last_seen) && (
-                            <span style={{
-                              width: '8px',
-                              height: '8px',
-                              borderRadius: '50%',
-                              backgroundColor: '#10b981',
-                              display: 'inline-block'
-                            }}></span>
-                          )}
-                        </div>
-                        {conv.last_message && (
-                          <div style={{
-                            fontSize: isMobileView ? '13px' : '14px',
-                            color: hasUnread ? '#1e293b' : '#64748b',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            marginBottom: '2px',
-                            fontWeight: hasUnread ? '500' : 'normal'
-                          }}>
-                            {conv.last_message === '[Message deleted]' ? 'Message deleted' : conv.last_message}
-                          </div>
-                        )}
-                        {conv.last_message_at && (
-                          <div style={{
-                            fontSize: isMobileView ? '11px' : '12px',
-                            color: '#94a3b8',
-                            marginTop: '2px'
-                          }}>
-                            {formatDate(conv.last_message_at)}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Unread message badge */}
-                      {hasUnread && (
-                        <div style={{
-                          position: 'absolute',
-                          top: isMobileView ? '18px' : '20px',
-                          right: isMobileView ? '16px' : '20px',
-                          backgroundColor: '#4f46e5',
-                          color: 'white',
-                          borderRadius: '9999px',
-                          fontSize: '11px',
-                          minWidth: '18px',
-                          height: '18px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 'bold',
-                          padding: '0 4px',
-                          zIndex: 2,
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
-                        }}>
-                          {conv.unread_count && conv.unread_count > 9 ? '9+' : conv.unread_count}
+                          {conv.last_message === '[Message deleted]' ? 'Message deleted' : conv.last_message}
                         </div>
                       )}
-
-                      {/* Conversation Menu Button */}
-                      <div className="conversation-menu-container" style={{ position: 'relative' }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowConversationMenu(showConversationMenu === conv.id ? null : conv.id);
-                          }}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#94a3b8',
-                            cursor: 'pointer',
-                            fontSize: '20px',
-                            padding: '4px',
-                            borderRadius: '4px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                          }}
-                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                        >
-                          ⋮
-                        </button>
-
-                        {/* Conversation Menu Dropdown */}
-                        {showConversationMenu === conv.id && (
-                          <div style={{
-                            position: 'absolute',
-                            top: '100%',
-                            right: 0,
-                            backgroundColor: 'white',
-                            borderRadius: '8px',
-                            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                            zIndex: 10,
-                            minWidth: '160px',
-                            overflow: 'hidden'
-                          }}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setShowDeleteConfirm(conv.id);
-                              }}
-                              style={{
-                                width: '100%',
-                                padding: '12px 16px',
-                                textAlign: 'left',
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: '#ef4444',
-                                fontSize: '14px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                              }}
-                              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
-                              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                            >
-                              🗑️ Delete Conversation
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                      {conv.last_message_at && (
+                        <div style={{
+                          fontSize: isMobileView ? '11px' : '12px',
+                          color: '#94a3b8',
+                          marginTop: '2px'
+                        }}>
+                          {formatDate(conv.last_message_at)}
+                        </div>
+                      )}
                     </div>
-                  );
-                })
+
+                    {/* Conversation Menu Button */}
+                    <div className="conversation-menu-container" style={{ position: 'relative' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowConversationMenu(showConversationMenu === conv.id ? null : conv.id);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#94a3b8',
+                          cursor: 'pointer',
+                          fontSize: '20px',
+                          padding: '4px',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
+                        ⋮
+                      </button>
+
+                      {/* Conversation Menu Dropdown */}
+                      {showConversationMenu === conv.id && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          backgroundColor: 'white',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                          zIndex: 10,
+                          minWidth: '160px',
+                          overflow: 'hidden'
+                        }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowDeleteConfirm(conv.id);
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '12px 16px',
+                              textAlign: 'left',
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: '#ef4444',
+                              fontSize: '14px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          >
+                            🗑️ Delete Conversation
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>
