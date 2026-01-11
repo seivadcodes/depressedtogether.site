@@ -1,38 +1,53 @@
-import { NextRequest } from 'next/server';
+// app/api/notify/route.ts
+import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type } = body;
+    console.log('📥 API received notification:', body);
 
-    // Handle different notification types with appropriate validation
-    if (type === 'call_accepted' || type === 'call_ended') {
-      const { toUserId, roomName } = body;
-      if (!toUserId || !roomName) {
-        return Response.json(
-          { error: 'Missing required fields for call event' },
-          { status: 400 }
-        );
-      }
-    } else {
-      // Initial call notification validation
-      const {
-        toUserId,
-        callerId,
-        callerName,
-        roomName,
-        callType,
-      } = body;
+    // Handle broadcast notifications (presence updates) - more flexible check
+    const isBroadcast = body.broadcast === true || body.broadcast === "true";
+    const isPresenceType = body.type?.toLowerCase() === 'user_presence';
+    
+    if (isBroadcast && isPresenceType) {
+      console.log(`📤 Broadcasting presence update for user: ${body.userId}`);
+      
+      // Forward to signaling server with broadcast flag
+      const signalingRes = await fetch('http://178.128.210.229:8084/notify-broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
 
-      if (!toUserId || !callerId || !callerName || !roomName || !callType) {
-        return Response.json(
-          { error: 'Missing required fields for initial call' },
-          { status: 400 }
-        );
+      if (!signalingRes.ok) {
+        const errorData = await signalingRes.json();
+        console.error('❌ Broadcast signaling error:', errorData);
+        return NextResponse.json({ 
+          error: 'Failed to broadcast notification',
+          details: errorData
+        }, { status: 500 });
       }
+
+      const result = await signalingRes.json();
+      console.log(`✅ Successfully broadcast to ${result.delivered} connections`);
+      
+      return NextResponse.json({ 
+        ok: true,
+        delivered: result.delivered,
+        connections: result.connections
+      });
     }
 
-    // Forward notification to signaling server
+    // Handle regular notifications to specific users
+    const { toUserId, type, ...data } = body;
+    
+    if (!toUserId) {
+      console.error('❌ Missing toUserId in notification');
+      return NextResponse.json({ error: 'Missing toUserId' }, { status: 400 });
+    }
+
+    // Forward to signaling server
     const signalingRes = await fetch('http://178.128.210.229:8084/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -41,19 +56,24 @@ export async function POST(request: NextRequest) {
 
     if (!signalingRes.ok) {
       const errorData = await signalingRes.json();
-      console.error('Signaling server error:', errorData);
-      return Response.json(
-        { error: 'Failed to notify signaling server' },
-        { status: 500 }
-      );
+      console.error('❌ Signaling server error:', errorData);
+      return NextResponse.json({ 
+        error: 'Failed to notify signaling server',
+        details: errorData
+      }, { status: 500 });
     }
 
-    return Response.json({ ok: true });
+    console.log(`✅ Notification delivered to user: ${toUserId}`);
+    return NextResponse.json({ ok: true });
+    
   } catch (err) {
-    console.error('Notify API error:', err);
-    return Response.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    console.error('🔥 Notify API error:', err);
+    if (err instanceof Error) {
+      return NextResponse.json({ 
+        error: 'Internal server error',
+        details: err.message
+      }, { status: 500 });
+    }
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

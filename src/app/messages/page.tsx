@@ -123,7 +123,12 @@ export default function MessagesPage() {
   const [otherUserLastSeen, setOtherUserLastSeen] = useState<string | null>(null);
 
   const [otherUserPresenceLoaded, setOtherUserPresenceLoaded] = useState(false);
-  
+
+  const [wsConnected, setWsConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [uploading, setUploading] = useState(false);
   const [showConversationMenu, setShowConversationMenu] = useState<string | null>(null);
@@ -134,73 +139,73 @@ export default function MessagesPage() {
   // New state for long press/reactions
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
-  const [reactionPickerPosition, setReactionPickerPosition] = useState<{x: number, y: number} | null>(null);
-  
+  const [reactionPickerPosition, setReactionPickerPosition] = useState<{ x: number, y: number } | null>(null);
+
   // Mobile view state
   const [isMobileView, setIsMobileView] = useState(false);
   const [showChatView, setShowChatView] = useState(false);
-  
+
   const messageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  
+
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
 
   const {
- 
-  startCall,   // 👈 this is the key new function
-  
-} = useCall();
-  
+
+    startCall,   // 👈 this is the key new function
+
+  } = useCall();
 
 
 
-useEffect(() => {
-  console.log('MessagesPage: currentUserId =', currentUserId);
-}, [currentUserId]);
+
+  useEffect(() => {
+    console.log('MessagesPage: currentUserId =', currentUserId);
+  }, [currentUserId]);
 
 
   // Live-update other user's last_seen for accurate presence
-useEffect(() => {
-  if (!selectedConversation?.other_user_id) {
-    setOtherUserLastSeen(null);
-    setOtherUserPresenceLoaded(true); // no user = ready
-    return;
-  }
-
-  const fetchOtherUserStatus = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('last_seen')
-        .eq('id', selectedConversation.other_user_id)
-        .single();
-
-      if (error) {
-        setOtherUserLastSeen(null);
-      } else {
-        setOtherUserLastSeen(data.last_seen);
-      }
-    } catch (err) {
-      console.error('Error fetching other user status:', err);
+  useEffect(() => {
+    if (!selectedConversation?.other_user_id) {
       setOtherUserLastSeen(null);
-    } finally {
-      setOtherUserPresenceLoaded(true); // ✅ mark as loaded even on error
+      setOtherUserPresenceLoaded(true); // no user = ready
+      return;
     }
-  };
 
-  fetchOtherUserStatus(); // initial fetch
-  const intervalId = setInterval(fetchOtherUserStatus, 10000);
-  return () => clearInterval(intervalId);
-}, [selectedConversation?.other_user_id, supabase]);
+    const fetchOtherUserStatus = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('last_seen')
+          .eq('id', selectedConversation.other_user_id)
+          .single();
+
+        if (error) {
+          setOtherUserLastSeen(null);
+        } else {
+          setOtherUserLastSeen(data.last_seen);
+        }
+      } catch (err) {
+        console.error('Error fetching other user status:', err);
+        setOtherUserLastSeen(null);
+      } finally {
+        setOtherUserPresenceLoaded(true); // ✅ mark as loaded even on error
+      }
+    };
+
+    fetchOtherUserStatus(); // initial fetch
+    const intervalId = setInterval(fetchOtherUserStatus, 10000);
+    return () => clearInterval(intervalId);
+  }, [selectedConversation?.other_user_id, supabase]);
   // Check for mobile view
   useEffect(() => {
     const checkMobile = () => {
       setIsMobileView(window.innerWidth <= 768);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
@@ -220,7 +225,7 @@ useEffect(() => {
         setCurrentUserId(userId);
 
         // Load other users (exclude current)
-        const { data: profiles,  } = await supabase
+        const { data: profiles, } = await supabase
           .from('profiles')
           .select('id, full_name, avatar_url, last_seen, is_online')
           .neq('id', userId);
@@ -228,7 +233,7 @@ useEffect(() => {
         setUsers(profiles || []);
 
         // Load conversations
-        const { data: convData,} = await supabase.rpc('get_user_conversations', {
+        const { data: convData, } = await supabase.rpc('get_user_conversations', {
           user_id: userId,
         });
 
@@ -245,49 +250,58 @@ useEffect(() => {
   }, [router, supabase]);
 
   // Polling for new messages
- // Instead, add WebSocket listeners
-useEffect(() => {
-  if (!selectedConversation?.id || !currentUserId) return;
-  
-  // Setup WebSocket listener
-  const ws = new WebSocket(`ws://${window.location.hostname}:8084?userId=${currentUserId}&conversationId=${selectedConversation.id}`);
-  
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      
-      if (data.type === 'new_message' && data.conversationId === selectedConversation.id) {
-        // Add new message to state if not already present
-        setMessages(prev => {
-          if (prev.some(msg => msg.id === data.message.id)) return prev;
-          
-          // Handle deleted messages appropriately
-          const msg = data.message;
-          if (msg.deleted_for_everyone) return [...prev, msg];
-          if (msg.deleted_for_me?.includes(currentUserId)) return prev;
-          
-          return [...prev, msg];
-        });
+  useEffect(() => {
+    if (!selectedConversation || !currentUserId) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const { data: newMessages, error } = await supabase
+          .from('messages')
+          .select(`
+            *,
+            sender:sender_id (
+              full_name,
+              avatar_url
+            )
+          `)
+          .eq('conversation_id', selectedConversation.id)
+          .gt('created_at', messages[messages.length - 1]?.created_at || '1970-01-01')
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+
+        if (newMessages && newMessages.length > 0) {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const filteredNew = newMessages.filter(msg => !existingIds.has(msg.id));
+
+            // Filter based on deletion status
+            const validNewMessages = filteredNew.filter(msg => {
+              if (msg.deleted_for_everyone) return true;
+              if (msg.deleted_for_me?.includes(currentUserId)) return false;
+              return true;
+            });
+
+            return [...prev, ...validNewMessages];
+          });
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
       }
-      
-      // Handle other event types (message_deleted, reaction_added, etc)
-    } catch (error) {
-      console.error('WebSocket message error:', error);
-    }
-  };
-  
-  return () => ws.close();
-}, [selectedConversation?.id, currentUserId]);
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [selectedConversation, messages, currentUserId, supabase]);
 
   // Update user online status on page visibility
   useEffect(() => {
     const updateOnlineStatus = async () => {
       if (!currentUserId) return;
-      
+
       try {
         await supabase
           .from('profiles')
-          .update({ 
+          .update({
             is_online: true,
             last_seen: new Date().toISOString()
           })
@@ -304,7 +318,7 @@ useEffect(() => {
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     // Initial status update
     if (currentUserId) {
       updateOnlineStatus();
@@ -322,15 +336,15 @@ useEffect(() => {
       if (emojiPicker && !emojiPicker.contains(event.target as Node)) {
         setShowEmojiPicker(false);
       }
-      
+
       if (!(event.target as Element).closest('.conversation-menu-container')) {
         setShowConversationMenu(null);
       }
-      
+
       if (!(event.target as Element).closest('.message-menu-container')) {
         setShowMessageMenu(null);
       }
-      
+
       if (!(event.target as Element).closest('.reaction-picker-container')) {
         setShowReactionPicker(null);
       }
@@ -347,17 +361,297 @@ useEffect(() => {
     }
   }, [messages]);
 
- 
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    // Clean up any existing connection
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+
+    const wsUrl = `ws://178.128.210.229:8084/?userId=${currentUserId}`;
+    const socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      console.log('✅ WebSocket connected');
+      setWsConnected(true);
+    };
+
+    socket.onmessage = async (event) => {
+  try {
+    const data = JSON.parse(event.data.toString());
+    console.log('📩 Received message via WS:', data);
+    
+    // Handle user presence updates
+    if (data.type === 'user_presence') {
+      console.log(`👤 User presence update: ${data.userId} is ${data.isOnline ? 'online' : 'offline'}`);
+      
+      // Update the conversations list with new presence data
+      setConversations(prev => prev.map(conv => 
+        conv.other_user_id === data.userId 
+          ? { 
+              ...conv, 
+              other_user_is_online: data.isOnline,
+              other_user_last_seen: data.timestamp 
+            } 
+          : conv
+      ));
+      
+      // If this is the currently selected conversation, update the local state too
+      if (selectedConversation?.other_user_id === data.userId) {
+        setOtherUserLastSeen(data.timestamp);
+        setOtherUserPresenceLoaded(true);
+      }
+      return;
+    }
+    
+    // Handle typing notifications
+    if (data.type === 'user_typing' && data.conversationId === selectedConversation?.id) {
+      console.log(`⌨️ ${data.userId} is typing: ${data.isTyping}`);
+      setIsOtherUserTyping(data.isTyping);
+      return;
+    }
+    
+    // Handle new messages
+    if (data.type === 'new_message' && data.conversationId) {
+      console.log(`💬 New message in conversation: ${data.conversationId}`);
+      // Only fetch new messages if this is the active conversation
+      if (selectedConversation?.id === data.conversationId) {
+        await loadMessagesForConversation(data.conversationId);
+      } else {
+        // Refresh conversation list to update last message
+        fetchConversations();
+      }
+      return;
+    }
+    
+    // Handle call notifications
+    if (data.type === 'incoming_call') {
+      console.log(`📞 Incoming call from ${data.callerName}`);
+      toast.success(`Incoming call from ${data.callerName}`);
+      // Handle call UI logic here
+    }
+    
+    if (data.type === 'call_accepted') {
+      console.log(`✅ Call accepted for room: ${data.roomName}`);
+      // Handle call accepted logic
+    }
+    
+    if (data.type === 'call_ended') {
+      console.log(`📴 Call ended for room: ${data.roomName}`);
+      // Handle call ended logic
+    }
+    
+  } catch (error) {
+    console.error('Error processing WebSocket message:', error);
+    if (error instanceof Error) {
+      console.error('Error details:', error.message);
+    }
+  }
+};
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      setWsConnected(false);
+    };
+
+    socket.onclose = () => {
+      console.log('WebSocket disconnected');
+      setWsConnected(false);
+    };
+
+    wsRef.current = socket;
+
+    return () => {
+      socket.close();
+    };
+  }, [currentUserId, selectedConversation?.id]);
+
+
+  useEffect(() => {
+  if (!currentUserId) return;
+
+  console.log(`🔄 Setting up presence tracking for user: ${currentUserId}`);
+
+  // Update database with online status
+  const updateDbStatus = async (isOnline: boolean) => {
+    console.log(`💾 Updating DB status for ${currentUserId}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          is_online: isOnline,
+          last_seen: new Date().toISOString()
+        })
+        .eq('id', currentUserId);
+        
+      if (error) {
+        console.error('❌ Database update error:', error);
+        throw error;
+      }
+      console.log(`✅ DB updated successfully for user ${currentUserId}`);
+    } catch (err) {
+      console.error('🔥 Update online status DB error:', err);
+    }
+  };
+
+  // Send presence update via WebSocket
+const sendPresenceUpdate = async (isOnline: boolean) => {
+  try {
+    await sendNotification({
+      type: 'user_presence',
+      userId: currentUserId,
+      isOnline,
+      timestamp: new Date().toISOString(),
+      broadcast: true
+    });
+  } catch (err) {
+    console.error('Failed to send presence update:', err);
+  }
+};
+
+  // Combined function to update both DB and broadcast
+  const updatePresence = async (isOnline: boolean) => {
+    console.log(`🔄 Starting presence update for ${currentUserId}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+    try {
+      await Promise.allSettled([
+        updateDbStatus(isOnline),
+        sendPresenceUpdate(isOnline)
+      ]);
+      console.log(`✅ Completed presence update for ${currentUserId}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+    } catch (err) {
+      console.error('🔥 Combined presence update failed:', err);
+    }
+  };
+
+  // Initial online status update
+  console.log(`🚀 Initializing presence tracking for user ${currentUserId}`);
+  updatePresence(true);
+
+  // Update when tab becomes visible/invisible  
+  const handleVisibilityChange = async () => {
+    if (document.hidden) {
+      console.log(`📴 Tab hidden - setting ${currentUserId} to OFFLINE`);
+      await updatePresence(false);
+    } else {
+      console.log(`💡 Tab visible - setting ${currentUserId} to ONLINE`);
+      await updatePresence(true);
+    }
+  };
+
+  // Update when window is closed
+  const handleBeforeUnload = async () => {
+    console.log(`CloseOperation: Setting ${currentUserId} to OFFLINE`);
+    await updatePresence(false);
+  };
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('beforeunload', handleBeforeUnload);
+
+  // Heartbeat to keep presence alive
+  console.log('💓 Starting presence heartbeat (every 30 seconds)');
+  const heartbeatInterval = setInterval(async () => {
+    if (!document.hidden) {
+      console.log(`💓 Heartbeat - confirming ${currentUserId} is ONLINE`);
+      await updatePresence(true);
+    }
+  }, 30000); // Every 30 seconds
+
+  return () => {
+    console.log('🧹 Cleaning up presence tracking');
+    clearInterval(heartbeatInterval);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    
+    // Final offline status update with timeout to ensure it completes
+    console.log(`CloseOperation (cleanup): Setting ${currentUserId} to OFFLINE`);
+    updatePresence(false).catch(err => {
+      console.error('CloseOperation cleanup failed:', err);
+    });
+  };
+}, [currentUserId, supabase]);
+
+  // Handle when user starts typing
+  const handleUserTyping = useCallback(() => {
+    if (!selectedConversation || !currentUserId || !newMessage.trim()) return;
+
+    // Send typing notification to the other user
+    sendNotification({
+      type: 'user_typing',
+      toUserId: selectedConversation.other_user_id,
+      conversationId: selectedConversation.id,
+      isTyping: true
+    });
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // After 2 seconds of no typing, send stopped typing notification
+    typingTimeoutRef.current = setTimeout(() => {
+      sendNotification({
+        type: 'user_typing',
+        toUserId: selectedConversation.other_user_id,
+        conversationId: selectedConversation.id,
+        isTyping: false
+      });
+    }, 2000);
+  }, [currentUserId, selectedConversation, newMessage]);
+
+  // Clear typing timeout when component unmounts
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+
+  const sendNotification = async (notification: {
+  type: string;
+  toUserId?: string;
+  conversationId?: string;
+  isTyping?: boolean;
+  userId?: string;
+  isOnline?: boolean;
+  timestamp?: string;
+  broadcast?: boolean;
+  [key: string]: any;
+}) => {
+  try {
+    const response = await fetch('/api/notify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(notification),
+    });
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Notification failed:', errorData);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Failed to send notification:', error);
+    return false;
+  }
+};
+
+
 
 
   // Handle long press for reactions (only on others' messages)
   const handleLongPressStart = (messageId: string, isOwn: boolean, event: React.MouseEvent | React.TouchEvent) => {
     // Only allow reactions on others' messages
     if (isOwn) return;
-    
+
     event.preventDefault();
     event.stopPropagation();
-    
+
     // Get position for reaction picker
     let x, y;
     if ('touches' in event) {
@@ -367,19 +661,19 @@ useEffect(() => {
       x = event.clientX;
       y = event.clientY;
     }
-    
+
     const timer = setTimeout(() => {
       setShowReactionPicker(messageId);
       setReactionPickerPosition({ x, y });
     }, 500); // 500ms for long press
-    
+
     setLongPressTimer(timer);
   };
 
   const handleLongPressEnd = (event: React.MouseEvent | React.TouchEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    
+
     if (longPressTimer) {
       clearTimeout(longPressTimer);
       setLongPressTimer(null);
@@ -388,7 +682,7 @@ useEffect(() => {
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!currentUserId) return;
-    
+
     try {
       // Get current message
       const { data: currentMessage, error: fetchError } = await supabase
@@ -401,7 +695,7 @@ useEffect(() => {
 
       const currentReactions = currentMessage.reactions || {};
       const userReactions: string[] = currentReactions[currentUserId] || [];
-      
+
       // Toggle reaction - remove if already exists, add if not
       let updatedReactions;
       if (userReactions.includes(emoji)) {
@@ -425,8 +719,8 @@ useEffect(() => {
       if (updateError) throw updateError;
 
       // Update local state
-      setMessages(prev => prev.map(msg => 
-        msg.id === messageId 
+      setMessages(prev => prev.map(msg =>
+        msg.id === messageId
           ? { ...msg, reactions: updatedReactions }
           : msg
       ));
@@ -445,7 +739,7 @@ useEffect(() => {
     setMessages([]);
     setReplyingTo(null);
     setShowConversationMenu(null);
-    
+
     if (isMobileView) {
       setShowChatView(true);
     }
@@ -472,12 +766,12 @@ useEffect(() => {
         if (msg.deleted_for_everyone) {
           return true;
         }
-        
+
         // If message is deleted for me, hide it
         if (msg.deleted_for_me?.includes(currentUserId)) {
           return false;
         }
-        
+
         return true;
       });
 
@@ -487,153 +781,219 @@ useEffect(() => {
       toast.error('Failed to load conversation');
     }
   };
- 
+
 
   const handleStartNewConversation = useCallback(async (userId: string) => {
-  if (!currentUserId) return;
-  setIsOpen(false);
-  try {
-    // Check for existing conversation
-    const { data: existing } = await supabase
-      .from('conversations')
-      .select('id')
-      .or(
-        `and(user1_id.eq.${currentUserId},user2_id.eq.${userId}),` +
-        `and(user1_id.eq.${userId},user2_id.eq.${currentUserId})`
-      )
-      .maybeSingle();
-
-    let convId: string;
-    if (existing) {
-      convId = existing.id;
-    } else {
-      const user1 = currentUserId < userId ? currentUserId : userId;
-      const user2 = currentUserId > userId ? currentUserId : userId;
-      const { data: newConv, error: convError } = await supabase
+    if (!currentUserId) return;
+    setIsOpen(false);
+    try {
+      // Check for existing conversation
+      const { data: existing } = await supabase
         .from('conversations')
-        .insert({ user1_id: user1, user2_id: user2 })
         .select('id')
+        .or(
+          `and(user1_id.eq.${currentUserId},user2_id.eq.${userId}),` +
+          `and(user1_id.eq.${userId},user2_id.eq.${currentUserId})`
+        )
+        .maybeSingle();
+
+      let convId: string;
+      if (existing) {
+        convId = existing.id;
+      } else {
+        const user1 = currentUserId < userId ? currentUserId : userId;
+        const user2 = currentUserId > userId ? currentUserId : userId;
+        const { data: newConv, error: convError } = await supabase
+          .from('conversations')
+          .insert({ user1_id: user1, user2_id: user2 })
+          .select('id')
+          .single();
+        if (convError) throw convError;
+        convId = newConv!.id;
+      }
+
+      // Get other user's profile
+      const { data: otherUser, error: userError } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, last_seen, is_online')
+        .eq('id', userId)
         .single();
-      if (convError) throw convError;
-      convId = newConv!.id;
+      if (userError) throw userError;
+
+      const newConv: ConversationSummary = {
+        id: convId,
+        other_user_id: otherUser.id,
+        other_user_full_name: otherUser.full_name,
+        other_user_avatar_url: otherUser.avatar_url || undefined,
+        other_user_last_seen: otherUser.last_seen || undefined,
+        other_user_is_online: otherUser.is_online || false,
+      };
+
+      setConversations((prev) => {
+        if (!prev.some((c) => c.id === convId)) {
+          return [newConv, ...prev];
+        }
+        return prev;
+      });
+
+      setSelectedConversation(newConv);
+      setMessages([]);
+      if (isMobileView) {
+        setShowChatView(true);
+      }
+    } catch (err) {
+      console.error('Create conversation error:', err);
+      toast.error('Failed to start conversation');
     }
+  }, [currentUserId, isMobileView, supabase]);
 
-    // Get other user's profile
-    const { data: otherUser, error: userError } = await supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url, last_seen, is_online')
-      .eq('id', userId)
-      .single();
-    if (userError) throw userError;
+  useEffect(() => {
+    const userId = consumePendingConversation();
+    if (userId && currentUserId) {
+      handleStartNewConversation(userId);
+    }
+  }, [currentUserId, handleStartNewConversation]);
 
-    const newConv: ConversationSummary = {
-      id: convId,
-      other_user_id: otherUser.id,
-      other_user_full_name: otherUser.full_name,
-      other_user_avatar_url: otherUser.avatar_url || undefined,
-      other_user_last_seen: otherUser.last_seen || undefined,
-      other_user_is_online: otherUser.is_online || false,
+
+  // app/messages/page.tsx (modified handleSendMessage function)
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !selectedConversation || !currentUserId) return;
+
+    trackActivity();
+    const content = newMessage.trim();
+    setNewMessage('');
+    setIsSending(true);
+    setReplyingTo(null);
+
+    const tempId = `temp-${Date.now()}`;
+    const now = new Date().toISOString();
+
+    // Optimistic UI update
+    const optimisticMessage: Message = {
+      id: tempId,
+      content,
+      sender_id: currentUserId,
+      created_at: now,
+      sender: { full_name: 'You' },
+      reply_to: replyingTo?.id || null,
+      conversation_id: selectedConversation.id,
+      reactions: {},
     };
 
-    setConversations((prev) => {
-      if (!prev.some((c) => c.id === convId)) {
-        return [newConv, ...prev];
-      }
-      return prev;
-    });
+    setMessages(prev => [...prev, optimisticMessage]);
 
-    setSelectedConversation(newConv);
-    setMessages([]);
-    if (isMobileView) {
-      setShowChatView(true);
-    }
-  } catch (err) {
-    console.error('Create conversation error:', err);
-    toast.error('Failed to start conversation');
-  }
-}, [currentUserId, isMobileView, supabase]);
-
-useEffect(() => {
-  const userId = consumePendingConversation();
-  if (userId && currentUserId) {
-    handleStartNewConversation(userId);
-  }
-}, [currentUserId, handleStartNewConversation]); 
-
-
- // app/messages/page.tsx (modified handleSendMessage function)
-const handleSendMessage = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!newMessage.trim() || !selectedConversation || !currentUserId) return;
-  trackActivity();
-  const content = newMessage.trim();
-  setNewMessage('');
-  setIsSending(true);
-  setReplyingTo(null);
-  const tempId = `temp-${Date.now()}`;
-  const now = new Date().toISOString();
-
-  // Optimistic message update
-  const optimisticMessage: Message = {
-    id: tempId,
-    content,
-    sender_id: currentUserId,
-    created_at: now,
-    sender: { full_name: 'You' },
-    reply_to: replyingTo?.id || null,
-    conversation_id: selectedConversation.id,
-  };
-
-  setMessages(prev => [...prev, optimisticMessage]);
-
-  try {
-    const { data: inserted, error: dbError } = await supabase
-      .from('messages')
-      .insert({
-        conversation_id: selectedConversation.id,
-        sender_id: currentUserId,
-        content,
-        reply_to: replyingTo?.id || null,
-      })
-      .select(`
+    try {
+      // Save message to database
+      const { data: inserted, error: dbError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: selectedConversation.id,
+          sender_id: currentUserId,
+          content,
+          reply_to: replyingTo?.id || null,
+        })
+        .select(`
         *,
         sender:sender_id (
           full_name,
           avatar_url
         )
       `)
-      .single();
+        .single();
 
-    if (dbError) throw dbError;
+      if (dbError) throw dbError;
 
-    // Update messages with real data
-    setMessages(prev =>
-      prev.map(msg => (msg.id === tempId ? inserted : msg))
-    );
+      // Update messages with actual data
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempId ? inserted : msg
+      ));
 
-    // Update conversations list
-    setConversations(prev =>
-      prev.map(conv =>
-        conv.id === selectedConversation.id
-          ? { ...conv, last_message: content, last_message_at: now }
-          : conv
-      )
-    );
-  } catch (err) {
-    console.error('Send failed:', err);
-    toast.error('Message failed to send');
-    setMessages(prev => prev.filter(msg => msg.id !== tempId));
-    setNewMessage(content);
-  } finally {
-    setIsSending(false);
-  }
-};
+      // Update conversations list with latest message
+      const updatedConv = {
+        id: selectedConversation.id,
+        last_message: content,
+        last_message_at: now
+      };
+
+      setConversations(prev => prev.map(conv =>
+        conv.id === selectedConversation.id ? { ...conv, ...updatedConv } : conv
+      ));
+
+      // Send real-time notification to the recipient
+      await sendNotification({
+        type: 'new_message',
+        toUserId: selectedConversation.other_user_id,
+        conversationId: selectedConversation.id,
+        messageId: inserted.id,
+        content: inserted.content,
+        senderId: currentUserId,
+        timestamp: now
+      });
+
+      toast.success('Message sent!');
+    } catch (err) {
+      console.error('Send failed:', err);
+      toast.error('Message failed to send');
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      setNewMessage(content);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const loadMessagesForConversation = async (conversationId: string) => {
+    if (!currentUserId) return;
+
+    try {
+      const { data: allMessages, error: msgError } = await supabase
+        .from('messages')
+        .select(`
+        *,
+        sender:sender_id (
+          full_name,
+          avatar_url
+        )
+      `)
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+      if (msgError) throw msgError;
+
+      // Filter messages based on deletion status
+      const filteredMessages = (allMessages || []).filter(msg => {
+        if (msg.deleted_for_everyone) return true;
+        if (msg.deleted_for_me?.includes(currentUserId)) return false;
+        return true;
+      });
+
+      setMessages(filteredMessages);
+    } catch (err) {
+      console.error('Error loading messages:', err);
+      toast.error('Failed to load conversation');
+    }
+  };
+
+  const fetchConversations = async () => {
+    if (!currentUserId) return;
+
+    try {
+      const { data: convData, error } = await supabase.rpc('get_user_conversations', {
+        user_id: currentUserId,
+      });
+
+      if (error) throw error;
+      setConversations(convData || []);
+    } catch (err) {
+      console.error('Error fetching conversations:', err);
+    }
+  };
 
 
-// Mark user as active
-const trackActivity = useCallback(() => {
-  lastActivityRef.current = Date.now();
-}, []);
+  // Mark user as active
+  const trackActivity = useCallback(() => {
+    lastActivityRef.current = Date.now();
+  }, []);
 
 
   const handleDeleteForMe = async (messageId: string) => {
@@ -658,8 +1018,8 @@ const trackActivity = useCallback(() => {
       // Update the message with current user added to deleted_for_me
       const { error: updateError } = await supabase
         .from('messages')
-        .update({ 
-          deleted_for_me: updatedDeletedForMe 
+        .update({
+          deleted_for_me: updatedDeletedForMe
         })
         .eq('id', messageId);
 
@@ -676,7 +1036,7 @@ const trackActivity = useCallback(() => {
           return msg.id !== messageId;
         });
       });
-      
+
       toast.success('Message removed for you');
     } catch (err) {
       console.error('Delete for me failed:', err);
@@ -704,7 +1064,7 @@ const trackActivity = useCallback(() => {
       // Soft delete by marking as deleted_for_everyone and updating content
       const { error: deleteError } = await supabase
         .from('messages')
-        .update({ 
+        .update({
           deleted_for_everyone: true,
           content: '[Message deleted]',
           file_url: null,
@@ -715,18 +1075,18 @@ const trackActivity = useCallback(() => {
       if (deleteError) throw deleteError;
 
       // Update local state to show deleted message placeholder
-      setMessages(prev => prev.map(msg => 
-        msg.id === messageId 
-          ? { 
-              ...msg, 
-              content: '[Message deleted]',
-              file_url: null,
-              file_type: null,
-              deleted_for_everyone: true 
-            }
+      setMessages(prev => prev.map(msg =>
+        msg.id === messageId
+          ? {
+            ...msg,
+            content: '[Message deleted]',
+            file_url: null,
+            file_type: null,
+            deleted_for_everyone: true
+          }
           : msg
       ));
-      
+
       toast.success('Message deleted for everyone');
     } catch (err) {
       console.error('Delete for everyone failed:', err);
@@ -778,26 +1138,26 @@ const trackActivity = useCallback(() => {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    trackActivity(); 
-    
+    trackActivity();
+
     const file = e.target.files?.[0];
     if (!file || !selectedConversation || !currentUserId) return;
-    
+
     setUploading(true);
-    
+
     try {
       const fileName = `${currentUserId}/${selectedConversation.id}/${Date.now()}_${file.name}`;
-      
+
       const { error: uploadError } = await supabase.storage
         .from('message-files')
         .upload(fileName, file);
-        
+
       if (uploadError) throw uploadError;
-      
+
       const { data: { publicUrl } } = supabase.storage
         .from('message-files')
         .getPublicUrl(fileName);
-        
+
       const { error: msgError } = await supabase
         .from('messages')
         .insert({
@@ -807,20 +1167,20 @@ const trackActivity = useCallback(() => {
           file_url: publicUrl,
           file_type: file.type,
         });
-        
+
       if (msgError) throw msgError;
-      
+
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      
+
       toast.success('File sent successfully');
     } catch (err) {
       console.error('File upload error:', err);
       toast.error('Failed to send file');
     } finally {
       setUploading(false);
-      
+
     }
   };
 
@@ -829,28 +1189,28 @@ const trackActivity = useCallback(() => {
     setShowEmojiPicker(false);
     messageInputRef.current?.focus();
   };
-const handleCallUser = async () => {
-  if (!selectedConversation || !currentUserId) {
-    toast.error('Unable to start call');
-    return;
-  }
-  
-  const roomName = selectedConversation.id; // Use conversation ID as room name
-  const otherUserName = selectedConversation.other_user_full_name || 'User';
-  const otherUserAvatar = selectedConversation.other_user_avatar_url || null;
-  
-  // Start the call with all required parameters
-  await startCall(
-    selectedConversation.other_user_id, 
-    otherUserName, 
-    'audio', 
-    roomName,
-    selectedConversation.id,
-    otherUserAvatar
-  );
-  
-  toast.success(`Calling ${otherUserName}...`);
-};
+  const handleCallUser = async () => {
+    if (!selectedConversation || !currentUserId) {
+      toast.error('Unable to start call');
+      return;
+    }
+
+    const roomName = selectedConversation.id; // Use conversation ID as room name
+    const otherUserName = selectedConversation.other_user_full_name || 'User';
+    const otherUserAvatar = selectedConversation.other_user_avatar_url || null;
+
+    // Start the call with all required parameters
+    await startCall(
+      selectedConversation.other_user_id,
+      otherUserName,
+      'audio',
+      roomName,
+      selectedConversation.id,
+      otherUserAvatar
+    );
+
+    toast.success(`Calling ${otherUserName}...`);
+  };
   const scrollToMessage = (messageId: string) => {
     const messageElement = messageRefs.current.get(messageId);
     if (messageElement) {
@@ -906,12 +1266,12 @@ const handleCallUser = async () => {
   // Mobile view: Show chat view or conversations list
   if (isMobileView && showChatView && selectedConversation) {
 
- const {
-  
-  
-} = selectedConversation;
-// Use the live-updated state instead of stale conversation data
-const safeLastSeen = otherUserLastSeen;
+    const {
+
+
+    } = selectedConversation;
+    // Use the live-updated state instead of stale conversation data
+    const safeLastSeen = otherUserLastSeen;
     return (
       <div style={{
         height: '100vh',
@@ -944,19 +1304,19 @@ const safeLastSeen = otherUserLastSeen;
           >
             ←
           </button>
-          
+
           {selectedConversation.other_user_avatar_url ? (
             <Image
-src={selectedConversation.other_user_avatar_url}
-alt=""
-width={40}
-height={40}
-style={{
-borderRadius: '50%',
-objectFit: 'cover',
-border: '2px solid #e2e8f0'
-}}
-/>
+              src={selectedConversation.other_user_avatar_url}
+              alt=""
+              width={40}
+              height={40}
+              style={{
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '2px solid #e2e8f0'
+              }}
+            />
           ) : (
             <div style={{
               width: '40px',
@@ -973,7 +1333,7 @@ border: '2px solid #e2e8f0'
               {getInitials(selectedConversation.other_user_full_name)}
             </div>
           )}
-          
+
           <div style={{ flex: 1 }}>
             <h3 style={{
               fontSize: '16px',
@@ -984,10 +1344,10 @@ border: '2px solid #e2e8f0'
               {selectedConversation.other_user_full_name}
             </h3>
             <p style={{ fontSize: '12px', color: isUserOnline(safeLastSeen) ? '#10b981' : '#64748b', margin: '2px 0 0' }}>
-  {isUserOnline(safeLastSeen) ? 'Online' : `Last seen ${formatLastSeen(safeLastSeen)}`}
-</p>
+              {isUserOnline(safeLastSeen) ? 'Online' : `Last seen ${formatLastSeen(safeLastSeen)}`}
+            </p>
           </div>
-          
+
           {/* Call Button */}
           <button
             onClick={handleCallUser}
@@ -1039,7 +1399,7 @@ border: '2px solid #e2e8f0'
                 const repliedMessage = messages.find(m => m.id === msg.reply_to);
                 const isDeleted = msg.deleted_for_everyone;
                 const isDeletedForMe = msg.deleted_for_me?.includes(currentUserId || '');
-                
+
                 // Calculate reactions
                 const reactions = msg.reactions || {};
                 const allReactions = Object.values(reactions).flat();
@@ -1047,7 +1407,7 @@ border: '2px solid #e2e8f0'
                   acc[emoji] = (acc[emoji] || 0) + 1;
                   return acc;
                 }, {} as Record<string, number>);
-                
+
                 return (
                   <div
                     key={msg.id}
@@ -1084,13 +1444,13 @@ border: '2px solid #e2e8f0'
                         {msg.sender.full_name.charAt(0)}
                       </div>
                     )}
-                    
+
                     <div style={{
                       maxWidth: '80%',
                       position: 'relative'
                     }}>
                       {repliedMessage && !repliedMessage.deleted_for_everyone && !repliedMessage.deleted_for_me?.includes(currentUserId || '') && (
-                        <div 
+                        <div
                           onClick={() => scrollToMessage(repliedMessage.id)}
                           style={{
                             backgroundColor: '#f1f5f6',
@@ -1110,7 +1470,7 @@ border: '2px solid #e2e8f0'
                           </div>
                         </div>
                       )}
-                      
+
                       <div
                         onMouseDown={(e) => {
                           if (!isDeleted && !isDeletedForMe && !isOwn && e.button === 0) {
@@ -1224,7 +1584,7 @@ border: '2px solid #e2e8f0'
                                     >
                                       ↩️ Reply
                                     </button>
-                                    
+
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -1249,7 +1609,7 @@ border: '2px solid #e2e8f0'
                                     </button>
                                   </>
                                 )}
-                                
+
                                 {/* Only show "Delete for Everyone" if sender AND not already deleted (tombstone) */}
                                 {isOwn && !isDeleted && (
                                   <button
@@ -1278,90 +1638,90 @@ border: '2px solid #e2e8f0'
                             )}
                           </div>
                         )}
-                        
+
                         {/* Message Content */}
                         {isDeleted ? (
-  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-    <span style={{ fontSize: '12px' }}>🗑️</span>
-    <span>Message deleted</span>
-  </div>
-) : msg.file_url ? (
-  <div>
-    {(() => {
-      const url = msg.file_url;
-      if (isImageUrl(url)) {
-        return (
-          <div style={{ position: 'relative', width: '100%', height: 'auto', maxHeight: '200px' }}>
-            <Image
-              src={url}
-              alt="Attachment"
-              fill
-              style={{
-                objectFit: 'contain',
-                borderRadius: '8px',
-                cursor: 'pointer',
-              }}
-              onClick={() => window.open(url, '_blank')}
-            />
-          </div>
-        );
-      }
-      if (isPdfUrl(url)) {
-        return (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px',
-              backgroundColor: 'white',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-            }}
-          >
-            <div style={{ fontSize: '20px', color: '#ef4444' }}>📄</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: '500', fontSize: '12px' }}>{msg.content}</div>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>PDF Document</div>
-            </div>
-            <button
-              onClick={() => window.open(url, '_blank')}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#4f46e5',
-                cursor: 'pointer',
-                fontSize: '12px'
-              }}
-            >
-              Open
-            </button>
-          </div>
-        );
-      }
-      return (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            color: '#4f46e5',
-            textDecoration: 'underline',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '14px'
-          }}
-        >
-          📎 {msg.content}
-        </a>
-      );
-    })()}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '12px' }}>🗑️</span>
+                            <span>Message deleted</span>
+                          </div>
+                        ) : msg.file_url ? (
+                          <div>
+                            {(() => {
+                              const url = msg.file_url;
+                              if (isImageUrl(url)) {
+                                return (
+                                  <div style={{ position: 'relative', width: '100%', height: 'auto', maxHeight: '200px' }}>
+                                    <Image
+                                      src={url}
+                                      alt="Attachment"
+                                      fill
+                                      style={{
+                                        objectFit: 'contain',
+                                        borderRadius: '8px',
+                                        cursor: 'pointer',
+                                      }}
+                                      onClick={() => window.open(url, '_blank')}
+                                    />
+                                  </div>
+                                );
+                              }
+                              if (isPdfUrl(url)) {
+                                return (
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '8px',
+                                      backgroundColor: 'white',
+                                      border: '1px solid #e2e8f0',
+                                      borderRadius: '8px',
+                                    }}
+                                  >
+                                    <div style={{ fontSize: '20px', color: '#ef4444' }}>📄</div>
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontWeight: '500', fontSize: '12px' }}>{msg.content}</div>
+                                      <div style={{ fontSize: '10px', color: '#64748b' }}>PDF Document</div>
+                                    </div>
+                                    <button
+                                      onClick={() => window.open(url, '_blank')}
+                                      style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        color: '#4f46e5',
+                                        cursor: 'pointer',
+                                        fontSize: '12px'
+                                      }}
+                                    >
+                                      Open
+                                    </button>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    color: '#4f46e5',
+                                    textDecoration: 'underline',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    fontSize: '14px'
+                                  }}
+                                >
+                                  📎 {msg.content}
+                                </a>
+                              );
+                            })()}
                           </div>
                         ) : (
                           <div>{msg.content}</div>
                         )}
-                        
+
                         {/* Reactions Display */}
                         {Object.keys(reactionCounts).length > 0 && (
                           <div style={{
@@ -1390,7 +1750,7 @@ border: '2px solid #e2e8f0'
                             ))}
                           </div>
                         )}
-                        
+
                         <div style={{
                           fontSize: '10px',
                           textAlign: 'right',
@@ -1411,7 +1771,7 @@ border: '2px solid #e2e8f0'
 
         {/* Reaction Picker Modal */}
         {showReactionPicker && reactionPickerPosition && (
-          <div 
+          <div
             className="reaction-picker-container"
             style={{
               position: 'fixed',
@@ -1463,9 +1823,9 @@ border: '2px solid #e2e8f0'
           }}>
             <div style={{ flex: 1, fontSize: '12px', color: '#4f46e5' }}>
               <div style={{ fontWeight: '600', marginBottom: '2px' }}>Replying to {replyingTo.sender.full_name}</div>
-              <div 
+              <div
                 onClick={() => scrollToMessage(replyingTo.id)}
-                style={{ 
+                style={{
                   color: '#312e81',
                   cursor: 'pointer',
                   padding: '2px 6px',
@@ -1490,6 +1850,39 @@ border: '2px solid #e2e8f0'
             >
               ✕
             </button>
+          </div>
+        )}
+
+        {/* ADD THIS TYPING INDICATOR COMPONENT FOR MOBILE VIEW */}
+        {isOtherUserTyping && selectedConversation && (
+          <div style={{
+            padding: '8px 16px',
+            fontSize: '14px',
+            color: '#64748b',
+            fontStyle: 'italic',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            justifyContent: 'center'
+          }}>
+            <span>{selectedConversation.other_user_full_name} is typing</span>
+            <div style={{ display: 'flex', gap: '2px' }}>
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: '#94a3b8',
+                  animation: `typing-bounce 1.4s infinite ease-in-out ${i * 0.16}s`,
+                }} />
+              ))}
+            </div>
+            <style>{`
+      @keyframes typing-bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-5px); }
+      }
+    `}</style>
           </div>
         )}
 
@@ -1529,30 +1922,30 @@ border: '2px solid #e2e8f0'
             >
               😊
             </button>
-            
-         <input
-  ref={messageInputRef}
-  type="text"
-  value={newMessage}
-  onChange={(e) => {
-    setNewMessage(e.target.value);
-    trackActivity(); // 👈 this marks you as active while typing
-  }}
-  placeholder={replyingTo ? "Write your reply..." : "Type your message…"}
-  disabled={isSending || uploading}
-  style={{
-    flex: 1,
-    padding: '12px 16px',
-    borderRadius: '20px',
-    border: '1px solid #e2e8f0',
-    fontSize: '14px',
-    backgroundColor: '#f8fafc',
-    color: '#1e293b'
-  }}
-/>
-            
-            <label htmlFor="file-upload-mobile" style={{ 
-              cursor: 'pointer', 
+
+            <input
+              ref={messageInputRef}
+              type="text"
+              value={newMessage}
+              onChange={(e) => {
+                setNewMessage(e.target.value);
+                trackActivity(); // 👈 this marks you as active while typing
+              }}
+              placeholder={replyingTo ? "Write your reply..." : "Type your message…"}
+              disabled={isSending || uploading}
+              style={{
+                flex: 1,
+                padding: '12px 16px',
+                borderRadius: '20px',
+                border: '1px solid #e2e8f0',
+                fontSize: '14px',
+                backgroundColor: '#f8fafc',
+                color: '#1e293b'
+              }}
+            />
+
+            <label htmlFor="file-upload-mobile" style={{
+              cursor: 'pointer',
               padding: '8px',
               display: 'flex',
               alignItems: 'center'
@@ -1571,7 +1964,7 @@ border: '2px solid #e2e8f0'
                 <div style={{ fontSize: '20px', color: '#64748b' }}>📎</div>
               )}
             </label>
-            
+
             <button
               type="submit"
               disabled={!newMessage.trim() || isSending || uploading}
@@ -1592,10 +1985,10 @@ border: '2px solid #e2e8f0'
               {isSending ? '...' : 'Send'}
             </button>
           </div>
-          
+
           {/* Emoji Picker */}
           {showEmojiPicker && (
-            <div 
+            <div
               className="emoji-picker-container"
               style={{
                 position: 'absolute',
@@ -1608,9 +2001,9 @@ border: '2px solid #e2e8f0'
                 overflow: 'hidden'
               }}
             >
-              <Picker 
-                data={data} 
-                onEmojiSelect={handleEmojiSelect} 
+              <Picker
+                data={data}
+                onEmojiSelect={handleEmojiSelect}
                 theme="light"
                 previewPosition="none"
                 maxFrequentRows={0}
@@ -1846,7 +2239,7 @@ border: '2px solid #e2e8f0'
 
       {/* Reaction Picker Modal */}
       {showReactionPicker && reactionPickerPosition && (
-        <div 
+        <div
           className="reaction-picker-container"
           style={{
             position: 'fixed',
@@ -1951,33 +2344,33 @@ border: '2px solid #e2e8f0'
                     onMouseOut={(e) => e.currentTarget.style.backgroundColor = selectedConversation?.id === conv.id ? '#f0f4ff' : 'transparent'}
                   >
                     {conv.other_user_avatar_url ? (
-  <Image
-    src={conv.other_user_avatar_url}
-    alt=""
-    width={isMobileView ? 44 : 50}
-    height={isMobileView ? 44 : 50}
-    style={{
-      borderRadius: '50%',
-      objectFit: 'cover',
-      border: '2px solid #e2e8f0'
-    }}
-  />
-) : (
-  <div style={{
-    width: isMobileView ? '44px' : '50px',
-    height: isMobileView ? '44px' : '50px',
-    borderRadius: '50%',
-    backgroundColor: '#e0e7ff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: '600',
-    fontSize: isMobileView ? '16px' : '18px',
-    color: '#4f46e5'
-  }}>
-    {getInitials(conv.other_user_full_name)}
-  </div>
-)}
+                      <Image
+                        src={conv.other_user_avatar_url}
+                        alt=""
+                        width={isMobileView ? 44 : 50}
+                        height={isMobileView ? 44 : 50}
+                        style={{
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          border: '2px solid #e2e8f0'
+                        }}
+                      />
+                    ) : (
+                      <div style={{
+                        width: isMobileView ? '44px' : '50px',
+                        height: isMobileView ? '44px' : '50px',
+                        borderRadius: '50%',
+                        backgroundColor: '#e0e7ff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: '600',
+                        fontSize: isMobileView ? '16px' : '18px',
+                        color: '#4f46e5'
+                      }}>
+                        {getInitials(conv.other_user_full_name)}
+                      </div>
+                    )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{
                         fontSize: isMobileView ? '15px' : '16px',
@@ -1992,15 +2385,15 @@ border: '2px solid #e2e8f0'
                         gap: '6px'
                       }}>
                         {conv.other_user_full_name}
-                       {isUserOnline(conv.other_user_last_seen) && (
-  <span style={{
-    width: '8px',
-    height: '8px',
-    borderRadius: '50%',
-    backgroundColor: '#10b981',
-    display: 'inline-block'
-  }}></span>
-)}
+                        {isUserOnline(conv.other_user_last_seen) && (
+                          <span style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: '#10b981',
+                            display: 'inline-block'
+                          }}></span>
+                        )}
                       </div>
                       {conv.last_message && (
                         <div style={{
@@ -2024,7 +2417,7 @@ border: '2px solid #e2e8f0'
                         </div>
                       )}
                     </div>
-                    
+
                     {/* Conversation Menu Button */}
                     <div className="conversation-menu-container" style={{ position: 'relative' }}>
                       <button
@@ -2049,7 +2442,7 @@ border: '2px solid #e2e8f0'
                       >
                         ⋮
                       </button>
-                      
+
                       {/* Conversation Menu Dropdown */}
                       {showConversationMenu === conv.id && (
                         <div style={{
@@ -2121,62 +2514,62 @@ border: '2px solid #e2e8f0'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       {selectedConversation.other_user_avatar_url ? (
-  <Image
-    src={selectedConversation.other_user_avatar_url}
-    alt=""
-    width={48}
-    height={48}
-    style={{
-      borderRadius: '50%',
-      objectFit: 'cover',
-      border: '2px solid #e2e8f0'
-    }}
-  />
-) : (
-  <div style={{
-    width: '48px',
-    height: '48px',
-    borderRadius: '50%',
-    backgroundColor: '#e0e7ff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: '600',
-    fontSize: '18px',
-    color: '#4f46e5'
-  }}>
-    {getInitials(selectedConversation.other_user_full_name)}
-  </div>
-)}
+                        <Image
+                          src={selectedConversation.other_user_avatar_url}
+                          alt=""
+                          width={48}
+                          height={48}
+                          style={{
+                            borderRadius: '50%',
+                            objectFit: 'cover',
+                            border: '2px solid #e2e8f0'
+                          }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: '48px',
+                          height: '48px',
+                          borderRadius: '50%',
+                          backgroundColor: '#e0e7ff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: '600',
+                          fontSize: '18px',
+                          color: '#4f46e5'
+                        }}>
+                          {getInitials(selectedConversation.other_user_full_name)}
+                        </div>
+                      )}
                       <div style={{ flex: 1 }}>
                         <h3 style={{
-  fontSize: '18px',
-  fontWeight: '700',
-  color: '#1e293b',
-  margin: 0,
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px'
-}}>
-  {selectedConversation.other_user_full_name}
-  {isUserOnline(selectedConversation?.other_user_last_seen ?? null)&& (
-    <span style={{
-      width: '10px',
-      height: '10px',
-      borderRadius: '50%',
-      backgroundColor: '#10b981',
-      display: 'inline-block'
-    }}></span>
-  )}
-</h3>
-{otherUserPresenceLoaded && (
-  <p style={{ fontSize: '14px', color: isUserOnline(otherUserLastSeen) ? '#10b981' : '#64748b', margin: '4px 0 0' }}>
-    {isUserOnline(otherUserLastSeen) ? 'Online' : `Last seen ${formatLastSeen(otherUserLastSeen)}`}
-  </p>
-)}
+                          fontSize: '18px',
+                          fontWeight: '700',
+                          color: '#1e293b',
+                          margin: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
+                        }}>
+                          {selectedConversation.other_user_full_name}
+                          {isUserOnline(selectedConversation?.other_user_last_seen ?? null) && (
+                            <span style={{
+                              width: '10px',
+                              height: '10px',
+                              borderRadius: '50%',
+                              backgroundColor: '#10b981',
+                              display: 'inline-block'
+                            }}></span>
+                          )}
+                        </h3>
+                        {otherUserPresenceLoaded && (
+                          <p style={{ fontSize: '14px', color: isUserOnline(otherUserLastSeen) ? '#10b981' : '#64748b', margin: '4px 0 0' }}>
+                            {isUserOnline(otherUserLastSeen) ? 'Online' : `Last seen ${formatLastSeen(otherUserLastSeen)}`}
+                          </p>
+                        )}
                       </div>
                     </div>
-                    
+
                     {/* Call Button */}
                     <button
                       onClick={handleCallUser}
@@ -2230,7 +2623,7 @@ border: '2px solid #e2e8f0'
                           const repliedMessage = messages.find(m => m.id === msg.reply_to);
                           const isDeleted = msg.deleted_for_everyone;
                           const isDeletedForMe = msg.deleted_for_me?.includes(currentUserId || '');
-                          
+
                           // Calculate reactions
                           const reactions = msg.reactions || {};
                           const allReactions = Object.values(reactions).flat();
@@ -2238,7 +2631,7 @@ border: '2px solid #e2e8f0'
                             acc[emoji] = (acc[emoji] || 0) + 1;
                             return acc;
                           }, {} as Record<string, number>);
-                          
+
                           return (
                             <div
                               key={msg.id}
@@ -2275,13 +2668,13 @@ border: '2px solid #e2e8f0'
                                   {msg.sender.full_name.charAt(0)}
                                 </div>
                               )}
-                              
+
                               <div style={{
                                 maxWidth: '70%',
                                 position: 'relative'
                               }}>
                                 {repliedMessage && !repliedMessage.deleted_for_everyone && !repliedMessage.deleted_for_me?.includes(currentUserId || '') && (
-                                  <div 
+                                  <div
                                     onClick={() => scrollToMessage(repliedMessage.id)}
                                     style={{
                                       backgroundColor: '#f1f5f6',
@@ -2307,7 +2700,7 @@ border: '2px solid #e2e8f0'
                                     </div>
                                   </div>
                                 )}
-                                
+
                                 <div
                                   onMouseDown={(e) => {
                                     if (!isDeleted && !isDeletedForMe && !isOwn && e.button === 0) {
@@ -2341,7 +2734,7 @@ border: '2px solid #e2e8f0'
                                     cursor: isDeleted ? 'default' : (isOwn ? 'default' : 'pointer'),
                                     userSelect: 'none',
                                     WebkitUserSelect: 'none',
-                                   
+
                                   }}
                                 >
                                   {/* Message Menu Button - Only show for non-tombstone, non-deleted-for-me messages */}
@@ -2425,7 +2818,7 @@ border: '2px solid #e2e8f0'
                                               >
                                                 ↩️ Reply
                                               </button>
-                                              
+
                                               <button
                                                 onClick={(e) => {
                                                   e.stopPropagation();
@@ -2452,7 +2845,7 @@ border: '2px solid #e2e8f0'
                                               </button>
                                             </>
                                           )}
-                                          
+
                                           {/* Only show "Delete for Everyone" if sender AND not already deleted (tombstone) */}
                                           {isOwn && !isDeleted && (
                                             <button
@@ -2483,7 +2876,7 @@ border: '2px solid #e2e8f0'
                                       )}
                                     </div>
                                   )}
-                                  
+
                                   {/* Message Content */}
                                   {isDeleted ? (
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2493,80 +2886,80 @@ border: '2px solid #e2e8f0'
                                   ) : msg.file_url ? (
                                     <div>
                                       {(() => {
-  const url = msg.file_url;
-  if (isImageUrl(url)) {
-    return (
-      <div style={{ position: 'relative' }}>
-        <Image
-          src={url}
-          alt="Attachment"
-          width={400}
-          height={300}
-          style={{
-            maxWidth: '100%',
-            maxHeight: '300px',
-            borderRadius: '8px',
-            cursor: 'pointer',
-          }}
-          onClick={() => window.open(url, '_blank')}
-        />
-      </div>
-    );
-  }
-  if (isPdfUrl(url)) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '10px',
-          backgroundColor: 'white',
-          border: '1px solid #e2e8f0',
-          borderRadius: '8px',
-        }}
-      >
-        <div style={{ fontSize: '24px', color: '#ef4444' }}>📄</div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: '500' }}>{msg.content}</div>
-          <div style={{ fontSize: '12px', color: '#64748b' }}>PDF Document</div>
-        </div>
-        <button
-          onClick={() => window.open(url, '_blank')}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#4f46e5',
-            cursor: 'pointer',
-          }}
-        >
-          Open
-        </button>
-      </div>
-    );
-  }
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{
-        color: '#4f46e5',
-        textDecoration: 'underline',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-      }}
-    >
-      📎 {msg.content}
-    </a>
-  );
-})()}
+                                        const url = msg.file_url;
+                                        if (isImageUrl(url)) {
+                                          return (
+                                            <div style={{ position: 'relative' }}>
+                                              <Image
+                                                src={url}
+                                                alt="Attachment"
+                                                width={400}
+                                                height={300}
+                                                style={{
+                                                  maxWidth: '100%',
+                                                  maxHeight: '300px',
+                                                  borderRadius: '8px',
+                                                  cursor: 'pointer',
+                                                }}
+                                                onClick={() => window.open(url, '_blank')}
+                                              />
+                                            </div>
+                                          );
+                                        }
+                                        if (isPdfUrl(url)) {
+                                          return (
+                                            <div
+                                              style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '10px',
+                                                padding: '10px',
+                                                backgroundColor: 'white',
+                                                border: '1px solid #e2e8f0',
+                                                borderRadius: '8px',
+                                              }}
+                                            >
+                                              <div style={{ fontSize: '24px', color: '#ef4444' }}>📄</div>
+                                              <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: '500' }}>{msg.content}</div>
+                                                <div style={{ fontSize: '12px', color: '#64748b' }}>PDF Document</div>
+                                              </div>
+                                              <button
+                                                onClick={() => window.open(url, '_blank')}
+                                                style={{
+                                                  background: 'none',
+                                                  border: 'none',
+                                                  color: '#4f46e5',
+                                                  cursor: 'pointer',
+                                                }}
+                                              >
+                                                Open
+                                              </button>
+                                            </div>
+                                          );
+                                        }
+                                        return (
+                                          <a
+                                            href={url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{
+                                              color: '#4f46e5',
+                                              textDecoration: 'underline',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '8px',
+                                            }}
+                                          >
+                                            📎 {msg.content}
+                                          </a>
+                                        );
+                                      })()}
                                     </div>
                                   ) : (
                                     <div>{msg.content}</div>
                                   )}
-                                  
+
                                   {/* Reactions Display */}
                                   {Object.keys(reactionCounts).length > 0 && (
                                     <div style={{
@@ -2595,7 +2988,7 @@ border: '2px solid #e2e8f0'
                                       ))}
                                     </div>
                                   )}
-                                  
+
                                   <div style={{
                                     fontSize: '11px',
                                     textAlign: 'right',
@@ -2626,9 +3019,9 @@ border: '2px solid #e2e8f0'
                     }}>
                       <div style={{ flex: 1, fontSize: '14px', color: '#4f46e5' }}>
                         <div style={{ fontWeight: '600', marginBottom: '4px' }}>Replying to {replyingTo.sender.full_name}</div>
-                        <div 
+                        <div
                           onClick={() => scrollToMessage(replyingTo.id)}
-                          style={{ 
+                          style={{
                             color: '#312e81',
                             cursor: 'pointer',
                             padding: '4px 8px',
@@ -2655,6 +3048,38 @@ border: '2px solid #e2e8f0'
                       >
                         ✕
                       </button>
+                    </div>
+                  )}
+                  {/* Typing Indicator */}
+                  {isOtherUserTyping && selectedConversation && (
+                    <div style={{
+                      padding: '8px 16px',
+                      fontSize: '14px',
+                      color: '#64748b',
+                      fontStyle: 'italic',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      justifyContent: 'center'
+                    }}>
+                      <span>{selectedConversation.other_user_full_name} is typing</span>
+                      <div style={{ display: 'flex', gap: '2px' }}>
+                        {[0, 1, 2].map(i => (
+                          <div key={i} style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            backgroundColor: '#94a3b8',
+                            animation: `typing-bounce 1.4s infinite ease-in-out ${i * 0.16}s`,
+                          }} />
+                        ))}
+                      </div>
+                      <style>{`
+      @keyframes typing-bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-5px); }
+      }
+    `}</style>
                     </div>
                   )}
 
@@ -2685,27 +3110,31 @@ border: '2px solid #e2e8f0'
                       >
                         😊
                       </button>
-                      
+
                       <input
                         ref={messageInputRef}
                         type="text"
                         value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder={replyingTo ? "Write your reply..." : "Type your message… Be kind, be present."}
+                        onChange={(e) => {
+                          setNewMessage(e.target.value);
+                          handleUserTyping(); // Trigger typing detection
+                          trackActivity();
+                        }}
+                        placeholder={replyingTo ? "Write your reply..." : "Type your message…"}
                         disabled={isSending || uploading}
                         style={{
                           flex: 1,
-                          padding: '14px 20px',
-                          borderRadius: '14px',
+                          padding: '12px 16px',
+                          borderRadius: '20px',
                           border: '1px solid #e2e8f0',
-                          fontSize: '15px',
+                          fontSize: '14px',
                           backgroundColor: '#f8fafc',
                           color: '#1e293b'
                         }}
                       />
-                      
-                      <label htmlFor="file-upload" style={{ 
-                        cursor: 'pointer', 
+
+                      <label htmlFor="file-upload" style={{
+                        cursor: 'pointer',
                         padding: '8px',
                         display: 'flex',
                         alignItems: 'center'
@@ -2724,7 +3153,7 @@ border: '2px solid #e2e8f0'
                           <div style={{ fontSize: '20px', color: '#64748b' }}>📎</div>
                         )}
                       </label>
-                      
+
                       <button
                         type="submit"
                         disabled={!newMessage.trim() || isSending || uploading}
@@ -2746,10 +3175,10 @@ border: '2px solid #e2e8f0'
                         {isSending ? 'Sending…' : 'Send'}
                       </button>
                     </div>
-                    
+
                     {/* Emoji Picker */}
                     {showEmojiPicker && (
-                      <div 
+                      <div
                         className="emoji-picker-container"
                         style={{
                           position: 'absolute',
@@ -2761,9 +3190,9 @@ border: '2px solid #e2e8f0'
                           overflow: 'hidden'
                         }}
                       >
-                        <Picker 
-                          data={data} 
-                          onEmojiSelect={handleEmojiSelect} 
+                        <Picker
+                          data={data}
+                          onEmojiSelect={handleEmojiSelect}
                           theme="light"
                           previewPosition="none"
                           maxFrequentRows={0}
