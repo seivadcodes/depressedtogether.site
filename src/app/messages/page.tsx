@@ -128,6 +128,7 @@ export default function MessagesPage() {
 
   const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const [isMarkingAsRead, setIsMarkingAsRead] = useState(false);
 
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -671,10 +672,13 @@ export default function MessagesPage() {
     const channel = supabase
       .channel(`user:${currentUserId}:messages`)
       .on('broadcast', { event: 'unread_count_update' }, async (payload) => {
-        console.log('📥 Global unread count updated:', payload.payload.count);
-        // Refetch full conversation list to update per-conversation unread_count
-        await fetchConversations();
-      })
+  console.log('📥 Global unread count updated:', payload.payload.count);
+  if (!isMarkingAsRead) {
+    await fetchConversations();
+  } else {
+    console.log('⚠️ Skipped unread_count_update refetch due to marking lock');
+  }
+})
       .subscribe();
 
     return () => {
@@ -746,7 +750,7 @@ export default function MessagesPage() {
       toUserId: selectedConversation.other_user_id,
       conversationId: selectedConversation.id,
       isTyping: true,
-      userId: currentUserId // 👈 Add this missing field
+      userId: currentUserId // 
     });
 
     // Clear existing timeout
@@ -761,7 +765,7 @@ export default function MessagesPage() {
         toUserId: selectedConversation.other_user_id,
         conversationId: selectedConversation.id,
         isTyping: false,
-        userId: currentUserId // 👈 Add this missing field
+        userId: currentUserId 
       });
     }, 2500);
   }, [currentUserId, selectedConversation]);
@@ -915,108 +919,85 @@ export default function MessagesPage() {
   };
 
   const openConversation = async (conv: ConversationSummary) => {
-    if (!currentUserId) return;
+  if (!currentUserId) return;
 
-    setSelectedConversation(conv);
-    setMessages([]);
-    setReplyingTo(null);
-    setShowConversationMenu(null);
+  // 🔒 Start marking-as-read flow
+  setIsMarkingAsRead(true);
 
-    // 🔥 ALWAYS attempt to mark messages as read — don’t rely on unread_count
-    try {
-      console.log('🔍 [DEBUG] Opening conversation:', conv.id);
-      console.log('📊 [DEBUG] Reported unread_count:', conv.unread_count);
+  setSelectedConversation(conv);
+  setMessages([]);
+  setReplyingTo(null);
+  setShowConversationMenu(null);
 
-      // Optimistic UI: clear unread badge immediately
-      setConversations(prev =>
-        prev.map(c => (c.id === conv.id ? { ...c, unread_count: 0 } : c))
-      );
+  try {
+    // Optimistic UI: clear unread badge immediately
+    setConversations(prev =>
+      prev.map(c => (c.id === conv.id ? { ...c, unread_count: 0 } : c))
+    );
 
-      // 🔥 Call mark_messages_as_read UNCONDITIONALLY
-      const { data: newUnreadCount, error: markError } = await supabase
-        .rpc('mark_messages_as_read', {
-          p_conversation_id: conv.id,
-          p_user_id: currentUserId,
-        });
-
-      if (markError) {
-        console.error('❌ [RPC ERROR] mark_messages_as_read failed:', markError);
-        throw markError;
-      }
-
-      console.log('✅ [SUCCESS] New global unread count after marking:', newUnreadCount);
-
-      // Broadcast updated unread count to header & other tabs
-      await supabase
-        .channel(`user:${currentUserId}:messages`)
-        .send({
-          type: 'broadcast',
-          event: 'unread_count_update',
-          payload: { count: newUnreadCount || 0 },
-        });
-
-      // Optional: verify message_reads table now has entries
-      const { data: reads, error: readsError } = await supabase
-        .from('message_reads')
-        .select('message_id, read_at')
-        .eq('user_id', currentUserId)
-        .in(
-          'message_id',
-          (await supabase
-            .from('messages')
-            .select('id')
-            .eq('conversation_id', conv.id)
-            .then(r => r.data?.map(m => m.id) || []))
-        );
-
-      if (!readsError && reads?.length > 0) {
-        console.log(`✅ [VERIFIED] ${reads.length} messages marked as read in DB`);
-      } else {
-        console.warn('⚠️ [WARNING] No message_reads found after marking — possible logic issue');
-      }
-
-    } catch (err) {
-      console.error('💥 [ERROR] Failed to mark messages as read:', err);
-      // Roll back optimistic update
-      setConversations(prev =>
-        prev.map(c => (c.id === conv.id ? { ...c, unread_count: conv.unread_count } : c))
-      );
-      toast.error('Failed to update read status');
-    }
-
-    // Handle mobile view
-    if (isMobileView) {
-      setShowChatView(true);
-    }
-
-    // Load messages
-    try {
-      const { data: allMessages, error: msgError } = await supabase
-        .from('messages')
-        .select(`
-        *,
-        sender:sender_id (
-          full_name,
-          avatar_url
-        )
-      `)
-        .eq('conversation_id', conv.id)
-        .order('created_at', { ascending: true });
-
-      if (msgError) throw msgError;
-
-      const filteredMessages = (allMessages || []).filter(msg => {
-        if (msg.deleted_for_everyone) return false;
-        if (msg.deleted_for_me?.includes(currentUserId)) return false;
-        return true;
+    // Actual DB update
+    const { data: newUnreadCount, error: markError } = await supabase
+      .rpc('mark_messages_as_read', {
+        p_conversation_id: conv.id,
+        p_user_id: currentUserId,
       });
 
-      setMessages(filteredMessages);
-    } catch (err) {
-      console.error('Error loading messages:', err);
-      toast.error('Failed to load conversation');
+    if (markError) {
+      console.error('❌ [RPC ERROR] mark_messages_as_read failed:', markError);
+      throw markError;
     }
-  };
+
+    // Broadcast update
+    await supabase
+      .channel(`user:${currentUserId}:messages`)
+      .send({
+        type: 'broadcast',
+        event: 'unread_count_update',
+        payload: { count: newUnreadCount || 0 },
+      });
+
+  } catch (err) {
+    console.error('💥 [ERROR] Failed to mark messages as read:', err);
+    // Roll back optimistic update
+    setConversations(prev =>
+      prev.map(c => (c.id === conv.id ? { ...c, unread_count: conv.unread_count } : c))
+    );
+    toast.error('Failed to update read status');
+  } finally {
+    // 🔓 Always release the lock
+    setIsMarkingAsRead(false);
+  }
+
+  // Mobile view logic
+  if (isMobileView) {
+    setShowChatView(true);
+  }
+
+  // Load messages (outside try/catch so it always runs)
+  try {
+    const { data: allMessages, error: msgError } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        sender:sender_id (full_name, avatar_url)
+      `)
+      .eq('conversation_id', conv.id)
+      .order('created_at', { ascending: true });
+
+    if (msgError) throw msgError;
+
+    const filteredMessages = (allMessages || []).filter(msg => {
+      if (msg.deleted_for_everyone) return false;
+      if (msg.deleted_for_me?.includes(currentUserId)) return false;
+      return true;
+    });
+
+    setMessages(filteredMessages);
+  } catch (err) {
+    console.error('Error loading messages:', err);
+    toast.error('Failed to load conversation');
+  }
+};
 
 
   const handleStartNewConversation = useCallback(async (userId: string) => {
@@ -1207,20 +1188,25 @@ export default function MessagesPage() {
     }
   };
 
-  const fetchConversations = async () => {
-    if (!currentUserId) return;
+ const fetchConversations = async () => {
+  if (!currentUserId) return;
+  
+  // ⛔ Skip if we're in the middle of marking as read
+  if (isMarkingAsRead) {
+    console.log('⚠️ Skipping fetchConversations due to isMarkingAsRead lock');
+    return;
+  }
 
-    try {
-      const { data: convData, error } = await supabase.rpc('get_user_conversations', {
-        user_id: currentUserId,
-      });
-
-      if (error) throw error;
-      setConversations(convData || []);
-    } catch (err) {
-      console.error('Error fetching conversations:', err);
-    }
-  };
+  try {
+    const { data: convData, error } = await supabase.rpc('get_user_conversations', {
+      user_id: currentUserId,
+    });
+    if (error) throw error;
+    setConversations(convData || []);
+  } catch (err) {
+    console.error('Error fetching conversations:', err);
+  }
+};
 
 
   // Mark user as active
