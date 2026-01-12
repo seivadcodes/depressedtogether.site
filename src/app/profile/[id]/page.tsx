@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { useCall } from '@/context/CallContext';
 import SendMessageOverlay from '@/components/modals/SendMessageOverlay';
@@ -23,6 +23,16 @@ const griefLabels: Record<string, string> = {
   caregiver: 'Caregiver Grief',
   suicide: 'Suicide Loss',
   other: 'Other Loss',
+};
+
+// Helper to convert ISO 3166-1 alpha-2 code to full country name
+const getCountryName = (code: string): string => {
+  if (!code || typeof code !== 'string' || code.length !== 2) return code || '';
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) || code;
+  } catch {
+    return code;
+  }
 };
 
 export default function PublicProfile() {
@@ -132,7 +142,7 @@ export default function PublicProfile() {
   const name = data.full_name || 'Anonymous';
   const firstName = data.full_name ? data.full_name.split(' ')[0] : 'Them';
   const types = Array.isArray(data.grief_types) ? data.grief_types : [];
-  const country = data.country;
+  const countryName = data.country ? getCountryName(data.country) : null;
 
   return (
     <div style={{ padding: '1rem', maxWidth: '500px', margin: '2rem auto', fontFamily: 'system-ui' }}>
@@ -167,9 +177,9 @@ export default function PublicProfile() {
           {name}
         </h1>
 
-        {country && (
+        {countryName && (
           <p style={{ margin: '0 0 0.75rem', fontSize: '0.95rem', color: '#64748b' }}>
-            From {country}
+            From {countryName}
           </p>
         )}
 
