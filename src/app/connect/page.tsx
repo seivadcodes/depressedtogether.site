@@ -9,6 +9,7 @@ interface UserProfile {
   id: string;
   full_name: string;
   avatar_url: string | null;
+  accepts_calls?: boolean; 
 }
 
 interface OneOnOneRequest {
@@ -145,11 +146,6 @@ export default function ConnectPage() {
   const [isPostingGroup, setIsPostingGroup] = useState(false);
   const isRedirectingRef = useRef(false);
 
-  const [userPreferences, setUserPreferences] = useState({
-  acceptsCalls: true,
-  acceptsVideoCalls: false,
-});
-
   const fetchActiveOneOnOne = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -216,7 +212,7 @@ export default function ConnectPage() {
     }
   }, [router, supabase, user]);
 
-  const fetchAvailableOneOnOne = useCallback(async (currentUserId: string) => {
+ const fetchAvailableOneOnOne = useCallback(async (currentUserId: string) => {
   try {
     const { data: requests, error: reqError } = await supabase
       .from('quick_connect_requests')
@@ -228,17 +224,32 @@ export default function ConnectPage() {
     if (reqError) throw reqError;
 
     const userIds = requests.map((r) => r.user_id);
+    if (userIds.length === 0) {
+      setAvailableOneOnOne([]);
+      return;
+    }
+
     const { data: profiles } = await supabase
       .from('profiles')
-      .select('id, full_name, avatar_url')
+      .select('id, full_name, avatar_url, accepts_calls') // ← include accepts_calls
       .in('id', userIds);
 
-    const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-    const formatted = requests.map((req) => ({
-      ...req,
-      type: 'one-on-one' as const,
-      user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
-    }));
+    const profileMap = new Map(
+      (profiles || []).map((p) => [p.id, p])
+    );
+
+    const formatted = requests
+      .map((req) => {
+        const userProfile = profileMap.get(req.user_id);
+        // Skip if user doesn't accept calls or profile missing
+        if (!userProfile || !userProfile.accepts_calls) return null;
+        return {
+          ...req,
+          type: 'one-on-one' as const,
+          user: userProfile,
+        };
+      })
+      .filter(Boolean) as AvailableRequest[]; // filter out nulls
 
     setAvailableOneOnOne(formatted);
   } catch (err) {
@@ -258,17 +269,31 @@ export default function ConnectPage() {
     if (reqError) throw reqError;
 
     const userIds = requests.map((r) => r.user_id);
+    if (userIds.length === 0) {
+      setAvailableGroups([]);
+      return;
+    }
+
     const { data: profiles } = await supabase
       .from('profiles')
-      .select('id, full_name, avatar_url')
+      .select('id, full_name, avatar_url, accepts_calls') // ← include accepts_calls
       .in('id', userIds);
 
-    const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-    const formatted = requests.map((req) => ({
-      ...req,
-      type: 'group' as const,
-      user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
-    }));
+    const profileMap = new Map(
+      (profiles || []).map((p) => [p.id, p])
+    );
+
+    const formatted = requests
+      .map((req) => {
+        const userProfile = profileMap.get(req.user_id);
+        if (!userProfile || !userProfile.accepts_calls) return null;
+        return {
+          ...req,
+          type: 'group' as const,
+          user: userProfile,
+        };
+      })
+      .filter(Boolean) as AvailableRequest[];
 
     setAvailableGroups(formatted);
   } catch (err) {
@@ -309,23 +334,11 @@ export default function ConnectPage() {
           router.push('/auth');
           return;
         }
-
-       
-        // Update the user profile fetch to include preferences
-const { data: profile, error: profileError } = await supabase
-  .from('profiles')
-  .select('id, full_name, avatar_url, accepts_calls, accepts_video_calls')
-  .eq('id', session.user.id)
-  .single();
-
-// Store these in state
-if (profile) {
-  setUser(profile);
-  setUserPreferences({
-    acceptsCalls: profile.accepts_calls ?? true,
-    acceptsVideoCalls: profile.accepts_video_calls ?? false
-  });
-}
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .eq('id', session.user.id)
+          .single();
         if (profileError) throw profileError;
         if (isMounted) setUser(profile);
         startPolling(session.user.id);
@@ -573,15 +586,9 @@ if (profile) {
     );
   }
 
-  // Filter available requests based on CURRENT USER'S preferences
-const filteredOneOnOne = userPreferences.acceptsCalls ? availableOneOnOne : [];
-// Optional: apply similar logic to groups if you have a pref like acceptsGroupCalls
-// For now, we'll assume group calls are always visible unless you add a pref
-const filteredGroups = availableGroups;
-
-const allRequests = [...filteredOneOnOne, ...filteredGroups].sort(
-  (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-);
+  const allRequests = [...availableOneOnOne, ...availableGroups].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
 
   return (
     <div style={styles.container}>
