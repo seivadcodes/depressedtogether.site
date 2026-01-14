@@ -1417,12 +1417,13 @@ export default function CommunityDetailPage() {
           }}
         >
           {comment.avatar_url ? (
-            <Image
-              src={comment.avatar_url}
-              alt={comment.username}
-              fill
-              style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
-            />
+           <Image
+  src={comment.avatar_url}
+  alt={comment.username}
+  fill
+  sizes="(max-width: 768px) 48px, 48px" // Add this line
+  style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
+/>
           ) : (
             comment.username[0]?.toUpperCase() || 'U'
           )}
@@ -1493,12 +1494,12 @@ export default function CommunityDetailPage() {
         >
           {comment.avatar_url ? (
             <Image
-              src={comment.avatar_url}
-              alt={comment.username}
-              width={32}
-              height={32}
-              style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
-            />
+  src={comment.avatar_url}
+  alt={comment.username}
+  fill
+  sizes="(max-width: 768px) 48px, 48px" // Add this line
+  style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
+/>
           ) : (
             comment.username[0]?.toUpperCase() || 'U'
           )}
