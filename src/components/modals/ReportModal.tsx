@@ -11,7 +11,13 @@ type ParticipantOption = {
   id: string;
   name: string;
 };
-
+interface ReportContext {
+  timestamp: string;
+  call_type?: 'group' | 'one-on-one';
+  call_duration?: number;
+  reported_user_id?: string;
+  // Add other optional fields as needed in the future
+}
 export default function ReportModal({
   isOpen,
   onClose,
@@ -40,9 +46,9 @@ export default function ReportModal({
 
     setIsSubmitting(true);
     try {
-      const context: Record<string, any> = {
-        timestamp: new Date().toISOString(),
-      };
+      const context: ReportContext = {
+  timestamp: new Date().toISOString(),
+};
 
       if (targetType === 'call') {
         context.call_type = 'group'; // or infer if needed
