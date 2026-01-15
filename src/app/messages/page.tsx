@@ -353,7 +353,41 @@ export default function MessagesPage() {
     loadInitialData();
   }, [router, supabase]);
 
+useEffect(() => {
+  const input = messageInputRef.current;
+  const onFocus = () => {
+    setTimeout(() => {
+      input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+  };
 
+  input?.addEventListener('focus', onFocus);
+  return () => input?.removeEventListener('focus', onFocus);
+}, []);
+
+// Add this inside your component, near other useEffects
+useEffect(() => {
+  const handleFocus = () => {
+    // Small delay ensures keyboard has started opening
+    setTimeout(() => {
+      messageInputRef.current?.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center' 
+      });
+    }, 300);
+  };
+
+  const input = messageInputRef.current;
+  if (input) {
+    input.addEventListener('focus', handleFocus);
+  }
+
+  return () => {
+    if (input) {
+      input.removeEventListener('focus', handleFocus);
+    }
+  };
+}, []);
 
   // Update user online status on page visibility
   // ✅ Activity-aware presence tracking with proper cleanup and const usage
@@ -1480,7 +1514,7 @@ avatar_url
     const safeLastSeen = otherUserLastSeen;
     return (
       <div style={{
-        height: '100vh',
+        height: '100dvh',
         backgroundColor: '#f9fafb',
         display: 'flex',
         flexDirection: 'column'
