@@ -160,15 +160,15 @@ export function CommentsSection({
     }
 
     // Check if current user liked it
-    const { data, error: likeError } = await supabase
-      .from('likes')
-      .select('id')
-      .eq('target_type', parentType)
-      .eq('target_id', parentId)
-      .eq('user_id', currentUser.id)
-      .single();
+   const { data, error: likeError } = await supabase
+  .from('likes')
+  .select('id')
+  .eq('target_type', parentType)
+  .eq('target_id', parentId)
+  .eq('user_id', currentUser.id)
+  .maybeSingle(); // ← Use maybeSingle here too
 
-    setPostIsLiked(!!data && !likeError);
+setPostIsLiked(!!data && !likeError);
   } catch (err) {
     console.error('Failed to load post like state:', err);
   }

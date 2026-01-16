@@ -9,6 +9,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { PostCard } from '@/components/PostCard';
 
+import { PostComposer } from '@/components/PostComposer';
+
 import {
   Users,
   Heart,
@@ -40,18 +42,6 @@ interface Community {
   cover_photo_url?: string | null;
 }
 
-interface CommentNode {
-  id: string;
-  content: string;
-  created_at: string;
-  user_id: string;
-  username: string;
-  avatar_url: string | null;
-  post_id: string;
-  parent_comment_id: string | null;
-  replies: CommentNode[];
-  reply_count: number;
-}
 
 interface Member {
   user_id: string;
@@ -239,13 +229,14 @@ export default function CommunityDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newPostContent, setNewPostContent] = useState('');
-  const [newPostMedia, setNewPostMedia] = useState<File | null>(null);
+  const [newPostMedia, setNewPostMedia] = useState<File[]>([]);
   const [bannerModalOpen, setBannerModalOpen] = useState(false);
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const [bannerUploadError, setBannerUploadError] = useState<string | null>(null);
   const [bannerUploading, setBannerUploading] = useState(false);
-  
+  const [isModalOpen, setIsModalOpen] = useState(false);
+const [isModalSubmitting, setIsModalSubmitting] = useState(false);
   
   
   
@@ -259,6 +250,27 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
 
   const [isKebabOpen, setIsKebabOpen] = useState(false);
   const kebabMenuRef = useRef<HTMLDivElement>(null);
+
+
+  const handleModalPostSubmit = async (text: string, mediaFiles: File[]) => {
+  if (!user || !community) {
+    toast.error('You must be logged in and in a community to post.');
+    return;
+  }
+  setIsModalSubmitting(true);
+  try {
+    // ✅ mediaFiles is already File[] — pass directly
+    const newPost = await createPostWithMedia(text, mediaFiles, user.id);
+    setPosts(prev => [newPost, ...prev]);
+    setIsModalOpen(false);
+    toast.success('Post shared with the community!');
+  } catch (err) {
+    console.error('Failed to create post via modal:', err);
+    toast.error(err instanceof Error ? err.message : 'Failed to share post.');
+  } finally {
+    setIsModalSubmitting(false);
+  }
+};
   const formatRecentActivity = (dateString: string): string => {
     const now = new Date();
     const created = new Date(dateString);
@@ -650,116 +662,127 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
     }
   };
 
-  const createPostWithMedia = async (content: string, file: File | null, userId: string) => {
-    if (!community) throw new Error('Community not loaded');
+  const createPostWithMedia = async (content: string, files: File[], userId: string) => {
+  if (!community) throw new Error('Community not loaded');
 
-    try {
-      const { data: postData, error: postError } = await supabase
-        .from('community_posts')
-        .insert({
-          community_id: communityId,
-          user_id: userId,
-          content: content.trim(),
-          created_at: new Date().toISOString(),
-          media_url: file ? 'uploading' : null,
-        })
-        .select(`
-          id,
-          content,
-          created_at,
-          community_id,
-          media_url,
-          user_id
-        `)
-        .single();
+  let insertedPostId: string | null = null; // 👈 Track ID for cleanup
 
-      if (postError) throw postError;
+  try {
+    // Insert post with empty media_urls
+    const { data: postData, error: postError } = await supabase
+      .from('community_posts')
+      .insert({
+        community_id: communityId,
+        user_id: userId,
+        content: content.trim(),
+        created_at: new Date().toISOString(),
+        media_urls: [], // start empty
+      })
+      .select(`
+        id,
+        content,
+        created_at,
+        community_id,
+        media_urls,
+        user_id
+      `)
+      .single();
 
-      let mediaUrl = null;
-      if (file) {
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
-        if (!allowedTypes.includes(file.type)) throw new Error('Unsupported file type');
+    if (postError) throw postError;
 
+    insertedPostId = postData.id; // ✅ Save for cleanup
+
+    let mediaUrls: string[] = [];
+
+    if (files.length > 0) {
+      // Validate files
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
+      for (const file of files) {
+        if (!allowedTypes.includes(file.type)) {
+          throw new Error('Unsupported file type');
+        }
         const maxSize = file.type.startsWith('video/') ? 15 : 5;
-        if (file.size > maxSize * 1024 * 1024) throw new Error(`File must be less than ${maxSize}MB`);
+        if (file.size > maxSize * 1024 * 1024) {
+          throw new Error(`File must be less than ${maxSize}MB`);
+        }
+      }
 
+      // Upload all files
+      const uploadPromises = files.map(async (file, idx) => {
         const fileExt = file.name.split('.').pop();
-        const fileName = `${communityId}/posts/${postData.id}.${fileExt}`;
+        const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
         const { error: uploadError } = await supabase.storage
           .from('communities')
           .upload(fileName, file, { upsert: true, contentType: file.type });
-
         if (uploadError) throw uploadError;
-
         const { data } = supabase.storage.from('communities').getPublicUrl(fileName);
-        mediaUrl = data.publicUrl;
+        return data.publicUrl;
+      });
 
-        if (mediaUrl) {
-          await supabase.from('community_posts').update({ media_url: mediaUrl }).eq('id', postData.id);
-        }
-      }
+      mediaUrls = await Promise.all(uploadPromises);
 
-      const { data: userData } = await supabase
-        .from('profiles')
-        .select('full_name, avatar_url, is_anonymous')
-        .eq('id', userId)
-        .single();
-
-      const isAnonymous = userData?.is_anonymous || false;
-
-      return {
-        id: postData.id,
-        content: postData.content,
-        media_url: mediaUrl,
-        created_at: postData.created_at,
-        user_id: postData.user_id,
-        username: isAnonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
-        avatar_url: isAnonymous ? null : userData?.avatar_url || null,
-        community_id: postData.community_id,
-        likes_count: 0,
-        comments_count: 0,
-        is_liked: false,
-      };
-    } catch (error) {
-      console.error('Post creation failed:', error);
-      if (error instanceof Error && error.message?.includes('media')) {
-        // Safely access postId only if it exists on the error object
-        const maybeError = error as { message: string; postId?: string };
-        if (maybeError.postId) {
-          await supabase.from('community_posts').delete().eq('id', maybeError.postId);
-        }
-      }
-      throw error;
+      // Update post with full media_urls array
+      const { error: updateError } = await supabase
+        .from('community_posts')
+        .update({ media_urls: mediaUrls })
+        .eq('id', postData.id);
+      if (updateError) throw updateError;
     }
-  };
 
+    const { data: userData } = await supabase
+      .from('profiles')
+      .select('full_name, avatar_url, is_anonymous')
+      .eq('id', userId)
+      .single();
+
+    const isAnonymous = userData?.is_anonymous || false;
+
+    return {
+      id: postData.id,
+      content: postData.content,
+      media_url: mediaUrls.length > 0 ? mediaUrls[0] : null,
+      media_urls: mediaUrls,
+      created_at: postData.created_at,
+      user_id: postData.user_id,
+      username: isAnonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
+      avatar_url: isAnonymous ? null : userData?.avatar_url || null,
+      community_id: postData.community_id,
+      likes_count: 0,
+      comments_count: 0,
+      is_liked: false,
+    };
+  } catch (error) {
+    console.error('Post creation failed:', error);
+    // ✅ Clean up using tracked ID
+    if (insertedPostId) {
+      await supabase.from('community_posts').delete().eq('id', insertedPostId);
+    }
+    throw error;
+  }
+};
   const handleCreatePost = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!user || !community || (!newPostContent.trim() && !newPostMedia)) return;
-
-    setError(null);
-    setUploadingMedia(!!newPostMedia);
-
-    try {
-      const newPost = await createPostWithMedia(newPostContent.trim(), newPostMedia, user.id);
-      setPosts((prev) => [newPost, ...prev]);
-      setNewPostContent('');
-      setNewPostMedia(null);
-      toast.success('Post created successfully!');
-    } catch (err) {
-      console.error('Error creating post:', err);
-
-      // Narrow the type safely
-      const errorMessage = err instanceof Error
-        ? err.message
-        : typeof err === 'string'
-          ? err
-          : 'Failed to create post';
-
-      setError(errorMessage);
-      toast.error('Failed to create post');
-    }
-  };
+  e.preventDefault();
+  if (!user || !community || (!newPostContent.trim() && newPostMedia.length === 0)) return;
+  setError(null);
+  setUploadingMedia(newPostMedia.length > 0);
+  try {
+    // ✅ Pass newPostMedia (which is File[]) directly
+    const newPost = await createPostWithMedia(newPostContent.trim(), newPostMedia, user.id);
+    setPosts((prev) => [newPost, ...prev]);
+    setNewPostContent('');
+    setNewPostMedia([]);
+    toast.success('Post created successfully!');
+  } catch (err) {
+    console.error('Error creating post:', err);
+    const errorMessage = err instanceof Error
+      ? err.message
+      : typeof err === 'string'
+      ? err
+      : 'Failed to create post';
+    setError(errorMessage);
+    toast.error('Failed to create post');
+  }
+};
 
   
   
@@ -858,31 +881,36 @@ const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
   };
 
   const handlePostMediaSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const files = Array.from(e.target.files || []);
+  if (files.length === 0) return;
 
-    e.target.value = '';
+  // Optional: limit total count (e.g., max 5)
+  if (newPostMedia.length + files.length > 5) {
+    setError('You can upload up to 5 files per post.');
+    return;
+  }
 
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
+  const maxSizeMB = (type: string) => (type.startsWith('video/') ? 15 : 5);
+
+  for (const file of files) {
     if (!allowedTypes.includes(file.type)) {
       setError('Unsupported file type. Please upload JPG, PNG, GIF, MP4 or MOV files.');
       return;
     }
-
-    const maxSize = file.type.startsWith('video/') ? 15 : 5;
-    if (file.size > maxSize * 1024 * 1024) {
-      setError(`File must be less than ${maxSize}MB`);
+    if (file.size > maxSizeMB(file.type) * 1024 * 1024) {
+      setError(`File must be less than ${maxSizeMB(file.type)}MB`);
       return;
     }
+  }
 
-    setNewPostMedia(file);
-    setError(null);
-  };
-
-  const removePostMedia = () => {
-    setNewPostMedia(null);
-    setError(null);
-  };
+  setNewPostMedia((prev) => [...prev, ...files]);
+  setError(null);
+};
+const removePostMedia = () => {
+  setNewPostMedia([]);
+  setError(null);
+};
 
   // --- UI Rendering (with inline styles) ---
   if (loading) {
@@ -1318,154 +1346,24 @@ const transformPostForCard = (post: Post) => {
               </div>
             </div>
           </div>
+          
 
           {/* Create Post */}
           {isMember && (
-            <div style={cardStyle}>
-              <form onSubmit={handleCreatePost}>
-                <div style={{ display: 'flex', gap: spacing.md }}>
-                  <div
-                    style={{
-                      width: '2.5rem',
-                      height: '2.5rem',
-                      borderRadius: borderRadius.full,
-                      background: gradient,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                      color: 'white',
-                      fontWeight: 600,
-                      fontSize: '0.875rem',
-                    }}
-                  >
-                    {user?.user_metadata?.avatar_url ? (
-                      <Image
-                        src={user.user_metadata.avatar_url}
-                        alt={authUsername}
-                        width={40}
-                        height={40}
-                        style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
-                      />
-                    ) : (
-                      authUsername[0]?.toUpperCase() || 'U'
-                    )}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <textarea
-                      value={newPostContent}
-                      onChange={(e) => setNewPostContent(e.target.value)}
-                      placeholder={`What's on your mind, ${authUsername}? Share your thoughts, memories, or questions with the community...`}
-                      style={{
-                        width: '100%',
-                        padding: `${spacing.sm} ${spacing.md}`,
-                        border: `1px solid ${baseColors.border}`,
-                        borderRadius: borderRadius.md,
-                        minHeight: '100px',
-                        maxHeight: '200px',
-                        resize: 'vertical',
-                        fontSize: '0.875rem',
-                      }}
-                      maxLength={500}
-                    />
-                    {newPostMedia && (
-                      <div style={{ marginTop: spacing.md, padding: spacing.md, background: '#f8fafc', borderRadius: borderRadius.md, position: 'relative' }}>
-                        <button
-                          type="button"
-                          onClick={removePostMedia}
-                          style={{
-                            position: 'absolute',
-                            top: '-0.5rem',
-                            right: '-0.5rem',
-                            background: '#ef4444',
-                            color: 'white',
-                            borderRadius: borderRadius.full,
-                            width: '1.25rem',
-                            height: '1.25rem',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            border: 'none',
-                            cursor: 'pointer',
-                          }}
-                          title="Remove media"
-                        >
-                          <X size={12} />
-                        </button>
-                        {newPostMedia.type.startsWith('image/') ? (
-                          <Image
-                            src={URL.createObjectURL(newPostMedia)}
-                            alt="Post preview"
-                            width={800}
-                            height={400}
-                            style={{ maxHeight: '16rem', width: '100%', objectFit: 'contain', borderRadius: borderRadius.md }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: spacing.lg,
-                              background: '#f1f5f9',
-                              borderRadius: borderRadius.md,
-                            }}
-                          >
-                            <div style={{ color: baseColors.primary, marginBottom: spacing.sm }}>
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="2.5rem" height="2.5rem">
-                                <path fillRule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v11.5c0 1.243 1.007 2.25 2.25 2.25h11.5a2.25 2.25 0 002.25-2.25V4.25A2.25 2.25 0 0015.75 2H4.25zm11.5 1.5a.75.75 0 01.75.75V8h-4.5a.75.75 0 010-1.5h3.75V4.75a.75.75 0 01.75-.75z" clipRule="evenodd" />
-                                <path fillRule="evenodd" d="M6 4.5a.75.75 0 01.75.75v3.5l1.72-1.72a.75.75 0 111.06 1.06l-3 3a.75.75 0 01-1.06 0l-3-3a.75.75 0 111.06-1.06l1.72 1.72V5.25A.75.75 0 016 4.5z" clipRule="evenodd" />
-                              </svg>
-                            </div>
-                            <p style={{ fontWeight: 600, color: baseColors.text.primary, marginBottom: spacing.sm, fontSize: '0.875rem' }}>
-                              {newPostMedia.name}
-                            </p>
-                            <p style={{ color: baseColors.text.muted, fontSize: '0.75rem' }}>{Math.round(newPostMedia.size / 1024)}KB</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: spacing.md }}>
-                        <label style={{ display: 'flex', alignItems: 'center', color: baseColors.primary, cursor: 'pointer', fontSize: '0.875rem' }}>
-                          <Upload size={18} style={{ marginRight: '0.25rem' }} />
-                          <span>Add media</span>
-                          <input
-                            type="file"
-                            accept="image/*,video/*"
-                            style={{ display: 'none' }}
-                            onChange={handlePostMediaSelect}
-                          />
-                        </label>
-                        <span style={{ color: baseColors.text.muted, fontSize: '0.75rem' }}>{newPostContent.length}/500</span>
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={uploadingMedia || (!newPostContent.trim() && !newPostMedia)}
-                        style={{
-                          ...buttonStyle(baseColors.primary),
-                          padding: `${spacing.sm} ${spacing.md}`,
-                          fontSize: '0.875rem',
-                          opacity: uploadingMedia || (!newPostContent.trim() && !newPostMedia) ? 0.7 : 1,
-                        }}
-                      >
-                        {uploadingMedia ? (
-                          <span style={{ display: 'flex', alignItems: 'center' }}>
-                            <Loader2 size={16} style={{ animation: 'spin 1s linear infinite', marginRight: '0.25rem' }} />
-                            Uploading...
-                          </span>
-                        ) : (
-                          'Share'
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </form>
-            </div>
-          )}
-
+  <PostComposer
+    onSubmit={async (text: string, mediaFiles: File[]) => {
+      if (!user) return;
+      const newPost = await createPostWithMedia(text, mediaFiles, user.id); // ✅ pass full array
+      setPosts(prev => [newPost, ...prev]);
+      toast.success('Post shared!');
+    }}
+    isSubmitting={uploadingMedia}
+    placeholder={`What's on your mind, ${authUsername}? Share your thoughts...`}
+    avatarUrl={user?.user_metadata?.avatar_url || null}
+    displayName={authUsername}
+    maxFiles={4} // or 5, as you prefer
+  />
+)}
         {/* Posts */}
 <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
   {posts.length === 0 ? (
@@ -1928,6 +1826,7 @@ const transformPostForCard = (post: Post) => {
               </div>
             </div>
           </div>
+         
         </div>
       )}
 
