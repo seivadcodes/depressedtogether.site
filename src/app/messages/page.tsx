@@ -8,7 +8,7 @@ import Picker, { Theme } from 'emoji-picker-react';
 import { toast } from 'react-hot-toast';
 import CallOverlay from '@/components/calling/CallOverlay';
 import Image from 'next/image';
-
+import FooterNav from '@/components/layout/FooterNav';
 
 
 import { useCall } from '@/context/CallContext';
@@ -1385,15 +1385,15 @@ avatar_url
   };
 
   // Define the correct type (or just use inline)
-interface EmojiData {
-  emoji: string;
-}
+  interface EmojiData {
+    emoji: string;
+  }
 
-const handleEmojiSelect = (emojiData: EmojiData) => {
-  setNewMessage((prev) => prev + emojiData.emoji); // 👈 .emoji, not .native
-  setShowEmojiPicker(false);
-  messageInputRef.current?.focus();
-};
+  const handleEmojiSelect = (emojiData: EmojiData) => {
+    setNewMessage((prev) => prev + emojiData.emoji); // 👈 .emoji, not .native
+    setShowEmojiPicker(false);
+    messageInputRef.current?.focus();
+  };
   const handleCallUser = async () => {
     if (!selectedConversation || !currentUserId) {
       toast.error('Unable to start call');
@@ -1477,16 +1477,17 @@ const handleEmojiSelect = (emojiData: EmojiData) => {
     } = selectedConversation;
     // Use the live-updated state instead of stale conversation data
     const safeLastSeen = otherUserLastSeen;
-    return (
-      <div style={{
-        height: '100vh',
-        backgroundColor: '#f9fafb',
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
+   return (
+  <div style={{
+    height: '100dvh',
+    backgroundColor: '#f9fafb',
+    display: 'flex',
+    flexDirection: 'column',
+    paddingBottom: '3.5rem', // 👈 ADD THIS LINE
+  }}>
         {/* Mobile Chat Header */}
         <div style={{
-          padding: '50px',
+          padding: '65px 10px 8px 10px',
           backgroundColor: 'white',
           borderBottom: '1px solid #e2e8f0',
           display: 'flex',
@@ -1636,7 +1637,7 @@ const handleEmojiSelect = (emojiData: EmojiData) => {
                       position: 'relative'
                     }}
                   >
-                    
+
 
                     <div style={{
                       maxWidth: '80%',
@@ -2090,11 +2091,11 @@ const handleEmojiSelect = (emojiData: EmojiData) => {
         <form
           onSubmit={handleSendMessage}
           style={{
-            padding: '12px 16px',
+            padding: '6px 10px',
             backgroundColor: 'white',
-            paddingBottom: '70px',
+            paddingBottom: '1px',
             borderTop: '1px solid #e2e8f0',
-            
+
             bottom: 0,
             zIndex: 10
           }}
@@ -2163,7 +2164,7 @@ const handleEmojiSelect = (emojiData: EmojiData) => {
 
             <label htmlFor="file-upload-mobile" style={{
               cursor: 'pointer',
-              padding: '8px',
+              padding: '4px',
               display: 'flex',
               alignItems: 'center'
             }}>
@@ -2180,7 +2181,7 @@ const handleEmojiSelect = (emojiData: EmojiData) => {
               ) : (
                 <label htmlFor="file-upload" style={{
                   cursor: 'pointer',
-                  padding: '8px',
+                  padding: '4px',
                   display: 'flex',
                   alignItems: 'center'
                 }}>
@@ -2197,55 +2198,64 @@ const handleEmojiSelect = (emojiData: EmojiData) => {
             </label>
 
             <button
-              type="submit"
-              disabled={!newMessage.trim() || isSending || uploading}
-              style={{
-                padding: '12px 20px',
-                borderRadius: '20px',
-                border: 'none',
-                backgroundColor: newMessage.trim() && !isSending && !uploading ? '#4f46e5' : '#cbd5e1',
-                color: 'white',
-                fontWeight: '600',
-                fontSize: '14px',
-                cursor: newMessage.trim() && !isSending && !uploading ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
-              {isSending ? '...' : 'Send'}
-            </button>
+  type="submit"
+  disabled={!newMessage.trim() || isSending || uploading}
+  style={{
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    border: 'none',
+    backgroundColor: newMessage.trim() && !isSending && !uploading ? '#4f46e5' : '#cbd5e1',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: newMessage.trim() && !isSending && !uploading ? 'pointer' : 'not-allowed',
+    padding: 0,
+     minWidth: '36px',
+  minHeight: '36px',
+  boxSizing: 'border-box',
+  }}
+>
+  {isSending ? (
+    <div style={{ width: '20px', height: '20px', border: '2px solid transparent', borderTop: '2px solid white', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+  ) : (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="22" y1="2" x2="11" y2="13"></line>
+      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+    </svg>
+  )}
+</button>
           </div>
 
-         {/* Emoji Picker */}
-{showEmojiPicker && (
-  <div
-    className="emoji-picker-container"
-    style={{
-      position: 'absolute',
-      bottom: '70px',
-      left: '50px',
-      zIndex: 100,
-      boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-      borderRadius: '12px',
-      overflow: 'hidden',
-      // 👇 Light theme via CSS variables (for @emoji-mart/react v4+)
-      '--rgb-bg': '255, 255, 255',
-      '--rgb-color': '30, 41, 59',
-      '--rgb-color-border': '226, 232, 240',
-      colorScheme: 'light',
-    } as React.CSSProperties}
-  >
-    <Picker
-  onEmojiClick={handleEmojiSelect} // 👈 note: onEmojiClick, not onEmojiSelect
-  theme={Theme.LIGHT}
-  skinTonesDisabled
-  searchDisabled
-  previewConfig={{ showPreview: false }}
-  style={{ width: '100%', height: '300px' }}
-/>
-  </div>
-)}
+          {/* Emoji Picker */}
+          {showEmojiPicker && (
+            <div
+              className="emoji-picker-container"
+              style={{
+                position: 'absolute',
+                bottom: '70px',
+                left: '50px',
+                zIndex: 100,
+                boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                // 👇 Light theme via CSS variables (for @emoji-mart/react v4+)
+                '--rgb-bg': '255, 255, 255',
+                '--rgb-color': '30, 41, 59',
+                '--rgb-color-border': '226, 232, 240',
+                colorScheme: 'light',
+              } as React.CSSProperties}
+            >
+              <Picker
+                onEmojiClick={handleEmojiSelect} // 👈 note: onEmojiClick, not onEmojiSelect
+                theme={Theme.LIGHT}
+                skinTonesDisabled
+                searchDisabled
+                previewConfig={{ showPreview: false }}
+                style={{ width: '100%', height: '300px' }}
+              />
+            </div>
+          )}
         </form>
       </div>
     );
@@ -2912,7 +2922,7 @@ const handleEmojiSelect = (emojiData: EmojiData) => {
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                           
+
                                   fontWeight: '600',
                                   fontSize: '14px',
                                   color: '#4f46e5',
@@ -3480,13 +3490,13 @@ const handleEmojiSelect = (emojiData: EmojiData) => {
                         }}
                       >
                         <Picker
-  onEmojiClick={handleEmojiSelect}
-  theme={Theme.LIGHT}
-  skinTonesDisabled
-  searchDisabled
-  previewConfig={{ showPreview: false }}
-  style={{ width: '100%', height: '300px' }}
-/>
+                          onEmojiClick={handleEmojiSelect}
+                          theme={Theme.LIGHT}
+                          skinTonesDisabled
+                          searchDisabled
+                          previewConfig={{ showPreview: false }}
+                          style={{ width: '100%', height: '300px' }}
+                        />
                       </div>
                     )}
                   </form>
