@@ -21,6 +21,7 @@ import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
 import ReportModal from '@/components/modals/ReportModal';
 import Picker, { Theme } from 'emoji-picker-react';
+import Link from 'next/link';
 
 interface Comment {
   id: string;
@@ -878,13 +879,29 @@ if (profileError) {
                 flexWrap: 'wrap'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{
-                    fontWeight: 600,
-                    color: '#1F2937',
-                    fontSize: '0.875rem'
-                  }}>
-                    {comment.author_name}
-                  </span>
+                  {comment.is_anonymous || !comment.user_id ? (
+  <span style={{
+    fontWeight: 600,
+    color: '#1F2937',
+    fontSize: '0.875rem'
+  }}>
+    {comment.author_name}
+  </span>
+) : (
+  <Link
+    href={`/profile/${comment.user_id}`}
+    passHref
+    style={{
+      fontWeight: 600,
+      color: '#1F2937', // 👈 same as before — no orange, no underline
+      fontSize: '0.875rem',
+      textDecoration: 'none', // 👈 explicitly remove underline
+      cursor: 'pointer',
+    }}
+  >
+    {comment.author_name}
+  </Link>
+)}
                   {comment.is_anonymous && (
                     <span style={{
                       fontSize: '0.75rem',

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
+import Link from 'next/link'; // 👈 Added import for Link
 import { CommentsSection } from './CommentsSection';
 
 // ─── TYPES ────────────────────────────────────────
@@ -240,9 +241,26 @@ export function PostCard({
               )}
             </div>
             <div>
-              <h3 style={{ fontWeight: 600, color: baseColors.text.primary, fontSize: '0.95rem' }}>
-                {displayAuthor.name}
-              </h3>
+              {/* 👇 Wrapped the author name in a Link */}
+              {post.isAnonymous || !post.user?.id ? (
+                <h3 style={{ fontWeight: 600, color: baseColors.text.primary, fontSize: '0.95rem' }}>
+                  {displayAuthor.name}
+                </h3>
+              ) : (
+                <Link href={`/profile/${post.user.id}`} passHref>
+                  <h3
+                    style={{
+                      fontWeight: 600,
+                      color: baseColors.primary, // Optional: Change color to indicate link
+                      fontSize: '0.95rem',
+                      cursor: 'pointer',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    {displayAuthor.name}
+                  </h3>
+                </Link>
+              )}
               <p style={{ color: baseColors.text.muted, fontSize: '0.75rem' }}>
                 {formatRecentActivity(post.createdAt)}
               </p>

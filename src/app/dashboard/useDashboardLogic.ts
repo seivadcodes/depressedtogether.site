@@ -219,17 +219,19 @@ export function useDashboardLogic(): DashboardUIProps {
     const loadPosts = async () => {
       const { data, error } = await supabase
   .from('posts')
- .select(`
-  *,
-  comments_count,
-  profiles: user_id (
-    full_name,
-    avatar_url
-  )
-`)
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
+  .select(`
+    *,
+    comments_count,
+    profiles: user_id (
+      id,
+      full_name,
+      avatar_url,
+      is_anonymous
+    )
+  `)
+  .eq('user_id', profile.id)
+  .order('created_at', { ascending: false })
+  .limit(20);
 
       if (error) {
         console.error('Failed to fetch your posts:', error);
@@ -393,20 +395,22 @@ export function useDashboardLogic(): DashboardUIProps {
 
       if (postError) throw postError;
 
-      const { data: newPostData, error: fetchError } = await supabase
+    const { data: newPostData, error: fetchError } = await supabase
   .from('posts')
   .select(`
-  *,
-  comments_count,
-  profiles: user_id (
-    full_name,
-    avatar_url
-  )
-`)
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+    *,
+    comments_count,
+    profiles: user_id (
+      id,
+      full_name,
+      avatar_url,
+      is_anonymous
+    )
+  `)
+  .eq('user_id', session.user.id)
+  .order('created_at', { ascending: false })
+  .limit(1)
+  .single();
 
       if (fetchError) throw fetchError;
 
