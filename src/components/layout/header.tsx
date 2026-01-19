@@ -331,7 +331,7 @@ export default function Header() {
           {/* App title (non-clickable or minimal link) */}
           <span
             style={{
-              fontWeight: 500,
+              fontWeight: 400,
               color: 'white',
               fontSize: '1rem',
             }}

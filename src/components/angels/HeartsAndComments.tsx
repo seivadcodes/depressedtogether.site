@@ -299,16 +299,21 @@ export default function HeartsAndComments({
 }
 
 // Base styles for consistent theming
+// Base styles for consistent theming
 const baseStyles = {
   container: {
     width: '100%',
     fontSize: '0.75rem',
+    // Avoid shorthand borderRadius if we're overriding individual corners later
   },
   loading: {
     padding: '0.25rem 0.5rem',
     background: 'rgba(0,0,0,0.7)',
     color: 'white',
-    borderRadius: '8px',
+    borderTopLeftRadius: '8px',
+    borderTopRightRadius: '8px',
+    borderBottomLeftRadius: '8px',
+    borderBottomRightRadius: '8px',
     textAlign: 'center' as const,
   },
   bar: {
@@ -316,7 +321,10 @@ const baseStyles = {
     justifyContent: 'space-between',
     padding: '0.25rem 0.5rem',
     background: 'rgba(0,0,0,0.7)',
-    borderRadius: '8px',
+    borderTopLeftRadius: '8px',
+    borderTopRightRadius: '8px',
+    borderBottomLeftRadius: '8px',
+    borderBottomRightRadius: '8px',
     color: 'white',
   },
   button: {
@@ -341,7 +349,10 @@ const baseStyles = {
   textarea: {
     flex: 1,
     padding: '0.5rem',
-    borderRadius: '6px',
+    borderTopLeftRadius: '6px',
+    borderTopRightRadius: '6px',
+    borderBottomLeftRadius: '6px',
+    borderBottomRightRadius: '6px',
     border: '1px solid #cbd5e1',
     fontSize: '0.9rem',
     fontFamily: 'inherit',
@@ -351,7 +362,10 @@ const baseStyles = {
     padding: '0.375rem 0.75rem',
     color: 'white',
     border: 'none',
-    borderRadius: '6px',
+    borderTopLeftRadius: '6px',
+    borderTopRightRadius: '6px',
+    borderBottomLeftRadius: '6px',
+    borderBottomRightRadius: '6px',
     fontWeight: '600' as const,
     whiteSpace: 'nowrap' as const,
     fontSize: '0.9rem',

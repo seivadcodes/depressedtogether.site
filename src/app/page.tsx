@@ -21,30 +21,29 @@ export default function HomePage() {
   const [isConnecting, setIsConnecting] = useState(false);
   const heartbeatRef = useRef<HTMLDivElement>(null);
 
- 
-
   // Manual heartbeat animation via JS (since inline styles can't do keyframes easily)
- useEffect(() => {
-  const startPulse = () => {
-    if (!heartbeatRef.current) return;
-    heartbeatRef.current.style.opacity = '0.9';
-    setTimeout(() => {
-      if (heartbeatRef.current) {
-        heartbeatRef.current.style.opacity = '1';
-      }
-    }, 500);
-  };
+  useEffect(() => {
+    const startPulse = () => {
+      if (!heartbeatRef.current) return;
+      heartbeatRef.current.style.opacity = '0.9';
+      setTimeout(() => {
+        if (heartbeatRef.current) {
+          heartbeatRef.current.style.opacity = '1';
+        }
+      }, 500);
+    };
 
-  const pulseInterval = setInterval(startPulse, 4000);
-  const pingInterval = setInterval(() => {
-    // Simulate ping glow by briefly changing box-shadow (optional)
-  }, 2000);
+    const pulseInterval = setInterval(startPulse, 4000);
+    const pingInterval = setInterval(() => {
+      // Simulate ping glow by briefly changing box-shadow (optional)
+    }, 2000);
 
-  return () => {
-    clearInterval(pulseInterval);
-    clearInterval(pingInterval);
-  };
-}, []);
+    return () => {
+      clearInterval(pulseInterval);
+      clearInterval(pingInterval);
+    };
+  }, []);
+
   const handleQuickConnect = async () => {
     if (isConnecting) return;
     setIsConnecting(true);
@@ -155,7 +154,7 @@ export default function HomePage() {
           onTouchStart={(e) => (e.currentTarget.style.transform = 'scale(0.98)')}
           onTouchEnd={(e) => (e.currentTarget.style.transform = 'scale(1)')}
         >
-          🔵 Find Your Tribe
+          🔵 Find Your Community
         </button>
       </div>
 
@@ -179,7 +178,9 @@ export default function HomePage() {
         </span>*/}
       </div>
 
-      {/* Live Activity Feed */}
+      {/* 
+      Live Activity Feed (commented out as requested)
+      
       <div style={{ width: '100%', maxWidth: '32rem' }}>
         <h2 style={{ color: '#44403c', fontWeight: '600', marginBottom: '0.75rem', textAlign: 'left' }}>
           What’s happening now
@@ -209,6 +210,7 @@ export default function HomePage() {
           ))}
         </div>
       </div>
+      */}
 
       {/* Optional: global styles for pulse (if needed elsewhere) */}
       <style jsx>{`

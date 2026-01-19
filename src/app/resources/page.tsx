@@ -303,7 +303,7 @@ export default function ResourcesPage() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 1rem', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 1rem 3.5rem', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <p style={{ color: '#44403c' }}>Loading resources...</p>
       </div>
     );
@@ -311,7 +311,7 @@ export default function ResourcesPage() {
 
   if (error) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 1rem' }}>
+      <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 2rem' }}>
         <div style={{ maxWidth: '768px', margin: '0 auto', backgroundColor: '#fee2e2', padding: '1rem', borderRadius: '0.5rem' }}>
           <p style={{ color: '#b91c1c' }}>{error}</p>
         </div>
@@ -320,7 +320,7 @@ export default function ResourcesPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 1rem' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f4', padding: '1.5rem 1rem 3.5rem' }}>
       <div style={{ maxWidth: '768px', margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <div

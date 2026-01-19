@@ -277,7 +277,7 @@ export default function AngelDetailPage() {
                       borderRadius: '10px',
                       padding: '0.75rem',
                       border: '1px solid #e2e8f0',
-                      maxWidth: '300px',
+                      
                     }}
                   >
                     <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
@@ -288,7 +288,7 @@ export default function AngelDetailPage() {
                         height={280}
                         style={{
                           borderRadius: '8px',
-                          objectFit: 'cover',
+                          objectFit: 'contain',
                           width: '100%',
                           aspectRatio: '1',
                         }}
@@ -317,17 +317,19 @@ export default function AngelDetailPage() {
                     </div>
                     {/* Memory-specific Hearts & Comments */}
                     <HeartsAndComments
-                      itemId={memory.id}
-                      itemType="memory"
-                      styleOverrides={{ 
-                        marginTop: '0.5rem',
-                        marginLeft: '-0.75rem',
-                        marginRight: '-0.75rem',
-                        marginBottom: '-0.75rem',
-                        borderBottomLeftRadius: '8px',
-                        borderBottomRightRadius: '8px'
-                      }}
-                    />
+  itemId={memory.id}
+  itemType="memory"
+  styleOverrides={{ 
+    marginTop: '0.5rem',
+    marginLeft: '-0.75rem',
+    marginRight: '-0.75rem',
+    marginBottom: '-0.75rem',
+    borderTopLeftRadius: '0',
+    borderTopRightRadius: '0',
+    borderBottomLeftRadius: '8px',
+    borderBottomRightRadius: '8px'
+  }}
+/>
                   </div>
                 ))}
               </div>
