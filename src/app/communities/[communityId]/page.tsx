@@ -322,10 +322,7 @@ const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
       if (!communityData) throw new Error('Community not found');
 
       let coverPhotoUrl = communityData.cover_photo_url;
-      if (!coverPhotoUrl) {
-        const baseBannerUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${communityId}/banner.jpg`;
-        coverPhotoUrl = baseBannerUrl;
-      }
+      
 
       // 2. Count total members
       const { count: memberCount, error: memberCountError } = await supabase
@@ -737,15 +734,14 @@ useEffect(() => {
         }
 
         const uploadPromises = files.map(async (file, idx) => {
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
-          const { error: uploadError } = await supabase.storage
-            .from('communities')
-            .upload(fileName, file, { upsert: true, contentType: file.type });
-          if (uploadError) throw uploadError;
-          const { data } = supabase.storage.from('communities').getPublicUrl(fileName);
-          return data.publicUrl;
-        });
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
+  const { error: uploadError } = await supabase.storage
+    .from('communities')
+    .upload(fileName, file, { upsert: true, contentType: file.type });
+  if (uploadError) throw uploadError;
+  return fileName; // ✅ Store only the path!
+});
         mediaUrls = await Promise.all(uploadPromises);
 
         const { error: updateError } = await supabase
@@ -817,8 +813,7 @@ useEffect(() => {
         .from('communities')
         .upload(fileName, file, { upsert: true });
       if (uploadError) throw uploadError;
-      const newBannerUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${fileName}?t=${Date.now()}`;
-      setCommunity((prev) => (prev ? { ...prev, cover_photo_url: newBannerUrl } : null));
+      setCommunity((prev) => (prev ? { ...prev, cover_photo_url: fileName } : null));
       toast.success('Banner updated successfully!');
       setBannerModalOpen(false);
       setBannerPreview(null);
@@ -1029,11 +1024,13 @@ useEffect(() => {
         ? [griefType as GriefType]
         : ['other'];
 
-    const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
-      ? post.media_urls.filter(Boolean)
-      : post.media_url
-        ? [post.media_url]
-        : [];
+   const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
+  ? post.media_urls
+      .filter(Boolean)
+      .map(path => `/api/media/${path}`) // ✅ Proxy all paths
+  : post.media_url
+  ? [`/api/media/${post.media_url}`] // ✅ Proxy single URL too
+  : [];
 
     return {
       id: post.id,
@@ -1228,14 +1225,16 @@ useEffect(() => {
         >
           {community.cover_photo_url ? (
             <Image
-              src={community.cover_photo_url}
-              alt={`${community.name} banner`}
-              fill
-              style={{ objectFit: 'cover' }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`;
-              }}
-            />
+  src={
+    community.cover_photo_url
+      ? `/api/media/${community.cover_photo_url}`
+      : `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`
+  }
+  alt={community.name}
+  fill
+  sizes="100vw"
+  style={{ objectFit: 'cover' }}
+/>
           ) : (
             <div
               style={{
