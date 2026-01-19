@@ -1,98 +1,77 @@
 // app/api/notify/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase';
-
-// Get signaling server URL from environment variables
-const SIGNALING_SERVER_URL = process.env.SIGNALING_SERVER_URL || 'http://localhost:8084';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     console.log('📥 API received notification:', body);
-    const supabase = createClient();
 
-    // Handle community notifications (most common case)
+    // 🔥 NEW: Handle community-scoped broadcast
     if (body.communityId) {
-      console.log(`🔊 Processing community notification for: ${body.communityId}`);
-      
-      // Skip unnecessary DB fetch - signaling server tracks connected members
-      const signalingRes = await fetch(`${SIGNALING_SERVER_URL}/notify-community`, {
+      console.log(`📤 Forwarding to community: ${body.communityId}`);
+      const signalingRes = await fetch('http://178.128.210.229:8084/notify-community', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...body,
-          type: body.type || 'new_community_message' // Ensure type is set
-        }),
+        body: JSON.stringify(body),
       });
 
       if (!signalingRes.ok) {
-        const errorData = await signalingRes.json().catch(() => ({}));
-        console.error('❌ Community broadcast failed:', errorData);
-        return NextResponse.json({ 
-          error: 'Community broadcast failed',
-          details: errorData
-        }, { status: 500 });
+        const errorData = await signalingRes.json();
+        console.error('❌ Community notify error:', errorData);
+        return NextResponse.json({ error: 'Failed to notify community', details: errorData }, { status: 500 });
       }
 
       const result = await signalingRes.json();
-      console.log(`✅ Community broadcast delivered to ${result.delivered} connections`);
-      
-      return NextResponse.json({ 
-        ok: true,
-        delivered: result.delivered,
-        connectedMembers: result.totalConnected
-      });
+      console.log(`✅ Community message delivered to ${result.delivered} connections`);
+      return NextResponse.json(result);
     }
 
-    // Handle presence updates
+    // Handle broadcast notifications (presence updates)
     if (body.broadcast && body.type === 'user_presence') {
-      console.log(`👥 Broadcasting presence for user: ${body.userId}`);
-      
-      const signalingRes = await fetch(`${SIGNALING_SERVER_URL}/notify-broadcast`, {
+      console.log(`📤 Broadcasting presence update for user: ${body.userId}`);
+      const signalingRes = await fetch('http://178.128.210.229:8084/notify-broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
       if (!signalingRes.ok) {
-        const errorData = await signalingRes.json().catch(() => ({}));
-        return NextResponse.json({ 
-          error: 'Presence broadcast failed',
-          details: errorData
-        }, { status: 500 });
+        const errorData = await signalingRes.json();
+        console.error('❌ Broadcast signaling error:', errorData);
+        return NextResponse.json({ error: 'Failed to broadcast notification', details: errorData }, { status: 500 });
       }
 
-      return NextResponse.json(await signalingRes.json());
+      const result = await signalingRes.json();
+      console.log(`✅ Successfully broadcast to ${result.delivered} connections`);
+      return NextResponse.json({ ok: true, delivered: result.delivered, connections: result.connections });
     }
 
-    // Handle direct user notifications
-    if (body.toUserId) {
-      console.log(`📩 Direct notification to user: ${body.toUserId}`);
-      
-      const signalingRes = await fetch(`${SIGNALING_SERVER_URL}/notify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (!signalingRes.ok) {
-        const errorData = await signalingRes.json().catch(() => ({}));
-        return NextResponse.json({ 
-          error: 'Direct notification failed',
-          details: errorData
-        }, { status: 500 });
-      }
-
-      return NextResponse.json({ ok: true });
+    // Handle regular notifications to specific users
+    const { toUserId } = body;
+    if (!toUserId) {
+      console.error('❌ Missing toUserId in notification');
+      return NextResponse.json({ error: 'Missing toUserId' }, { status: 400 });
     }
 
-    return NextResponse.json({ error: 'Invalid notification payload' }, { status: 400 });
-    
+    const signalingRes = await fetch('http://178.128.210.229:8084/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!signalingRes.ok) {
+      const errorData = await signalingRes.json();
+      console.error('❌ Signaling server error:', errorData);
+      return NextResponse.json({ error: 'Failed to notify signaling server', details: errorData }, { status: 500 });
+    }
+
+    console.log(`✅ Notification delivered to user: ${toUserId}`);
+    return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error('🔥 Notify API critical error:', err);
-    return NextResponse.json(
-      { error: 'Internal server error', details: err instanceof Error ? err.message : 'Unknown error' },
-      { status: 500 }
-    );
+    console.error('🔥 Notify API error:', err);
+    if (err instanceof Error) {
+      return NextResponse.json({ error: 'Internal server error', details: err.message }, { status: 500 });
+    }
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
