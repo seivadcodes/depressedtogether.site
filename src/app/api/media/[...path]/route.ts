@@ -1,4 +1,4 @@
-// app/api/media/route.ts
+// app/api/media/[...path]/route.ts
 import { createClient } from '@/lib/supabase';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -6,33 +6,36 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { path: string[] } }
 ) {
-  const path = params.path.join('/');
-  if (!path) {
-    return NextResponse.json({ error: 'Missing path' }, { status: 400 });
-  }
+  const [bucketName, ...filePathParts] = params.path;
+  const path = filePathParts.join('/');
 
-  // Optional: Add auth checks here (e.g., is user allowed to view this angel?)
+  if (!bucketName || !path) {
+    return NextResponse.json({ error: 'Missing bucket or path' }, { status: 400 });
+  }
 
   const supabase = createClient();
   const { data, error } = await supabase.storage
-    .from('angels-media')
+    .from(bucketName)
     .download(path);
 
   if (error) {
-    console.error('Media fetch error:', error);
+    console.error(`Media fetch error (${bucketName}/${path}):`, error);
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  // Detect MIME type (basic)
-  const mimeType = path.endsWith('.png') ? 'image/png'
-                : path.endsWith('.jpg') || path.endsWith('.jpeg') ? 'image/jpeg'
-                : path.endsWith('.gif') ? 'image/gif'
-                : 'image/webp';
+  // Detect MIME type
+  const mimeType = path.toLowerCase().endsWith('.png')
+    ? 'image/png'
+    : path.toLowerCase().endsWith('.jpeg') || path.toLowerCase().endsWith('.jpg')
+    ? 'image/jpeg'
+    : path.toLowerCase().endsWith('.gif')
+    ? 'image/gif'
+    : 'image/webp';
 
   return new NextResponse(data, {
     headers: {
       'Content-Type': mimeType,
-      'Cache-Control': 'public, max-age=3600', // optional caching
+      'Cache-Control': 'public, max-age=3600',
     },
   });
 }

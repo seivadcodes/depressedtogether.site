@@ -83,11 +83,12 @@ export default function CommunitiesPage() {
 
         if (data) {
           const communitiesWithPhotos = data.map((community) => ({
-            ...community,
-            cover_photo_url: community.id
-              ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${community.id}/banner.jpg`
-              : null,
-          }));
+  ...community,
+  // Use the path from DB, and proxy it — don't override it!
+  cover_photo_url: community.cover_photo_url
+    ? `/api/media/${community.cover_photo_url}`
+    : null,
+}));
 
           setCommunities(communitiesWithPhotos);
           const total = communitiesWithPhotos.reduce((sum, c) => sum + c.online_count, 0);

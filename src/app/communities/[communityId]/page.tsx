@@ -321,8 +321,11 @@ const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
       if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
       if (!communityData) throw new Error('Community not found');
 
-      let coverPhotoUrl = communityData.cover_photo_url;
-      
+    let coverPhotoUrl = communityData.cover_photo_url;
+if (!coverPhotoUrl) {
+  // Fallback: construct a proxy path instead of direct Supabase URL
+  coverPhotoUrl = `communities/${communityId}/banner.jpg`; // ✅ Relative path for proxy
+}
 
       // 2. Count total members
       const { count: memberCount, error: memberCountError } = await supabase
