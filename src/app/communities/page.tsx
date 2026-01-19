@@ -3,10 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Users, MessageCircle, Plus } from 'lucide-react';
+import { Users, MessageCircle, Plus, ArrowRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import Button from '@/components/ui/button';
-
 import { useAuth } from '@/hooks/useAuth';
 
 interface Community {
@@ -36,52 +35,49 @@ const griefGradients: Record<string, string> = {
 
 const defaultGradient = 'linear-gradient(135deg, #fcd34d, #f97316)';
 
-
-
 export default function CommunitiesPage() {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
- 
+
   const router = useRouter();
   const supabase = createClient();
   const { user } = useAuth();
 
-
   const [totalOnline, setTotalOnline] = useState(0);
 
-useEffect(() => {
-  const fetchOnlineCount = async () => {
-    try {
-      const { count, error } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-        .gte('last_seen', new Date(Date.now() - 60_000).toISOString());
+  useEffect(() => {
+    const fetchOnlineCount = async () => {
+      try {
+        const { count, error } = await supabase
+          .from('profiles')
+          .select('*', { count: 'exact', head: true })
+          .gte('last_seen', new Date(Date.now() - 60_000).toISOString());
 
-      if (error) {
-        console.error('Failed to fetch online count:', error);
+        if (error) {
+          console.error('Failed to fetch online count:', error);
+          setTotalOnline(0);
+        } else {
+          setTotalOnline(count || 0);
+        }
+      } catch (err) {
+        console.error('Unexpected error fetching online count:', err);
         setTotalOnline(0);
-      } else {
-        setTotalOnline(count || 0);
       }
-    } catch (err) {
-      console.error('Unexpected error fetching online count:', err);
-      setTotalOnline(0);
-    }
-  };
+    };
 
-  fetchOnlineCount();
-  const interval = setInterval(fetchOnlineCount, 30_000);
-  return () => clearInterval(interval);
-}, [supabase]);
+    fetchOnlineCount();
+    const interval = setInterval(fetchOnlineCount, 30_000);
+    return () => clearInterval(interval);
+  }, [supabase]);
 
   useEffect(() => {
     const fetchCommunities = async () => {
       try {
         const { data, error } = await supabase
-  .from('communities_with_counts')
-  .select('*')
-  .order('member_count', { ascending: false });
+          .from('communities_with_counts')
+          .select('*')
+          .order('member_count', { ascending: false });
 
         if (error) throw error;
 
@@ -109,31 +105,30 @@ useEffect(() => {
   }, [supabase]);
 
   const formatRecentActivity = (createdAt: string) => {
-  const now = new Date();
-  const created = new Date(createdAt);
-  const diffMs = now.getTime() - created.getTime();
-  const diffMinutes = Math.floor(diffMs / 60_000);
-  const diffHours = Math.floor(diffMs / 3_600_000);
-  const diffDays = Math.floor(diffMs / 86_400_000);
-  const diffWeeks = Math.floor(diffDays / 7);
+    const now = new Date();
+    const created = new Date(createdAt);
+    const diffMs = now.getTime() - created.getTime();
+    const diffMinutes = Math.floor(diffMs / 60_000);
+    const diffHours = Math.floor(diffMs / 3_600_000);
+    const diffDays = Math.floor(diffMs / 86_400_000);
+    const diffWeeks = Math.floor(diffDays / 7);
 
-  if (diffMinutes < 1) return 'Just now';
-  if (diffMinutes < 2) return '1 minute ago';
-  if (diffMinutes < 60) return `${diffMinutes} minutes ago`;
-  if (diffHours < 2) return '1 hour ago';
-  if (diffHours < 24) return `${diffHours} hours ago`;
-  if (diffDays < 2) return '1 day ago';
-  if (diffDays < 7) return `${diffDays} days ago`;
-  if (diffWeeks < 2) return '1 week ago';
-  if (diffWeeks < 4) return `${diffWeeks} weeks ago`;
-  // Optional: add months/years if needed
-  const months = Math.floor(diffDays / 30);
-  if (months < 2) return '1 month ago';
-  if (months < 12) return `${months} months ago`;
-  
-  const years = Math.floor(diffDays / 365);
-  return `${years} ${years === 1 ? 'year' : 'years'} ago`;
-};
+    if (diffMinutes < 1) return 'Just now';
+    if (diffMinutes < 2) return '1 minute ago';
+    if (diffMinutes < 60) return `${diffMinutes} minutes ago`;
+    if (diffHours < 2) return '1 hour ago';
+    if (diffHours < 24) return `${diffHours} hours ago`;
+    if (diffDays < 2) return '1 day ago';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffWeeks < 2) return '1 week ago';
+    if (diffWeeks < 4) return `${diffWeeks} weeks ago`;
+    const months = Math.floor(diffDays / 30);
+    if (months < 2) return '1 month ago';
+    if (months < 12) return `${months} months ago`;
+
+    const years = Math.floor(diffDays / 365);
+    return `${years} ${years === 1 ? 'year' : 'years'} ago`;
+  };
 
   const handleRequestCommunity = () => {
     if (!user) {
@@ -224,17 +219,20 @@ useEffect(() => {
 
   const containerStyle: React.CSSProperties = {
     minHeight: '100vh',
-  background: 'linear-gradient(to bottom, #fffbeb, #f5f5f1, #f0f0ee)',
-  paddingTop: '5rem',
-  paddingBottom: '2rem',
-  paddingLeft: '1rem',
-  paddingRight: '1rem',
+    background: 'linear-gradient(to bottom, #fffbeb, #f5f5f1, #f0f0ee)',
+    paddingTop: '5rem',
+    paddingBottom: '2rem',
+    paddingLeft: '1rem',
+    paddingRight: '1rem',
   };
 
   const innerContainerStyle: React.CSSProperties = {
-    maxWidth: '896px', // ~4xl
+    maxWidth: '896px',
     margin: '0 auto',
   };
+
+  // Format online count with correct pluralization
+  const formattedOnlineText = totalOnline === 1 ? '1 person' : `${totalOnline} people`;
 
   return (
     <div style={containerStyle}>
@@ -266,8 +264,8 @@ useEffect(() => {
             Find Your Tribe
           </h1>
           <p style={{ color: '#64748b', maxWidth: '42rem', margin: '0 auto 1rem' }}>
-  Join a circle where your grief is understood — not explained away. Share your story, read others&apos; stories, or simply be present.
-</p>
+            Join a circle where your grief is understood — not explained away. Share your story, read others&apos; stories, or simply be present.
+          </p>
           <div
             style={{
               display: 'inline-block',
@@ -279,7 +277,7 @@ useEffect(() => {
               fontWeight: '600',
             }}
           >
-            🟢 {totalOnline} people in communities right now
+            🟢 {formattedOnlineText} in communities right now
           </div>
         </div>
 
@@ -293,6 +291,7 @@ useEffect(() => {
                 display: 'block',
                 textDecoration: 'none',
                 transition: 'transform 0.15s ease-in-out',
+                marginBottom: '1.25rem',
               }}
               onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.01)')}
               onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
@@ -302,24 +301,26 @@ useEffect(() => {
                   background: 'white',
                   borderRadius: '0.75rem',
                   border: '1px solid #e2e8f0',
-                  padding: '1.25rem',
+                  padding: '1rem',
                   boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
                   transition: 'box-shadow 0.2s ease',
-                  marginBottom: '1.25rem',
+                  display: 'flex',
+                  gap: '1rem',
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)')}
                 onMouseLeave={(e) => (e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.04)')}
               >
-                {/* Cover Photo */}
-                {community.cover_photo_url && (
-                  <div
-                    style={{
-                      height: '6rem',
-                      borderRadius: '0.5rem',
-                      overflow: 'hidden',
-                      marginBottom: '1rem',
-                    }}
-                  >
+                {/* Cover Photo - Left-aligned, fixed size */}
+                <div
+                  style={{
+                    width: '6rem',
+                    height: '6rem',
+                    borderRadius: '0.5rem',
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
+                  {community.cover_photo_url ? (
                     <img
                       src={community.cover_photo_url}
                       alt={community.name}
@@ -328,70 +329,94 @@ useEffect(() => {
                         (e.target as HTMLImageElement).parentElement!.style.display = 'none';
                       }}
                     />
-                  </div>
-                )}
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        background: griefGradients[community.grief_type] || defaultGradient,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                      }}
+                    >
+                      <Users size={24} />
+                    </div>
+                  )}
+                </div>
 
-                {/* Header Section */}
-                <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem' }}>
-                  <div
-                    style={{
-                      width: '3rem',
-                      height: '3rem',
-                      borderRadius: '9999px',
-                      background: griefGradients[community.grief_type] || defaultGradient,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Users size={20} color="white" />
-                  </div>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <h2
+                {/* Content Area */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Header Section */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                    <div style={{ flex: 1, minWidth: 0, marginRight: '1rem' }}>
+                      <h2
+                        style={{
+                          fontWeight: '700',
+                          color: '#1e293b',
+                          fontSize: '1.125rem',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                          hyphens: 'auto',
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {community.name}
+                      </h2>
+                      <p
+                        style={{
+                          color: '#64748b',
+                          fontSize: '0.875rem',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                        }}
+                      >
+                        {community.description}
+                      </p>
+                    </div>
+                    <Button
                       style={{
-                        fontWeight: '700',
-                        color: '#1e293b',
-                        fontSize: '1.125rem',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {community.name}
-                    </h2>
-                    <p
-                      style={{
-                        color: '#64748b',
+                        background: '#f59e0b',
+                        color: 'white',
+                        border: 'none',
+                        padding: '0.375rem 0.75rem',
+                        borderRadius: '0.375rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
                         fontSize: '0.875rem',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
+                        fontWeight: '600',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                        alignSelf: 'flex-start',
                       }}
                     >
-                      {community.description}
+                      Visit
+                      <ArrowRight size={14} />
+                    </Button>
+                  </div>
+
+                  {/* Stats */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Users size={14} style={{ color: '#94a3b8' }} />
+                      {community.member_count === 1 ? '1 member' : `${community.member_count.toLocaleString()} members`}
+                    </span>
+                  </div>
+
+                  {/* Activity */}
+                  <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.875rem', color: '#334155' }}>
+                    <MessageCircle size={16} style={{ color: '#f59e0b', marginTop: '0.125rem' }} />
+                    <p>
+                      {formatRecentActivity(community.created_at)}: Someone just shared a memory
                     </p>
                   </div>
-                </div>
-
-                {/* Stats */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.75rem' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-  <Users size={14} style={{ color: '#94a3b8' }} />
-  {community.member_count === 1
-    ? '1 member'
-    : `${community.member_count.toLocaleString()} members`}
-</span>
-                 
-                </div>
-
-                {/* Activity */}
-                <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.875rem', color: '#334155' }}>
-                  <MessageCircle size={16} style={{ color: '#f59e0b', marginTop: '0.125rem' }} />
-                  <p>
-                    {formatRecentActivity(community.created_at)}: Someone just shared a memory
-                  </p>
                 </div>
               </div>
             </Link>
@@ -462,8 +487,8 @@ useEffect(() => {
           }}
         >
           <p style={{ color: '#64748b', marginBottom: '0.75rem' }}>
-  Can&rsquo;t find a community that matches your grief experience?
-</p>
+            Can&rsquo;t find a community that matches your grief experience?
+          </p>
           <Button
             onClick={handleRequestCommunity}
             style={{

@@ -17,7 +17,6 @@ type User = {
   avatar_url?: string | null;
   last_online?: string | null;
 };
-
 type CommunityMessage = {
   id: string;
   content: string;
@@ -40,7 +39,6 @@ const getInitials = (name: string | null | undefined): string => {
     .join('')
     .toUpperCase();
 };
-
 const formatDateLabel = (isoString: string): string => {
   const msgDate = new Date(isoString);
   const now = new Date();
@@ -53,18 +51,15 @@ const formatDateLabel = (isoString: string): string => {
     return msgDate.toLocaleDateString([], { month: 'long', day: 'numeric' });
   return msgDate.toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' });
 };
-
 const formatTimeOnly = (isoString: string): string => {
   return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
-
 const isUserOnline = (lastOnline: string | null | undefined): boolean => {
   if (!lastOnline) return false;
   const lastOnlineDate = new Date(lastOnline);
   const now = new Date();
   return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000;
 };
-
 const isImageUrl = (url: string) => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(url);
 const isPdfUrl = (url: string) => /\.pdf$/i.test(url);
 
@@ -81,13 +76,18 @@ export default function CommunityChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
-  const [onlineMembers, setOnlineMembers] = useState<User[]>([]);
-  const [myRole, setMyRole] = useState<'member' | 'moderator' | 'admin' | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [isMobileView, setIsMobileView] = useState(false);
   const [showMessageMenu, setShowMessageMenu] = useState<string | null>(null);
   const [lastChatView, setLastChatView] = useState<string | null>(null);
+  const [onlineMembers, setOnlineMembers] = useState<User[]>([]);
+  const [myRole, setMyRole] = useState<'member' | 'moderator' | 'admin' | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
+  const [reactionPickerPosition, setReactionPickerPosition] = useState<{ x: number; y: number } | null>(null);
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+
+  // 🔥 NEW: Track known message IDs to prevent duplicates
+  const existingMessageIds = useRef<Set<string>>(new Set());
 
   // Refs
   const wsRef = useRef<WebSocket | null>(null);
@@ -96,10 +96,8 @@ export default function CommunityChatPage() {
   const messageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-  const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null);
-  const [reactionPickerPosition, setReactionPickerPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Responsive check
   useEffect(() => {
@@ -153,6 +151,7 @@ export default function CommunityChatPage() {
       }
       setMyRole(myRoleData.role);
       await fetchMembersAndOnlineCount();
+
       const { data: msgData } = await supabase
         .from('community_messages')
         .select(`
@@ -161,7 +160,10 @@ export default function CommunityChatPage() {
         `)
         .eq('community_id', communityId)
         .order('created_at', { ascending: true });
+
       setMessages(msgData || []);
+      existingMessageIds.current = new Set(msgData?.map(m => m.id) || []); // ✅ Initialize known IDs
+
       const { data: viewData } = await supabase
         .from('community_user_views')
         .select('last_chat_view')
@@ -169,6 +171,7 @@ export default function CommunityChatPage() {
         .eq('community_id', communityId)
         .single();
       setLastChatView(viewData?.last_chat_view || null);
+
       await supabase
         .from('community_user_views')
         .upsert(
@@ -200,9 +203,10 @@ export default function CommunityChatPage() {
 
   useEffect(() => {
     if (!user || !communityId) return;
-   const socket = new WebSocket(
-  `wss://livekit.survivingdeathloss.site/notify?userId=${user.id}&communityId=${communityId}`
-);
+    const socket = new WebSocket(
+      `wss://livekit.survivingdeathloss.site/notify?userId=${user.id}&communityId=${communityId}`
+    );
+
     socket.onopen = () => console.log('✅ WS connected for community chat');
     socket.onmessage = async (event) => {
       try {
@@ -213,15 +217,58 @@ export default function CommunityChatPage() {
             .select(`*, sender:sender_id (full_name, avatar_url)`)
             .eq('id', data.messageId)
             .single();
-          if (newMsg) setMessages((prev) => [...prev, newMsg]);
-        }
-        if (data.type === 'community_user_typing' && data.communityId === communityId) {
-          setIsOtherUserTyping(data.isTyping);
-          if (data.isTyping) {
-            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-            typingTimeoutRef.current = setTimeout(() => setIsOtherUserTyping(false), 3000);
+
+          if (newMsg) {
+            // 🔥 PREVENT DUPLICATE: check ID first
+            if (existingMessageIds.current.has(newMsg.id)) {
+              console.log('💡 Message already exists, skipping:', newMsg.id);
+              return;
+            }
+
+            setMessages((prev) => {
+              // Remove optimistic placeholder if any
+              const filtered = prev.filter((msg) => {
+                if (msg.id.startsWith('temp-') && msg.content === newMsg.content && msg.sender_id === newMsg.sender_id) {
+                  const timeDiff = Math.abs(new Date(msg.created_at).getTime() - new Date(newMsg.created_at).getTime());
+                  return timeDiff > 2000;
+                }
+                return true;
+              });
+              existingMessageIds.current.add(newMsg.id); // ✅ Track real ID
+              return [...filtered, newMsg];
+            });
           }
         }
+
+        if (data.type === 'community_user_typing' && data.communityId === communityId) {
+          const { userId, isTyping } = data;
+          setTypingUsers((prev) => {
+            const next = new Set(prev);
+            if (isTyping && userId !== user.id) {
+              next.add(userId);
+              if (typingTimeoutRef.current.has(userId)) {
+                clearTimeout(typingTimeoutRef.current.get(userId)!);
+              }
+              const timeout = setTimeout(() => {
+                setTypingUsers((p) => {
+                  const n = new Set(p);
+                  n.delete(userId);
+                  return n;
+                });
+                typingTimeoutRef.current.delete(userId);
+              }, 3000);
+              typingTimeoutRef.current.set(userId, timeout);
+            } else {
+              next.delete(userId);
+              if (typingTimeoutRef.current.has(userId)) {
+                clearTimeout(typingTimeoutRef.current.get(userId)!);
+                typingTimeoutRef.current.delete(userId);
+              }
+            }
+            return next;
+          });
+        }
+
         if (data.type === 'community_message_reaction' && data.communityId === communityId) {
           setMessages((prev) =>
             prev.map((msg) => {
@@ -245,11 +292,15 @@ export default function CommunityChatPage() {
         console.error('WS message error:', err);
       }
     };
+
     wsRef.current = socket;
-    return () => socket.close();
+    return () => {
+      socket.close();
+      typingTimeoutRef.current.forEach((timeout) => clearTimeout(timeout));
+      typingTimeoutRef.current.clear();
+    };
   }, [communityId, user, supabase]);
 
-  // 👇 Group messages by date label
   const groupedMessages = useMemo(() => {
     const groups: { dateLabel: string; messages: CommunityMessage[] }[] = [];
     let currentLabel = '';
@@ -264,7 +315,6 @@ export default function CommunityChatPage() {
     return groups;
   }, [messages]);
 
-  // 👇 Find first unread message FROM OTHER USERS only
   const firstUnreadIndex = useMemo(() => {
     if (!lastChatView || !user) return -1;
     const cutoff = new Date(lastChatView);
@@ -277,16 +327,12 @@ export default function CommunityChatPage() {
     return -1;
   }, [messages, lastChatView, user]);
 
-  // 🔁 NEW: Auto-scroll on initial load — either to unread or bottom
   useLayoutEffect(() => {
     if (isLoading || messages.length === 0) return;
-
-    // If there's an unread message, scroll to it
     if (firstUnreadIndex >= 0) {
       const el = messageRefs.current.get(messages[firstUnreadIndex].id);
       if (el) {
         el.scrollIntoView({ behavior: 'auto', block: 'center' });
-        // Fade out banner after 10s
         const timer = setTimeout(() => {
           const banner = document.getElementById('unread-marker');
           if (banner) banner.style.opacity = '0.3';
@@ -294,20 +340,20 @@ export default function CommunityChatPage() {
         return () => clearTimeout(timer);
       }
     } else {
-      // Otherwise scroll to bottom
       messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
     }
-  }, [isLoading, messages.length, firstUnreadIndex]); // Only run once after load
+  }, [isLoading, messages.length, firstUnreadIndex]);
 
-  // Rest of handlers unchanged...
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !user || !communityId) return;
+
     const content = newMessage.trim();
     setNewMessage('');
     setIsSending(true);
     setReplyingTo(null);
-    const tempId = `temp-${Date.now()}`;
+
+    const tempId = `temp-${user.id}-${Date.now()}`;
     const now = new Date().toISOString();
     const optimisticMsg: CommunityMessage = {
       id: tempId,
@@ -319,7 +365,10 @@ export default function CommunityChatPage() {
       reply_to: replyingTo?.id || null,
       deleted_for_everyone: false,
     };
+
     setMessages((prev) => [...prev, optimisticMsg]);
+    existingMessageIds.current.add(tempId); // ✅ Track optimistic ID
+
     try {
       const { data: inserted, error } = await supabase
         .from('community_messages')
@@ -331,8 +380,17 @@ export default function CommunityChatPage() {
         })
         .select(`*, sender:sender_id (full_name, avatar_url)`)
         .single();
+
       if (error) throw error;
-      setMessages((prev) => prev.map((msg) => (msg.id === tempId ? inserted : msg)));
+
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === tempId ? inserted : msg))
+      );
+
+      // ✅ Replace temp ID with real ID in tracking set
+      existingMessageIds.current.delete(tempId);
+      existingMessageIds.current.add(inserted.id);
+
       fetch('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -346,6 +404,7 @@ export default function CommunityChatPage() {
       console.error('Send failed:', err);
       toast.error('Failed to send message');
       setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
+      existingMessageIds.current.delete(tempId); // clean up on error
     } finally {
       setIsSending(false);
     }
@@ -365,8 +424,10 @@ export default function CommunityChatPage() {
           userId: user.id,
         }),
       });
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
+      if (typingTimeoutRef.current.has(user.id)) {
+        clearTimeout(typingTimeoutRef.current.get(user.id)!);
+      }
+      const stopTimeout = setTimeout(() => {
         fetch('/api/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -377,7 +438,9 @@ export default function CommunityChatPage() {
             userId: user.id,
           }),
         });
+        typingTimeoutRef.current.delete(user.id);
       }, 2500);
+      typingTimeoutRef.current.set(user.id, stopTimeout);
     }, 300);
   }, [communityId, user]);
 
@@ -491,7 +554,8 @@ export default function CommunityChatPage() {
         .from('community-files')
         .getPublicUrl(fileName);
       const publicUrl = data.publicUrl;
-      const tempId = `temp-${Date.now()}`;
+
+      const tempId = `temp-${user.id}-${Date.now()}`;
       const now = new Date().toISOString();
       const optimisticMsg: CommunityMessage = {
         id: tempId,
@@ -505,7 +569,10 @@ export default function CommunityChatPage() {
         reply_to: null,
         deleted_for_everyone: false,
       };
+
       setMessages((prev) => [...prev, optimisticMsg]);
+      existingMessageIds.current.add(tempId); // ✅ Track file optimistic ID
+
       const { data: inserted, error: msgError } = await supabase
         .from('community_messages')
         .insert({
@@ -517,8 +584,13 @@ export default function CommunityChatPage() {
         })
         .select(`*, sender:sender_id (full_name, avatar_url)`)
         .single();
+
       if (msgError) throw msgError;
+
       setMessages((prev) => prev.map((msg) => (msg.id === tempId ? inserted : msg)));
+      existingMessageIds.current.delete(tempId);
+      existingMessageIds.current.add(inserted.id);
+
       fetch('/api/notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -528,6 +600,7 @@ export default function CommunityChatPage() {
           messageId: inserted.id,
         }),
       });
+
       if (fileInputRef.current) fileInputRef.current.value = '';
       toast.success('File sent!');
     } catch (err) {
@@ -562,6 +635,18 @@ export default function CommunityChatPage() {
       </div>
     );
   }
+
+  const typingUserNames = Array.from(typingUsers)
+    .map((uid) => onlineMembers.find((u) => u.id === uid)?.full_name || 'Someone')
+    .filter(Boolean);
+  const typingText =
+    typingUserNames.length === 0
+      ? null
+      : typingUserNames.length === 1
+      ? `${typingUserNames[0]} is typing`
+      : typingUserNames.length === 2
+      ? `${typingUserNames[0]} and ${typingUserNames[1]} are typing`
+      : `${typingUserNames[0]} and ${typingUserNames.length - 1} others are typing`;
 
   return (
     <div
@@ -611,8 +696,7 @@ export default function CommunityChatPage() {
           </div>
         ) : (
           groupedMessages.map((group, groupIndex) => (
-            <div key={group.dateLabel}>
-              {/* Date Header */}
+            <div key={`${group.dateLabel}-${groupIndex}`}>
               <div
                 style={{
                   textAlign: 'center',
@@ -624,8 +708,6 @@ export default function CommunityChatPage() {
               >
                 {group.dateLabel}
               </div>
-
-              {/* Messages in this group */}
               {group.messages.map((msg) => {
                 const isOwn = msg.sender_id === user?.id;
                 const repliedMsg = messages.find((m) => m.id === msg.reply_to);
@@ -636,10 +718,7 @@ export default function CommunityChatPage() {
                   acc[emoji] = (acc[emoji] || 0) + 1;
                   return acc;
                 }, {} as Record<string, number>);
-
-                // Show "Unread" banner ONLY before first unread message from others
                 const showUnreadBanner = messages.indexOf(msg) === firstUnreadIndex && firstUnreadIndex >= 0;
-
                 return (
                   <div key={msg.id}>
                     {showUnreadBanner && (
@@ -667,7 +746,6 @@ export default function CommunityChatPage() {
                         </span>
                       </div>
                     )}
-
                     <div
                       ref={(el) => {
                         if (el) messageRefs.current.set(msg.id, el);
@@ -711,7 +789,6 @@ export default function CommunityChatPage() {
                           )}
                         </div>
                       )}
-
                       <div style={{ maxWidth: '80%', position: 'relative' }}>
                         {repliedMsg && !repliedMsg.deleted_for_everyone && (
                           <div
@@ -736,7 +813,6 @@ export default function CommunityChatPage() {
                             </div>
                           </div>
                         )}
-
                         <div
                           onMouseDown={(e) => !isDeleted && handleLongPressStart(msg.id, isOwn, e)}
                           onMouseUp={handleLongPressEnd}
@@ -771,7 +847,6 @@ export default function CommunityChatPage() {
                               {isOwn ? 'Me' : msg.sender.full_name}
                             </div>
                           )}
-
                           {isOwn && !isDeleted && (
                             <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
                               <button
@@ -864,7 +939,6 @@ export default function CommunityChatPage() {
                               )}
                             </div>
                           )}
-
                           {!isOwn && !isDeleted && (
                             <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
                               <button
@@ -895,7 +969,6 @@ export default function CommunityChatPage() {
                               </button>
                             </div>
                           )}
-
                           {isDeleted ? (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <span style={{ fontSize: '12px' }}>🗑️</span>
@@ -971,7 +1044,6 @@ export default function CommunityChatPage() {
                           ) : (
                             <div>{msg.content}</div>
                           )}
-
                           {Object.keys(reactionCounts).length > 0 && (
                             <div style={{ display: 'flex', gap: '2px', marginTop: '6px', flexWrap: 'wrap' }}>
                               {Object.entries(reactionCounts).map(([emoji, count]) => (
@@ -994,7 +1066,6 @@ export default function CommunityChatPage() {
                               ))}
                             </div>
                           )}
-
                           <div
                             style={{
                               fontSize: '10px',
@@ -1014,10 +1085,10 @@ export default function CommunityChatPage() {
             </div>
           ))
         )}
-
         <div ref={messagesEndRef} />
 
-        {isOtherUserTyping && (
+        {/* Typing Indicator */}
+        {typingText && (
           <div
             style={{
               padding: '8px 16px',
@@ -1030,7 +1101,7 @@ export default function CommunityChatPage() {
               justifyContent: 'center',
             }}
           >
-            Someone is typing
+            {typingText}
             <div style={{ display: 'flex', gap: '2px' }}>
               {[0, 1, 2].map((i) => (
                 <div
@@ -1214,7 +1285,6 @@ export default function CommunityChatPage() {
             )}
           </button>
         </div>
-
         {showEmojiPicker && (
           <div
             className="emoji-picker-container"
@@ -1243,7 +1313,6 @@ export default function CommunityChatPage() {
           </div>
         )}
       </form>
-
       <CallOverlay />
       {!isMobileView && <FooterNav />}
     </div>

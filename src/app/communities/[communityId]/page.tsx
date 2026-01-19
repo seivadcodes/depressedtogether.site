@@ -229,7 +229,7 @@ export default function CommunityDetailPage() {
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [newPostsCount, setNewPostsCount] = useState<number>(0);
 const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
-  
+  const existingMessageIds = useRef<Set<string>>(new Set());
   
   // Inject global styles once
   useEffect(() => {
