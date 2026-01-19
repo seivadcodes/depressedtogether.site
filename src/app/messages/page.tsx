@@ -122,7 +122,7 @@ export default function MessagesPage() {
 
   const [wsConnected, setWsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-
+const [showQuickReactions, setShowQuickReactions] = useState<string | null>(null);
   const [isOtherUserTyping, setIsOtherUserTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -425,31 +425,30 @@ export default function MessagesPage() {
 
 
   // Close menus on outside click
- useEffect(() => {
-  const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-    const target = event.target as Node;
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const emojiPicker = document.querySelector('.emoji-picker-container');
+      if (emojiPicker && !emojiPicker.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
 
-    if (!document.querySelector('.reaction-picker-container')?.contains(target)) {
-      setShowReactionPicker(null);
-    }
-    if (!document.querySelector('.emoji-picker-container')?.contains(target)) {
-      setShowEmojiPicker(false);
-    }
-    if (!document.querySelector('.conversation-menu-container')?.contains(target)) {
-      setShowConversationMenu(null);
-    }
-    if (!document.querySelector('.message-menu-container')?.contains(target)) {
-      setShowMessageMenu(null);
-    }
-  };
+      if (!(event.target as Element).closest('.conversation-menu-container')) {
+        setShowConversationMenu(null);
+      }
 
-  document.addEventListener('mousedown', handleClickOutside);
-  document.addEventListener('touchstart', handleClickOutside); // 👈 ADD THIS
-  return () => {
-    document.removeEventListener('mousedown', handleClickOutside);
-    document.removeEventListener('touchstart', handleClickOutside);
-  };
-}, []);
+      if (!(event.target as Element).closest('.message-menu-container')) {
+        setShowMessageMenu(null);
+      }
+
+      if (!(event.target as Element).closest('.reaction-picker-container')) {
+        setShowReactionPicker(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Scroll to bottom when messages change
   // Replace your existing scroll effect with this:
   useLayoutEffect(() => {
@@ -749,37 +748,32 @@ export default function MessagesPage() {
 
 
   // Handle long press for reactions (only on others' messages)
- const handleLongPressStart = (messageId: string, isOwn: boolean, event: React.MouseEvent | React.TouchEvent) => {
-  if (isOwn) return;
-  event.preventDefault();
-  event.stopPropagation();
+  const handleLongPressStart = (messageId: string, isOwn: boolean, event: React.MouseEvent | React.TouchEvent) => {
+    // Only allow reactions on others' messages
+    if (isOwn) return;
 
-  let x = 0, y = 0;
-  if ('touches' in event) {
-    x = event.touches[0].clientX;
-    y = event.touches[0].clientY;
-  } else {
-    x = event.clientX;
-    y = event.clientY;
-  }
+   
 
-  const timer = setTimeout(() => {
-    setShowReactionPicker(messageId);
-    setReactionPickerPosition({ x, y });
-  }, 500);
-  setLongPressTimer(timer);
-};
+    // Get position for reaction picker
+    let x, y;
+    if ('touches' in event) {
+      x = event.touches[0].clientX;
+      y = event.touches[0].clientY;
+    } else {
+      x = event.clientX;
+      y = event.clientY;
+    }
 
-// Add onTouchMove to cancel if user drags
-const handleTouchMove = () => {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer);
-    setLongPressTimer(null);
-  }
-};
+    const timer = setTimeout(() => {
+      setShowReactionPicker(messageId);
+      setReactionPickerPosition({ x, y });
+    }, 500); // 500ms for long press
+
+    setLongPressTimer(timer);
+  };
+
   const handleLongPressEnd = (event: React.MouseEvent | React.TouchEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
+  
 
     if (longPressTimer) {
       clearTimeout(longPressTimer);
@@ -1683,20 +1677,16 @@ avatar_url
                         onMouseLeave={handleLongPressEnd}
                         onTouchStart={(e) => {
   if (!isDeleted && !isDeletedForMe && !isOwn) {
-    e.preventDefault();
-    e.stopPropagation();
+    // 👇 Prevent long-press if touch starts on the menu button or its container
+    const target = e.target as HTMLElement;
+    if (target.closest('.message-menu-container')) {
+      return;
+    }
     handleLongPressStart(msg.id, isOwn, e);
   }
 }}
-onTouchMove={(e) => {
-  // Cancel long press if user moves finger (e.g., scrolling)
-  if (longPressTimer) {
-    clearTimeout(longPressTimer);
-    setLongPressTimer(null);
-  }
-}}
-onTouchEnd={handleLongPressEnd}
-onTouchCancel={handleLongPressEnd}
+                        onTouchEnd={handleLongPressEnd}
+                        onTouchCancel={handleLongPressEnd}
                         style={{
                           padding: '10px 14px',
                           borderRadius: isOwn ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
@@ -1710,8 +1700,6 @@ onTouchCancel={handleLongPressEnd}
                           cursor: isDeleted ? 'default' : (isOwn ? 'default' : 'pointer'),
                           userSelect: 'none',
                           WebkitUserSelect: 'none',
-                          WebkitTouchCallout: 'none',
-
                           overflowWrap: 'break-word'
 
                         }}
@@ -2994,21 +2982,12 @@ onTouchCancel={handleLongPressEnd}
                                   }}
                                   onMouseLeave={handleLongPressEnd}
                                   onTouchStart={(e) => {
-  if (!isDeleted && !isDeletedForMe && !isOwn) {
-    e.preventDefault();
-    e.stopPropagation();
-    handleLongPressStart(msg.id, isOwn, e);
-  }
-}}
-onTouchMove={(e) => {
-  // Cancel long press if user moves finger (e.g., scrolling)
-  if (longPressTimer) {
-    clearTimeout(longPressTimer);
-    setLongPressTimer(null);
-  }
-}}
-onTouchEnd={handleLongPressEnd}
-onTouchCancel={handleLongPressEnd}
+                                    if (!isDeleted && !isDeletedForMe && !isOwn) {
+                                      handleLongPressStart(msg.id, isOwn, e);
+                                    }
+                                  }}
+                                  onTouchEnd={handleLongPressEnd}
+                                  onTouchCancel={handleLongPressEnd}
                                   style={{
                                     padding: '14px 18px',
                                     borderRadius: isOwn ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
@@ -3023,7 +3002,6 @@ onTouchCancel={handleLongPressEnd}
                                     cursor: isDeleted ? 'default' : (isOwn ? 'default' : 'pointer'),
                                     userSelect: 'none',
                                     WebkitUserSelect: 'none',
-                                    WebkitTouchCallout: 'none',
                                     overflowWrap: 'break-word'
 
                                   }}
