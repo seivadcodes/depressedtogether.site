@@ -84,10 +84,10 @@ export default function CommunitiesPage() {
         if (data) {
           const communitiesWithPhotos = data.map((community) => ({
   ...community,
-  // Use the path from DB, and proxy it — don't override it!
+  // ✅ Correct: proxy the stored path directly — no extra prefix
   cover_photo_url: community.cover_photo_url
-  ? `/api/media/communities/${community.cover_photo_url}`
-  : null,
+    ? `/api/media/${community.cover_photo_url}`
+    : null,
 }));
 
           setCommunities(communitiesWithPhotos);

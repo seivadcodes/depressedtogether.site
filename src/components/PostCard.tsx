@@ -150,11 +150,11 @@ export function PostCard({
 
   // Resolve current user's avatar to public URL
   const resolvedAvatarUrl = useMemo(() => {
-    const path = currentUser?.user_metadata?.avatar_url;
-    if (!path) return undefined; 
-    const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-    return data.publicUrl;
-  }, [currentUser?.user_metadata?.avatar_url, supabase]);
+  const path = currentUser?.user_metadata?.avatar_url;
+  if (!path) return undefined;
+  // Route through your secure proxy
+  return `/api/media/avatars/${path}`;
+}, [currentUser?.user_metadata?.avatar_url]);
 
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -177,18 +177,22 @@ export function PostCard({
   }, [post.griefTypes]);
 
   const displayAuthor = useMemo(() => {
-    if (post.isAnonymous) {
-      return { name: 'Anonymous', avatar: null };
-    }
-    if (post.user) {
-      return {
-        name: post.user.fullName || 'Someone',
-        avatar: post.user.avatarUrl,
-      };
-    }
-    return { name: 'Someone', avatar: null };
-  }, [post]);
+  if (post.isAnonymous) {
+    return { name: 'Anonymous', avatar: null };
+  }
+  if (post.user) {
+    // Convert raw DB path (e.g., "abc123/photo.jpg") → proxied URL
+    const avatarUrl = post.user.avatarUrl
+      ? `/api/media/avatars/${post.user.avatarUrl}`
+      : null;
 
+    return {
+      name: post.user.fullName || 'Someone',
+      avatar: avatarUrl,
+    };
+  }
+  return { name: 'Someone', avatar: null };
+}, [post]);
   const handleDelete = async () => {
     if (!canDelete || !onPostDeleted) return;
     if (!confirm('Are you sure you want to delete this post?')) return;

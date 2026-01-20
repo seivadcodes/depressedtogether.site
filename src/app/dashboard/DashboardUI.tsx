@@ -114,6 +114,8 @@ export function DashboardUI({
   isExpanded,
   setIsExpanded,
   saveAbout,
+  otherLossText,
+  setOtherLossText,
 
 }: DashboardUIProps) {
   if (isLoading) {
@@ -139,10 +141,12 @@ export function DashboardUI({
     return (
       <GriefSetupModal
         selectedGriefTypes={selectedGriefTypes}
-        error={error}
-        toggleGriefType={toggleGriefType}
-        handleSaveGriefTypes={handleSaveGriefTypes}
-        isSubmitting={isSubmitting}
+  error={error}
+  toggleGriefType={toggleGriefType}
+  handleSaveGriefTypes={handleSaveGriefTypes}
+  isSubmitting={isSubmitting}
+  otherLossText={otherLossText}
+  setOtherLossText={setOtherLossText}
       />
     );
   }
@@ -151,23 +155,26 @@ export function DashboardUI({
     return (
       <SettingsModal
         profile={profile}
-        preferences={preferences}
-        error={error}
-        setShowSettings={setShowSettings}
-        setShowGriefSetup={setShowGriefSetup}
-        toggleAcceptsCalls={toggleAcceptsCalls}
-        toggleAcceptsVideoCalls={toggleAcceptsVideoCalls}
-        toggleAnonymity={toggleAnonymity}
-        updateFullName={updateFullName}
-        updateAvatar={updateAvatar}
-        aboutText={aboutText}
-        setAboutText={setAboutText}
-        isEditingAbout={isEditingAbout}
-        setIsEditingAbout={setIsEditingAbout}
-        isExpanded={isExpanded}
-        setIsExpanded={setIsExpanded}
-        saveAbout={saveAbout}
-        isSubmitting={isSubmitting}
+  preferences={preferences}
+  error={error}
+  setShowSettings={setShowSettings}
+  setShowGriefSetup={setShowGriefSetup}
+  toggleAcceptsCalls={toggleAcceptsCalls}
+  toggleAcceptsVideoCalls={toggleAcceptsVideoCalls}
+  toggleAnonymity={toggleAnonymity}
+  updateFullName={updateFullName}
+  updateAvatar={updateAvatar}
+  aboutText={aboutText}
+  setAboutText={setAboutText}
+  isEditingAbout={isEditingAbout}
+  setIsEditingAbout={setIsEditingAbout}
+  isExpanded={isExpanded}
+  setIsExpanded={setIsExpanded}
+  saveAbout={saveAbout}
+  isSubmitting={isSubmitting}
+  selectedGriefTypes={selectedGriefTypes}
+  otherLossText={otherLossText}
+  setOtherLossText={setOtherLossText}
 
       />
     );
@@ -249,13 +256,17 @@ const GriefSetupModal = ({
   error,
   toggleGriefType,
   handleSaveGriefTypes,
-  isSubmitting
+  isSubmitting,
+  otherLossText,
+  setOtherLossText,
 }: {
   selectedGriefTypes: GriefType[];
   error: string | null;
   toggleGriefType: (type: GriefType) => void;
   handleSaveGriefTypes: () => Promise<void>;
   isSubmitting: boolean;
+  otherLossText: string;
+  setOtherLossText: (text: string) => void;
 }) => (
   <div style={{
     minHeight: '100vh',
@@ -283,7 +294,6 @@ const GriefSetupModal = ({
       }}>
         You can choose more than one. This helps us connect you with the right people.
       </p>
-
       {error && (
         <div style={{
           marginBottom: '1rem',
@@ -296,7 +306,6 @@ const GriefSetupModal = ({
           {error}
         </div>
       )}
-
       <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '0.75rem', marginBottom: '1.5rem' }}>
         {(Object.keys(griefTypeLabels) as GriefType[]).map((type) => (
           <button
@@ -326,6 +335,32 @@ const GriefSetupModal = ({
         ))}
       </div>
 
+      {/* 👇 ADD THIS BLOCK */}
+      {selectedGriefTypes.includes('other') && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <label style={{
+            display: 'block',
+            fontWeight: 500,
+            color: '#1c1917',
+            marginBottom: '0.5rem',
+            fontSize: '0.875rem'
+          }}>
+            Please describe your loss
+          </label>
+          <input
+            type="text"
+            value={otherLossText}
+            onChange={(e) => setOtherLossText(e.target.value)}
+            placeholder="e.g., Loss of a mentor, home, job, or community..."
+            style={{
+              ...baseStyles.inputBase,
+              width: '100%',
+              fontSize: '0.875rem'
+            }}
+          />
+        </div>
+      )}
+
       <button
         onClick={handleSaveGriefTypes}
         disabled={selectedGriefTypes.length === 0 || isSubmitting}
@@ -344,7 +379,6 @@ const GriefSetupModal = ({
       >
         {isSubmitting ? 'Saving...' : 'Save & Continue'}
       </button>
-
       <p style={{
         textAlign: 'center',
         fontSize: '0.75rem',
@@ -356,7 +390,6 @@ const GriefSetupModal = ({
     </div>
   </div>
 );
-
 const SettingsModal = ({
   profile,
   preferences,
@@ -377,6 +410,9 @@ const SettingsModal = ({
   setIsExpanded,
   saveAbout,
   isSubmitting,
+  selectedGriefTypes,
+  otherLossText,
+  setOtherLossText,
 }: {
   profile: UserProfile | null;
   preferences: UserPreferences;
@@ -396,6 +432,9 @@ const SettingsModal = ({
   setIsExpanded: (expanded: boolean) => void;
   saveAbout: () => Promise<void>;
   isSubmitting: boolean;
+    selectedGriefTypes: GriefType[];
+  otherLossText: string;
+  setOtherLossText: (text: string) => void;
 
 }) => {
   const [firstName, setFirstName] = useState('');
@@ -497,15 +536,17 @@ const SettingsModal = ({
                   border: '1px solid #e7e5e4',
                 }}>
                   {profile?.avatarUrl ? (
-                    <Image
-                      src={profile.avatarUrl}
-                      alt="Profile"
-                      width={48}
-                      height={48}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      unoptimized
-                    />
-                  ) : (
+  <div style={{ width: '100%', height: '100%', borderRadius: '9999px', overflow: 'hidden' }}>
+    <Image
+      src={`/api/media/avatars/${profile.avatarUrl}`}
+      alt="Your avatar"
+      width={40}
+      height={40}
+      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+      unoptimized
+    />
+  </div>
+) : (
                     <div style={{
                       width: '100%',
                       height: '100%',
@@ -652,7 +693,31 @@ const SettingsModal = ({
             Edit grief types
           </button>
         </div>
-
+{/* 👇 Add this right after the grief type buttons */}
+{selectedGriefTypes.includes('other') && (
+  <div style={{ marginBottom: '1.5rem' }}>
+    <label style={{
+      display: 'block',
+      fontWeight: 500,
+      color: '#1c1917',
+      marginBottom: '0.5rem',
+      fontSize: '0.875rem'
+    }}>
+      Please describe your loss
+    </label>
+    <input
+      type="text"
+      value={otherLossText}
+      onChange={(e) => setOtherLossText(e.target.value)}
+      placeholder="e.g., Loss of a mentor, home, job, or community..."
+      style={{
+        ...baseStyles.inputBase,
+        width: '100%',
+        fontSize: '0.875rem'
+      }}
+    />
+  </div>
+)}
         {/* About Section */}
         <div style={{
           marginBottom: '1.5rem',
@@ -998,22 +1063,25 @@ const ProfileContextSection = ({
       <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '0.5rem', marginBottom: '1rem' }}>
         {profile?.griefTypes?.map((type) => (
           <span
-            key={type}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.25rem',
-              backgroundColor: '#fef3c7',
-              color: '#92400e',
-              fontSize: '0.875rem',
-              padding: '0.375rem 0.75rem',
-              borderRadius: '9999px',
-              border: '1px solid #fde68a',
-            }}
-          >
-            <Heart size={12} style={{ color: '#d97706' }} />
-            {griefTypeLabels[type]}
-          </span>
+  key={type}
+  style={{
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.25rem',
+    backgroundColor: '#fef3c7',
+    color: '#92400e',
+    fontSize: '0.875rem',
+    padding: '0.375rem 0.75rem',
+    borderRadius: '9999px',
+    border: '1px solid #fde68a',
+  }}
+>
+  <Heart size={12} style={{ color: '#d97706' }} />
+  {type === 'other' && profile?.otherLossDescription
+    ? profile.otherLossDescription
+    : griefTypeLabels[type]
+  }
+</span>
         ))}
       </div>
 

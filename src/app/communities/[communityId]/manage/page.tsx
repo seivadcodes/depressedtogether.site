@@ -110,13 +110,15 @@ export default function CommunityManagePage() {
 
         if (commErr) throw commErr;
 
-        let coverPhotoUrl = commData.cover_photo_url;
-        if (!coverPhotoUrl) {
-          coverPhotoUrl = getBannerUrl(communityId);
-        }
+        // Always treat cover_photo_url as a STORAGE PATH
+const storagePath = commData.cover_photo_url; // e.g., "communities/abc123/banner.jpg"
 
-        setCommunity({ ...commData, cover_photo_url: coverPhotoUrl });
+// Convert to proxied URL if path exists, else use fallback
+const coverPhotoUrl = storagePath
+  ? `/api/media/communities/${storagePath}`
+  : getBannerUrl(communityId); // fallback to direct Supabase URL (for legacy/default)
 
+setCommunity({ ...commData, cover_photo_url: coverPhotoUrl });
         // Fetch members
         const { data: membersData, error: memErr } = await supabase
           .from('community_members')
@@ -209,16 +211,16 @@ export default function CommunityManagePage() {
 
       if (uploadErr) throw uploadErr;
 
-      const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${path}?t=${Date.now()}`;
+      // ✅ Save only the storage path — consistent with create flow
+const storagePath = `communities/${path}`; // e.g., "communities/loss-of-parent/banner.jpg"
 
-      const { error: updateErr } = await supabase
-        .from('communities')
-        .update({ cover_photo_url: publicUrl })
-        .eq('id', communityId);
-
+const { error: updateErr } = await supabase
+  .from('communities')
+  .update({ cover_photo_url: storagePath })
+  .eq('id', communityId);
       if (updateErr) throw updateErr;
 
-      setCommunity((prev) => (prev ? { ...prev, cover_photo_url: publicUrl } : null));
+      setCommunity((prev) => (prev ? { ...prev, cover_photo_url: storagePath } : null));
       setBannerFile(null);
       setBannerPreview(null);
       toast.success('Banner updated!');
@@ -314,19 +316,22 @@ export default function CommunityManagePage() {
             />
           ) : community.cover_photo_url ? (
             <Image
-              src={community.cover_photo_url}
-              alt="Current banner"
-              fill
-              style={{ objectFit: 'cover' }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = getBannerUrl(communityId);
-              }}
-            />
-          ) : (
-            <div style={{ width: '100%', height: '100%', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
-              No banner set
-            </div>
-          )}
+    src={community.cover_photo_url}
+    alt="Current banner"
+    fill
+    style={{ objectFit: 'cover' }}
+    unoptimized // 👈 Important: bypasses Next.js image optimization for dynamic/external URLs
+    onError={(e) => {
+      // Fallback to default generated banner URL (cache-busted)
+      const fallbackUrl = getBannerUrl(communityId);
+      (e.currentTarget as HTMLImageElement).src = fallbackUrl;
+    }}
+  />
+) : (
+  <div style={{ width: '100%', height: '100%', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+    No banner set
+  </div>
+)}
         </div>
         {isAdmin && (
           <>
@@ -455,30 +460,34 @@ export default function CommunityManagePage() {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  {member.avatar_url ? (
-                    <Image
-                      src={member.avatar_url}
-                      alt={displayName}
-                      width={36}
-                      height={36}
-                      style={{ borderRadius: '9999px' }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '9999px',
-                        background: '#334155',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#94a3b8',
-                      }}
-                    >
-                      {displayName[0]?.toUpperCase() || '?'}
-                    </div>
-                  )}
+                  {member.avatar_url && !member.is_anonymous ? (
+  <Image
+    src={`/api/media/avatars/${member.avatar_url}`}
+    alt={displayName}
+    width={36}
+    height={36}
+    style={{ borderRadius: '9999px', objectFit: 'cover' }}
+    unoptimized
+    onError={(e) => {
+      (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+    }}
+  />
+) : (
+  <div
+    style={{
+      width: '36px',
+      height: '36px',
+      borderRadius: '9999px',
+      background: '#334155',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#94a3b8',
+    }}
+  >
+    {displayName[0]?.toUpperCase() || '?'}
+  </div>
+)}
                   <div>
                     <div style={{ fontWeight: 600 }}>{displayName}</div>
                     <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>

@@ -103,7 +103,7 @@ if (profileError || !profileData) {
 
 // ✅ Convert Supabase storage path to your API proxy URL
 const avatarProxyUrl = profileData.avatar_url
-  ? `/api/media/${profileData.avatar_url}`
+  ? `/api/media/avatars/${profileData.avatar_url}` // ✅ add 'avatars/'
   : null;
 
 setProfile({
@@ -132,7 +132,7 @@ setProfile({
 
         const mappedPosts = (postData || []).map((p) => {
   const userAvatar = p.profiles?.avatar_url
-  ? supabase.storage.from('avatars').getPublicUrl(p.profiles.avatar_url).data.publicUrl
+  ? `/api/media/${p.profiles.avatar_url}` // 👈 Use your proxy!
   : null;
   return {
     id: p.id,
@@ -240,13 +240,14 @@ setProfile({
         >
           {profile.avatar_url ? (
   <div style={{ width: '72px', height: '72px', borderRadius: '50%', overflow: 'hidden' }}>
-    <Image
-      src={profile.avatar_url} // e.g. "/api/media/avatars/.../file.jpg"
-      alt={name}
-      width={72}
-      height={72}
-      style={{ objectFit: 'cover' }}
-    />
+    <img
+  src={profile.avatar_url}
+  alt={name}
+  width={72}
+  height={72}
+  style={{ objectFit: 'cover', borderRadius: '50%' }}
+  loading="lazy"
+/>
   </div>
 ) : (
   name.charAt(0).toUpperCase()

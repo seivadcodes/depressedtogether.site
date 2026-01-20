@@ -228,9 +228,9 @@ export default function CommunityDetailPage() {
   const [memberStatusResolved, setMemberStatusResolved] = useState(false); // 👈 NEW
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [newPostsCount, setNewPostsCount] = useState<number>(0);
-const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
+  const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
   const existingMessageIds = useRef<Set<string>>(new Set());
-  
+
   // Inject global styles once
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -305,39 +305,39 @@ const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
     };
   }, [isKebabOpen]);
 
- useEffect(() => {
-  const fetchData = async () => {
-    if (!communityId) return;
-    try {
-      setLoading(true);
-      setError(null);
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!communityId) return;
+      try {
+        setLoading(true);
+        setError(null);
 
-      // 1. Fetch community data
-      const { data: communityData, error: communityError } = await supabase
-        .from('communities')
-        .select('*')
-        .eq('id', communityId)
-        .single();
-      if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
-      if (!communityData) throw new Error('Community not found');
+        // 1. Fetch community data
+        const { data: communityData, error: communityError } = await supabase
+          .from('communities')
+          .select('*')
+          .eq('id', communityId)
+          .single();
+        if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
+        if (!communityData) throw new Error('Community not found');
 
-    let coverPhotoUrl = communityData.cover_photo_url;
-if (!coverPhotoUrl) {
-  // Fallback: construct a proxy path instead of direct Supabase URL
-  coverPhotoUrl = `communities/${communityId}/banner.jpg`; // ✅ Relative path for proxy
-}
+        let coverPhotoUrl = communityData.cover_photo_url;
+        if (!coverPhotoUrl) {
+          // Fallback: construct a proxy path instead of direct Supabase URL
+          coverPhotoUrl = `communities/${communityId}/banner.jpg`; // ✅ Relative path for proxy
+        }
 
-      // 2. Count total members
-      const { count: memberCount, error: memberCountError } = await supabase
-        .from('community_members')
-        .select('*', { count: 'exact', head: true })
-        .eq('community_id', communityId);
-      if (memberCountError) throw new Error(`Failed to count members: ${memberCountError.message}`);
+        // 2. Count total members
+        const { count: memberCount, error: memberCountError } = await supabase
+          .from('community_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('community_id', communityId);
+        if (memberCountError) throw new Error(`Failed to count members: ${memberCountError.message}`);
 
-      // 3. Fetch members (needed for UI rendering)
-      const { data: membersData, error: membersError } = await supabase
-        .from('community_members')
-        .select(`
+        // 3. Fetch members (needed for UI rendering)
+        const { data: membersData, error: membersError } = await supabase
+          .from('community_members')
+          .select(`
           role,
           joined_at,
           user_id,
@@ -349,84 +349,82 @@ if (!coverPhotoUrl) {
             is_anonymous
           )
         `)
-        .eq('community_id', communityId)
-        .order('joined_at', { ascending: true });
-      if (membersError) throw membersError;
+          .eq('community_id', communityId)
+          .order('joined_at', { ascending: true });
+        if (membersError) throw membersError;
 
-      // 4. Fetch precomputed online count from optimized view
-      let onlineCount = 0;
-      const { data: countData, error: viewError } = await supabase
-        .from('community_online_counts')
-        .select('online_count')
-        .eq('community_id', communityId)
-        .single();
+        // 4. Fetch precomputed online count from optimized view
+        let onlineCount = 0;
+        const { data: countData, error: viewError } = await supabase
+          .from('community_online_counts')
+          .select('online_count')
+          .eq('community_id', communityId)
+          .single();
 
-      if (viewError) {
-        console.warn('Falling back to client-side online count:', viewError);
-        // Fallback: compute on client (less efficient)
-        onlineCount = membersData.filter((member: CommunityMemberWithProfile) => {
-          const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-          return isUserOnline(profile?.last_online || null);
-        }).length;
-      } else {
-        onlineCount = countData?.online_count ?? 0;
-      }
+        if (viewError) {
+          console.warn('Falling back to client-side online count:', viewError);
+          // Fallback: compute on client (less efficient)
+          onlineCount = membersData.filter((member: CommunityMemberWithProfile) => {
+            const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+            return isUserOnline(profile?.last_online || null);
+          }).length;
+        } else {
+          onlineCount = countData?.online_count ?? 0;
+        }
 
-      // 5. Build community object
-      const communityWithPhoto: Community = {
-        ...communityData,
-        cover_photo_url: coverPhotoUrl,
-        member_count: memberCount || 0,
-        online_count: onlineCount,
-      };
-      setCommunity(communityWithPhoto);
+        // 5. Build community object
+        const communityWithPhoto: Community = {
+          ...communityData,
+          cover_photo_url: coverPhotoUrl,
+          member_count: memberCount || 0,
+          online_count: onlineCount,
+        };
+        setCommunity(communityWithPhoto);
 
-      // 6. Format members for UI
-      const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
+        // 6. Format members for UI
+const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
   const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
   const isAnonymous = profile?.is_anonymous || false;
-  let avatarUrl = null;
-
-  if (!isAnonymous && profile?.avatar_url) {
-    // ✅ Construct a valid URL using your API proxy route
-    avatarUrl = `/api/media/${profile.avatar_url}`; // e.g., /api/media/avatars/789c18dc485...jpg
-  }
+  
+  // ✅ Correctly assign avatarUrl only if not anonymous and avatar exists
+  const avatarUrl = !isAnonymous && profile?.avatar_url ? profile.avatar_url : null;
 
   return {
     user_id: member.user_id,
     username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-    avatar_url: avatarUrl, // ✅ Now a valid, proxied URL
+    avatar_url: avatarUrl, // ✅ Now contains the actual storage path (e.g., "avatars/xyz.jpg") or null
     last_online: profile?.last_online || null,
     is_online: isUserOnline(profile?.last_online || null),
     role: member.role,
     joined_at: member.joined_at,
   };
 });
-      setMembers(formattedMembers);
 
-      // 7. Check membership status
-      let isCurrentUserMember = false;
-      let currentUserRole: typeof userRole = null;
-      if (user) {
-        const { data: memberData } = await supabase
-          .from('community_members')
-          .select('role')
-          .eq('community_id', communityId)
-          .eq('user_id', user.id)
-          .single();
-        if (memberData) {
-          isCurrentUserMember = true;
-          currentUserRole = memberData.role;
+setMembers(formattedMembers);
+
+        // 7. Check membership status
+        let isCurrentUserMember = false;
+        let currentUserRole: typeof userRole = null;
+        if (user) {
+          const { data: memberData } = await supabase
+            .from('community_members')
+            .select('role')
+            .eq('community_id', communityId)
+            .eq('user_id', user.id)
+            .single();
+          if (memberData) {
+            isCurrentUserMember = true;
+            currentUserRole = memberData.role;
+          }
         }
-      }
-      setIsMember(isCurrentUserMember);
-      setUserRole(currentUserRole);
-      setMemberStatusResolved(true);
+        setIsMember(isCurrentUserMember);
+        setUserRole(currentUserRole);
+        setMemberStatusResolved(true);
 
-      // 8. Fetch posts
-      const { data: postData, error: postError } = await supabase
-        .from('community_posts')
-        .select(`
+        // 8. Fetch posts
+        const { data: postData, error: postError } = await supabase
+          .from('community_posts')
+          .select(`
           id,
           content,
           created_at,
@@ -437,121 +435,121 @@ if (!coverPhotoUrl) {
           comments_count,
           user_id
         `)
-        .eq('community_id', communityId)
-        .order('created_at', { ascending: false });
-      if (postError) throw postError;
+          .eq('community_id', communityId)
+          .order('created_at', { ascending: false });
+        if (postError) throw postError;
 
-      const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
-      const { data: profilesData } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url, is_anonymous')
-        .in('id', userIds);
+        const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
+        const { data: profilesData } = await supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url, is_anonymous')
+          .in('id', userIds);
 
-      const profilesMap = new Map();
-      profilesData?.forEach((profile: Profile) => {
-        profilesMap.set(profile.id, profile);
-      });
+        const profilesMap = new Map();
+        profilesData?.forEach((profile: Profile) => {
+          profilesMap.set(profile.id, profile);
+        });
 
-      const postsWithLikes = postData.map((post: CommunityPost) => {
-        const userProfile = profilesMap.get(post.user_id) || {};
-        const isAnonymous = userProfile.is_anonymous || false;
-        return {
-          id: post.id,
-          content: post.content,
-          media_url: post.media_url,
-          media_urls: post.media_urls,
-          created_at: post.created_at,
-          user_id: post.user_id,
-          username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
-          avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
-          community_id: post.community_id,
-          likes_count: post.likes_count || 0,
-          comments_count: post.comments_count || 0,
-          is_liked: false,
-        };
-      });
-      setPosts(postsWithLikes);
+        const postsWithLikes = postData.map((post: CommunityPost) => {
+          const userProfile = profilesMap.get(post.user_id) || {};
+          const isAnonymous = userProfile.is_anonymous || false;
+          return {
+            id: post.id,
+            content: post.content,
+            media_url: post.media_url,
+            media_urls: post.media_urls,
+            created_at: post.created_at,
+            user_id: post.user_id,
+            username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
+            avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
+            community_id: post.community_id,
+            likes_count: post.likes_count || 0,
+            comments_count: post.comments_count || 0,
+            is_liked: false,
+          };
+        });
+        setPosts(postsWithLikes);
 
-// === NEW: Track last view timestamps and count new posts/messages ===
-let lastFeedView: string | null = null;
-let lastChatView: string | null = null;
-let newPostsCount = 0;
-let newMessagesCount = 0;
+        // === NEW: Track last view timestamps and count new posts/messages ===
+        let lastFeedView: string | null = null;
+        let lastChatView: string | null = null;
+        let newPostsCount = 0;
+        let newMessagesCount = 0;
 
-if (user) {
-  const { data: viewData } = await supabase
-    .from('community_user_views')
-    .select('last_feed_view, last_chat_view')
-    .eq('user_id', user.id)
-    .eq('community_id', communityId)
-    .single();
+        if (user) {
+          const { data: viewData } = await supabase
+            .from('community_user_views')
+            .select('last_feed_view, last_chat_view')
+            .eq('user_id', user.id)
+            .eq('community_id', communityId)
+            .single();
 
-  if (viewData) {
-    lastFeedView = viewData.last_feed_view;
-    lastChatView = viewData.last_chat_view;
-  } else {
-    // Initialize on first visit
-    await supabase.from('community_user_views').insert({
-      user_id: user.id,
-      community_id: communityId,
-      last_feed_view: new Date().toISOString(),
-      last_chat_view: new Date().toISOString(),
-    });
-    lastFeedView = lastChatView = new Date().toISOString();
-  }
+          if (viewData) {
+            lastFeedView = viewData.last_feed_view;
+            lastChatView = viewData.last_chat_view;
+          } else {
+            // Initialize on first visit
+            await supabase.from('community_user_views').insert({
+              user_id: user.id,
+              community_id: communityId,
+              last_feed_view: new Date().toISOString(),
+              last_chat_view: new Date().toISOString(),
+            });
+            lastFeedView = lastChatView = new Date().toISOString();
+          }
 
-  // Count new posts since last feed view
-  const { count: postCount } = await supabase
-    .from('community_posts')
-    .select('*', { count: 'exact', head: true })
-    .eq('community_id', communityId)
-    .gt('created_at', lastFeedView || '1970-01-01');
-  newPostsCount = postCount || 0;
+          // Count new posts since last feed view
+          const { count: postCount } = await supabase
+            .from('community_posts')
+            .select('*', { count: 'exact', head: true })
+            .eq('community_id', communityId)
+            .gt('created_at', lastFeedView || '1970-01-01');
+          newPostsCount = postCount || 0;
 
-  // Count new messages since last chat view
-  const { count: msgCount } = await supabase
-    .from('community_messages')
-    .select('*', { count: 'exact', head: true })
-    .eq('community_id', communityId)
-    .gt('created_at', lastChatView || '1970-01-01');
-  newMessagesCount = msgCount || 0;
+          // Count new messages since last chat view
+          const { count: msgCount } = await supabase
+            .from('community_messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('community_id', communityId)
+            .gt('created_at', lastChatView || '1970-01-01');
+          newMessagesCount = msgCount || 0;
 
-  // Update last_feed_view now that user has loaded the page
-  await supabase
-    .from('community_user_views')
-    .upsert(
-      {
-        user_id: user.id,
-        community_id: communityId,
-        last_feed_view: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,community_id' }
-    );
+          // Update last_feed_view now that user has loaded the page
+          await supabase
+            .from('community_user_views')
+            .upsert(
+              {
+                user_id: user.id,
+                community_id: communityId,
+                last_feed_view: new Date().toISOString(),
+              },
+              { onConflict: 'user_id,community_id' }
+            );
 
-    setNewPostsCount(newPostsCount);
-setNewMessagesCount(newMessagesCount);
-}
+          setNewPostsCount(newPostsCount);
+          setNewMessagesCount(newMessagesCount);
+        }
 
-// You can store newPostsCount / newMessagesCount in state later if needed
-// For now, just ensure the DB logic runs without breaking
-// ==============================================================
-
-
-
-    } catch (err) {
-      console.error('Error fetching community:', err);
-      const message = err instanceof Error ? err.message : 'Failed to load community data';
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
+        // You can store newPostsCount / newMessagesCount in state later if needed
+        // For now, just ensure the DB logic runs without breaking
+        // ==============================================================
 
 
-  
 
-  fetchData();
-}, [communityId, user, supabase, isUserOnline]);
+      } catch (err) {
+        console.error('Error fetching community:', err);
+        const message = err instanceof Error ? err.message : 'Failed to load community data';
+        setError(message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+
+
+
+    fetchData();
+  }, [communityId, user, supabase, isUserOnline]);
 
   useEffect(() => {
     if (targetPostId && posts.some((p) => p.id === targetPostId)) {
@@ -579,55 +577,55 @@ setNewMessagesCount(newMessagesCount);
 
   // Refresh members & online count every 30s
   // Refresh members & online count every 30s
-useEffect(() => {
-  if (!communityId) return;
+  useEffect(() => {
+    if (!communityId) return;
 
-  const fetchMembersAndOnlineCount = async () => {
-    // 1. Fetch members
-    const { data: membersData, error } = await supabase
-      .from('community_members')
-      .select(`
+    const fetchMembersAndOnlineCount = async () => {
+      // 1. Fetch members
+      const { data: membersData, error } = await supabase
+        .from('community_members')
+        .select(`
         role,
         joined_at,
         user_id,
         user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
       `)
-      .eq('community_id', communityId);
-    if (error) {
-      console.error('Failed to refresh members:', error);
-      return;
-    }
+        .eq('community_id', communityId);
+      if (error) {
+        console.error('Failed to refresh members:', error);
+        return;
+      }
 
-    const formattedMembers = membersData.map((member) => {
-      const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-      const isAnonymous = profile?.is_anonymous || false;
-      return {
-        user_id: member.user_id,
-        username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-        avatar_url: isAnonymous ? null : profile?.avatar_url || null,
-        last_online: profile?.last_online || null,
-        is_online: isUserOnline(profile?.last_online || null),
-        role: member.role,
-        joined_at: member.joined_at,
-      };
-    });
-    setMembers(formattedMembers);
+      const formattedMembers = membersData.map((member) => {
+        const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+        const isAnonymous = profile?.is_anonymous || false;
+        return {
+          user_id: member.user_id,
+          username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+          avatar_url: isAnonymous ? null : profile?.avatar_url || null,
+          last_online: profile?.last_online || null,
+          is_online: isUserOnline(profile?.last_online || null),
+          role: member.role,
+          joined_at: member.joined_at,
+        };
+      });
+      setMembers(formattedMembers);
 
-    // 2. Fetch online count from view
-    const { data: countData } = await supabase
-      .from('community_online_counts')
-      .select('online_count')
-      .eq('community_id', communityId)
-      .single();
+      // 2. Fetch online count from view
+      const { data: countData } = await supabase
+        .from('community_online_counts')
+        .select('online_count')
+        .eq('community_id', communityId)
+        .single();
 
-    const newOnlineCount = countData?.online_count ?? 0;
-    setCommunity((prev) => (prev ? { ...prev, online_count: newOnlineCount } : null));
-  };
+      const newOnlineCount = countData?.online_count ?? 0;
+      setCommunity((prev) => (prev ? { ...prev, online_count: newOnlineCount } : null));
+    };
 
-  fetchMembersAndOnlineCount();
-  const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
-  return () => clearInterval(interval);
-}, [communityId, supabase, isUserOnline]);
+    fetchMembersAndOnlineCount();
+    const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
+    return () => clearInterval(interval);
+  }, [communityId, supabase, isUserOnline]);
 
   // Update last_online every 45s
   useEffect(() => {
@@ -744,14 +742,14 @@ useEffect(() => {
         }
 
         const uploadPromises = files.map(async (file, idx) => {
-  const fileExt = file.name.split('.').pop();
-  const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
-  const { error: uploadError } = await supabase.storage
-    .from('communities')
-    .upload(fileName, file, { upsert: true, contentType: file.type });
-  if (uploadError) throw uploadError;
-  return fileName; // ✅ Store only the path!
-});
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage
+            .from('communities')
+            .upload(fileName, file, { upsert: true, contentType: file.type });
+          if (uploadError) throw uploadError;
+          return fileName; // ✅ Store only the path!
+        });
         mediaUrls = await Promise.all(uploadPromises);
 
         const { error: updateError } = await supabase
@@ -1034,13 +1032,13 @@ useEffect(() => {
         ? [griefType as GriefType]
         : ['other'];
 
-   const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
-  ? post.media_urls
+    const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
+    ? post.media_urls
       .filter(Boolean)
-      .map(path => `/api/media/${path}`) // ✅ Proxy all paths
+      .map(path => `/api/media/communities/${path}`)
   : post.media_url
-  ? [`/api/media/${post.media_url}`] // ✅ Proxy single URL too
-  : [];
+    ? [`/api/media/communities/${post.media_url}`]
+    : [];
 
     return {
       id: post.id,
@@ -1081,16 +1079,17 @@ useEffect(() => {
               cursor: 'pointer',
             }}
           >
-            <Image
+           <Image
   src={
     community.cover_photo_url
-      ? `/api/media/communities/${community.cover_photo_url}`
+      ? `/api/media/${community.cover_photo_url}`
       : `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`
   }
   alt={community.name}
   fill
   sizes="100vw"
   style={{ objectFit: 'cover' }}
+  unoptimized
   onError={(e) => {
     (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(
       community.name
@@ -1142,307 +1141,308 @@ useEffect(() => {
       >
         {/* Main Feed */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.xs }}>
-         {/* Community Header */}
-<div style={cardStyle}>
-  <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg, position: 'relative' }}>
-    {/* Three-dot menu (visible only to members) — FIXED VISUALLY */}
-    {user && isMember && (
-      <div
-        ref={kebabMenuRef}
-        style={{ position: 'absolute', top: spacing.sm, right: spacing.sm, zIndex: 1 }}
-      >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsKebabOpen((prev) => !prev);
-          }}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            padding: spacing.xs,
-            borderRadius: borderRadius.sm,
-            color: baseColors.text.muted,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '24px',
-            height: '24px',
-            fontSize: '1.25rem',
-            lineHeight: 1,
-          }}
-          aria-label="Community options"
-        >
-          ⋮
-        </button>
-        {isKebabOpen && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '100%',
-              right: 0,
-              marginTop: spacing.xs,
-              backgroundColor: baseColors.surface,
-              border: `1px solid ${baseColors.border}`,
-              borderRadius: borderRadius.md,
-              boxShadow:
-                '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
-              minWidth: '120px',
-              zIndex: 10,
-            }}
-          >
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleMembership();
-                setIsKebabOpen(false);
-              }}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                padding: `${spacing.sm} ${spacing.md}`,
-                background: 'none',
-                border: 'none',
-                color: '#ef4444',
-                cursor: 'pointer',
-                fontSize: '0.875rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: spacing.sm,
-              }}
-            >
-              <LogOut size={16} />
-              Leave Community
-            </button>
-          </div>
-        )}
-      </div>
-    )}
+          {/* Community Header */}
+          <div style={cardStyle}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.lg, position: 'relative' }}>
+              {/* Three-dot menu (visible only to members) — FIXED VISUALLY */}
+              {user && isMember && (
+                <div
+                  ref={kebabMenuRef}
+                  style={{ position: 'absolute', top: spacing.sm, right: spacing.sm, zIndex: 1 }}
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsKebabOpen((prev) => !prev);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: spacing.xs,
+                      borderRadius: borderRadius.sm,
+                      color: baseColors.text.muted,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '24px',
+                      height: '24px',
+                      fontSize: '1.25rem',
+                      lineHeight: 1,
+                    }}
+                    aria-label="Community options"
+                  >
+                    ⋮
+                  </button>
+                  {isKebabOpen && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        marginTop: spacing.xs,
+                        backgroundColor: baseColors.surface,
+                        border: `1px solid ${baseColors.border}`,
+                        borderRadius: borderRadius.md,
+                        boxShadow:
+                          '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)',
+                        minWidth: '120px',
+                        zIndex: 10,
+                      }}
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMembership();
+                          setIsKebabOpen(false);
+                        }}
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          padding: `${spacing.sm} ${spacing.md}`,
+                          background: 'none',
+                          border: 'none',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: spacing.sm,
+                        }}
+                      >
+                        <LogOut size={16} />
+                        Leave Community
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
-    {/* Top Container: Banner Image + Title */}
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: spacing.lg }}>
-      {/* Banner Thumbnail or Fallback Icon — CLICKABLE */}
-      <Link href={mediaGalleryRoute} passHref>
-        <div
-          style={{
-            width: '4rem',
-            height: '4rem',
-            borderRadius: borderRadius.md,
-            overflow: 'hidden',
-            flexShrink: 0,
-            position: 'relative',
-            cursor: 'pointer',
-          }}
-        >
-          {community.cover_photo_url ? (
-  <Image
-    src={`/api/media/communities/${community.cover_photo_url}`}
+              {/* Top Container: Banner Image + Title */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: spacing.lg }}>
+                {/* Banner Thumbnail or Fallback Icon — CLICKABLE */}
+                <Link href={mediaGalleryRoute} passHref>
+                  <div
+                    style={{
+                      width: '4rem',
+                      height: '4rem',
+                      borderRadius: borderRadius.md,
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                      position: 'relative',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {community.cover_photo_url ? (
+                      <Image
+   src={`/api/media/${community.cover_photo_url}`}
     alt={community.name}
     fill
     sizes="100vw"
     style={{ objectFit: 'cover' }}
+    unoptimized // 👈 MUST BE HERE TOO
   />
-) : (
-  <div
-    style={{
-      width: '100%',
-      height: '100%',
-      background: gradient,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'white',
-    }}
-  >
-    <Users size={32} />
-  </div>
-)}
-        </div>
-      </Link>
+                    ) : (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          background: gradient,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'white',
+                        }}
+                      >
+                        <Users size={32} />
+                      </div>
+                    )}
+                  </div>
+                </Link>
 
-      {/* Community Title & Description */}
-      <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: baseColors.text.primary, margin: 0 }}>
-          {community.name}
-        </h1>
-        <div style={{ color: baseColors.text.secondary, marginTop: spacing.sm, lineHeight: 1.6 }}>
-          {(() => {
-            const paragraphs = community.description
-              ?.split('\n')
-              .filter(p => p.trim() !== '') || [];
-            const flatText = paragraphs.join(' ').trim();
+                {/* Community Title & Description */}
+                <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: baseColors.text.primary, margin: 0 }}>
+                    {community.name}
+                  </h1>
+                  <div style={{ color: baseColors.text.secondary, marginTop: spacing.sm, lineHeight: 1.6 }}>
+                    {(() => {
+                      const paragraphs = community.description
+                        ?.split('\n')
+                        .filter(p => p.trim() !== '') || [];
+                      const flatText = paragraphs.join(' ').trim();
 
-            if (showFullDescription) {
-              return (
-                <>
-                  {paragraphs.map((p, i) => (
-                    <p key={i} style={{ margin: '0 0 0.75em 0' }}>{p}</p>
-                  ))}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowFullDescription(false);
-                    }}
+                      if (showFullDescription) {
+                        return (
+                          <>
+                            {paragraphs.map((p, i) => (
+                              <p key={i} style={{ margin: '0 0 0.75em 0' }}>{p}</p>
+                            ))}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowFullDescription(false);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: baseColors.primary,
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                padding: 0,
+                                marginTop: '-0.5rem',
+                              }}
+                            >
+                              See less
+                            </button>
+                          </>
+                        );
+                      }
+
+                      const maxChars = isMobile ? 80 : 140;
+                      const shouldTruncate = flatText.length > maxChars;
+                      const preview = shouldTruncate ? flatText.substring(0, maxChars) + '…' : flatText;
+
+                      return (
+                        <>
+                          <p style={{ margin: '0 0 0.75em 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'nowrap' : 'normal' }}>
+                            {preview}
+                          </p>
+                          {shouldTruncate && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowFullDescription(true);
+                              }}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: baseColors.primary,
+                                cursor: 'pointer',
+                                fontSize: '0.875rem',
+                                padding: 0,
+                                marginTop: '-0.5rem',
+                              }}
+                            >
+                              Read more
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom Container: Stats & Action Buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
+                {/* Stats Row */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: spacing.md,
+                    fontSize: '0.875rem',
+                    color: baseColors.text.muted,
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Users size={16} style={{ color: baseColors.primary }} /> {community.member_count} members
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Heart size={16} style={{ color: baseColors.accent }} /> {community.online_count} online
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
+                    <MessageCircle size={16} style={{ color: '#3b82f6' }} /> {posts.length} posts
+                    {newPostsCount > 0 && (
+                      <span
+                        style={{
+                          background: '#ef4444',
+                          color: 'white',
+                          fontSize: '0.65rem',
+                          fontWeight: 'bold',
+                          borderRadius: '10px',
+                          padding: '0 4px',
+                          marginLeft: '4px',
+                        }}
+                      >
+                        +{newPostsCount}
+                      </span>
+                    )}
+                  </span>
+                </div>
+
+                {/* Chat Button with New Messages Badge */}
+                {isMember && (
+                  <Link
+                    href={`/communities/${communityId}/chat`}
                     style={{
-                      background: 'none',
-                      border: 'none',
-                      color: baseColors.primary,
-                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      background: '#e0e7ff',
+                      color: '#4f46e5',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: borderRadius.md,
+                      textDecoration: 'none',
                       fontSize: '0.875rem',
-                      padding: 0,
-                      marginTop: '-0.5rem',
+                      width: 'fit-content',
                     }}
                   >
-                    See less
-                  </button>
-                </>
-              );
-            }
-
-            const maxChars = isMobile ? 80 : 140;
-            const shouldTruncate = flatText.length > maxChars;
-            const preview = shouldTruncate ? flatText.substring(0, maxChars) + '…' : flatText;
-
-            return (
-              <>
-                <p style={{ margin: '0 0 0.75em 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'nowrap' : 'normal' }}>
-                  {preview}
-                </p>
-                {shouldTruncate && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowFullDescription(true);
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: baseColors.primary,
-                      cursor: 'pointer',
-                      fontSize: '0.875rem',
-                      padding: 0,
-                      marginTop: '-0.5rem',
-                    }}
-                  >
-                    Read more
-                  </button>
+                    💬 Chat
+                    {newMessagesCount > 0 && (
+                      <span
+                        style={{
+                          background: '#ef4444',
+                          color: 'white',
+                          fontSize: '0.65rem',
+                          fontWeight: 'bold',
+                          borderRadius: '10px',
+                          padding: '0 4px',
+                          marginLeft: '4px',
+                        }}
+                      >
+                        {newMessagesCount}
+                      </span>
+                    )}
+                  </Link>
                 )}
-              </>
-            );
-          })()}
-        </div>
-      </div>
-    </div>
 
-    {/* Bottom Container: Stats & Action Buttons */}
-    <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.md }}>
-      {/* Stats Row */}
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: spacing.md,
-          fontSize: '0.875rem',
-          color: baseColors.text.muted,
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          <Users size={16} style={{ color: baseColors.primary }} /> {community.member_count} members
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          <Heart size={16} style={{ color: baseColors.accent }} /> {community.online_count} online
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
-  <MessageCircle size={16} style={{ color: '#3b82f6' }} /> {posts.length} posts
-  {newPostsCount > 0 && (
-    <span
-      style={{
-        background: '#ef4444',
-        color: 'white',
-        fontSize: '0.65rem',
-        fontWeight: 'bold',
-        borderRadius: '10px',
-        padding: '0 4px',
-        marginLeft: '4px',
-      }}
-    >
-      +{newPostsCount}
-    </span>
-  )}
-</span>
-      </div>
-
-      {/* Chat Button with New Messages Badge */}
-{isMember && (
-  <Link
-    href={`/communities/${communityId}/chat`}
-    style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '0.25rem',
-      background: '#e0e7ff',
-      color: '#4f46e5',
-      padding: '0.25rem 0.5rem',
-      borderRadius: borderRadius.md,
-      textDecoration: 'none',
-      fontSize: '0.875rem',
-      width: 'fit-content',
-    }}
-  >
-    💬 Chat
-    {newMessagesCount > 0 && (
-      <span
-        style={{
-          background: '#ef4444',
-          color: 'white',
-          fontSize: '0.65rem',
-          fontWeight: 'bold',
-          borderRadius: '10px',
-          padding: '0 4px',
-          marginLeft: '4px',
-        }}
-      >
-        {newMessagesCount}
-      </span>
-    )}
-  </Link>
-)}
-
-      {/* Action Buttons */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
-        {!isMember ? (
-          user ? (
-            <button onClick={handleMembership} style={buttonStyle(baseColors.primary)}>
-              <LogIn size={18} /> Join Community
-            </button>
-          ) : (
-            <button
-              onClick={() => router.push(`/auth?redirectTo=/communities/${communityId}`)}
-              style={buttonStyle(baseColors.primary)}
-            >
-              <LogIn size={18} /> Sign in to Join
-            </button>
-          )
-        ) : null}
-        {isAdmin && (
-          <Link
-            href={`/communities/${communityId}/manage`}
-            style={{
-              ...outlineButtonStyle,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: spacing.sm,
-              textDecoration: 'none',
-              width: 'fit-content',
-            }}
-          >
-            <Settings size={18} /> Manage
-          </Link>
-        )}
-      </div>
-    </div>
-  </div>
-</div>
+                {/* Action Buttons */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
+                  {!isMember ? (
+                    user ? (
+                      <button onClick={handleMembership} style={buttonStyle(baseColors.primary)}>
+                        <LogIn size={18} /> Join Community
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => router.push(`/auth?redirectTo=/communities/${communityId}`)}
+                        style={buttonStyle(baseColors.primary)}
+                      >
+                        <LogIn size={18} /> Sign in to Join
+                      </button>
+                    )
+                  ) : null}
+                  {isAdmin && (
+                    <Link
+                      href={`/communities/${communityId}/manage`}
+                      style={{
+                        ...outlineButtonStyle,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: spacing.sm,
+                        textDecoration: 'none',
+                        width: 'fit-content',
+                      }}
+                    >
+                      <Settings size={18} /> Manage
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Create Post */}
           {isMember && (
@@ -1565,12 +1565,13 @@ useEffect(() => {
                       >
                         {member.avatar_url ? (
                           <Image
-                            src={member.avatar_url}
-                            alt={member.username}
-                            width={36}
-                            height={36}
-                            style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
-                          />
+  src={`/api/media/avatars/${member.avatar_url}`}
+  alt={member.username}
+  width={36}
+  height={36}
+  style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
+  unoptimized
+/>
                         ) : (
                           member.username[0]?.toUpperCase() || 'U'
                         )}

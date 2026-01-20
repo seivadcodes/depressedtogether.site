@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
 import Image from 'next/image';
-import { BookOpen, Tag, AlertTriangle, ExternalLink, Search, Filter } from 'lucide-react';
+import { BookOpen, AlertTriangle, ExternalLink, Search, Filter } from 'lucide-react';
 
 function getYouTubeEmbedUrl(url: string): string | null {
   const regExp = /^.*(youtu\.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
@@ -29,9 +29,9 @@ interface Resource {
   book_quote: string | null;
   external_url: string | null;
   created_at: string;
-  book_cover_url: string | null;
+  book_cover_url: string | null; // storage path like "book-covers/user-id/123.jpg"
   user_id: string;
-  video_url: string | null;
+  video_url: string | null; // storage path like "videos/user-id/456.mp4"
   video_type: 'link' | 'upload';
 }
 
@@ -43,7 +43,6 @@ const CATEGORIES: Record<ResourceType, string> = {
   Book: 'Books',
 };
 
-// Define filter options
 const ALL_TYPES = 'All';
 type FilterType = ResourceType | 'All';
 
@@ -58,32 +57,19 @@ export default function ResourcesPage() {
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<FilterType>(ALL_TYPES);
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  // Get all unique tags from resources
-  
- 
-
-  // Filter resources based on search, type, and tag
+  // Filter resources based on search and type (tags removed per request)
   const filteredResources = useMemo(() => {
     return resources.filter(resource => {
-      // Filter by type
       if (selectedType !== ALL_TYPES && resource.type !== selectedType) {
         return false;
       }
       
-      // Filter by tag
-      if (selectedTag && !resource.tags.includes(selectedTag)) {
-        return false;
-      }
-      
-      // Filter by search query
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
           resource.title.toLowerCase().includes(query) ||
           resource.excerpt.toLowerCase().includes(query) ||
-          resource.tags.some(tag => tag.toLowerCase().includes(query)) ||
           (resource.book_author && resource.book_author.toLowerCase().includes(query)) ||
           (resource.community_source && resource.community_source.toLowerCase().includes(query))
         );
@@ -91,12 +77,11 @@ export default function ResourcesPage() {
       
       return true;
     });
-  }, [resources, searchQuery, selectedType, selectedTag]);
+  }, [resources, searchQuery, selectedType]);
 
   useEffect(() => {
     const fetchResourcesAndVotes = async () => {
       try {
-        // Fetch approved resources
         const { data: resourcesData, error: resourcesError } = await supabase
           .from('resources')
           .select('*')
@@ -112,28 +97,20 @@ export default function ResourcesPage() {
 
         setResources(resourcesData as Resource[]);
 
-        // Get resource IDs for batch queries
         const resourceIds = resourcesData.map((r: Resource) => r.id);
 
-        // Fetch all votes for these resources to calculate counts
         const { data: allVotes, error: votesError } = await supabase
           .from('resource_votes')
           .select('resource_id, vote_type')
           .in('resource_id', resourceIds);
 
-        if (votesError) {
-          console.error('Error fetching votes:', votesError);
-        } else {
-          // Calculate counts from votes
+        if (!votesError && allVotes) {
           const counts: Record<string, { helpful: number; unhelpful: number }> = {};
-          
-          // Initialize all counts to 0
           resourcesData.forEach((r: Resource) => {
             counts[r.id] = { helpful: 0, unhelpful: 0 };
           });
 
-          // Count votes
-          allVotes?.forEach(vote => {
+          allVotes.forEach(vote => {
             if (counts[vote.resource_id]) {
               if (vote.vote_type === 'helpful') {
                 counts[vote.resource_id].helpful += 1;
@@ -146,7 +123,6 @@ export default function ResourcesPage() {
           setResourceCounts(counts);
         }
 
-        // Fetch current user's votes if logged in
         const { data: { user } } = await supabase.auth.getUser();
         if (user && resourceIds.length > 0) {
           const { data: userVotesData, error: userVotesError } = await supabase
@@ -183,17 +159,12 @@ export default function ResourcesPage() {
     }
 
     const currentVote = userVotes[resourceId];
-    const currentCount = resourceCounts[resourceId] || { 
-      helpful: 0, 
-      unhelpful: 0 
-    };
+    const currentCount = resourceCounts[resourceId] || { helpful: 0, unhelpful: 0 };
 
-    // Optimistic UI update
     const newCounts = { ...currentCount };
     const newUserVotes = { ...userVotes };
 
     if (currentVote === newVoteType) {
-      // Toggle OFF
       if (newVoteType === 'helpful') {
         newCounts.helpful = Math.max(0, newCounts.helpful - 1);
       } else {
@@ -201,13 +172,11 @@ export default function ResourcesPage() {
       }
       delete newUserVotes[resourceId];
     } else {
-      // Remove old vote if exists
       if (currentVote === 'helpful') {
         newCounts.helpful = Math.max(0, newCounts.helpful - 1);
       } else if (currentVote === 'unhelpful') {
         newCounts.unhelpful = Math.max(0, newCounts.unhelpful - 1);
       }
-      // Add new vote
       if (newVoteType === 'helpful') {
         newCounts.helpful += 1;
       } else {
@@ -216,20 +185,17 @@ export default function ResourcesPage() {
       newUserVotes[resourceId] = newVoteType;
     }
 
-    // Apply optimistic updates
     setResourceCounts(prev => ({ ...prev, [resourceId]: newCounts }));
     setUserVotes(newUserVotes);
 
     try {
       if (currentVote === newVoteType) {
-        // Remove vote
         await supabase
           .from('resource_votes')
           .delete()
           .eq('resource_id', resourceId)
           .eq('user_id', user.id);
       } else {
-        // Upsert vote
         await supabase
           .from('resource_votes')
           .upsert({
@@ -242,7 +208,6 @@ export default function ResourcesPage() {
           });
       }
 
-      // Verify the update by fetching fresh counts for this resource
       const { data: freshVotes, error: fetchError } = await supabase
         .from('resource_votes')
         .select('vote_type')
@@ -258,14 +223,12 @@ export default function ResourcesPage() {
           }
         });
 
-        // Update with fresh counts from database
         setResourceCounts(prev => ({
           ...prev,
           [resourceId]: freshCounts
         }));
       } else {
         console.error('Failed to fetch fresh votes:', fetchError);
-        // Revert on error
         setResourceCounts(prev => ({ ...prev, [resourceId]: currentCount }));
         setUserVotes(prev => {
           const reverted = { ...prev };
@@ -280,7 +243,6 @@ export default function ResourcesPage() {
       }
     } catch (err) {
       console.error('Vote sync failed:', err);
-      // Revert optimistic update on error
       setResourceCounts(prev => ({ ...prev, [resourceId]: currentCount }));
       setUserVotes(prev => {
         const reverted = { ...prev };
@@ -298,7 +260,6 @@ export default function ResourcesPage() {
   const clearFilters = () => {
     setSearchQuery('');
     setSelectedType(ALL_TYPES);
-    setSelectedTag(null);
   };
 
   if (loading) {
@@ -361,7 +322,7 @@ export default function ResourcesPage() {
             />
             <input
               type="text"
-              placeholder="Search resources by title, tags, author..."
+              placeholder="Search resources by title, author..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{
@@ -426,17 +387,13 @@ export default function ResourcesPage() {
             })}
           </div>
 
-          {/* Active Filters & Clear Button */}
-          {(searchQuery || selectedType !== ALL_TYPES || selectedTag) && (
+          {(searchQuery || selectedType !== ALL_TYPES) && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                  Showing {filteredResources.length} of {resources.length} resources
-                  {searchQuery && ` for "${searchQuery}"`}
-                  {selectedType !== ALL_TYPES && ` in ${CATEGORIES[selectedType as ResourceType]}`}
-                  {selectedTag && ` tagged "${selectedTag}"`}
-                </span>
-              </div>
+              <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                Showing {filteredResources.length} of {resources.length} resources
+                {searchQuery && ` for "${searchQuery}"`}
+                {selectedType !== ALL_TYPES && ` in ${CATEGORIES[selectedType as ResourceType]}`}
+              </span>
               <button
                 onClick={clearFilters}
                 style={{
@@ -461,7 +418,7 @@ export default function ResourcesPage() {
             <p style={{ color: '#6b7280', marginBottom: '0.5rem' }}>
               No resources found{searchQuery ? ` for "${searchQuery}"` : ''}.
             </p>
-            {(searchQuery || selectedType !== ALL_TYPES || selectedTag) && (
+            {(searchQuery || selectedType !== ALL_TYPES) && (
               <button
                 onClick={clearFilters}
                 style={{
@@ -487,6 +444,15 @@ export default function ResourcesPage() {
                 helpful: 0,
                 unhelpful: 0,
               };
+
+              // ✅ Convert storage paths to proxied URLs
+              const bookCoverSrc = resource.book_cover_url 
+                ? `/api/media/${resource.book_cover_url}`
+                : null;
+
+              const videoSrc = resource.video_url && resource.video_type === 'upload'
+                ? `/api/media/${resource.video_url}`
+                : null;
 
               return (
                 <div
@@ -520,7 +486,7 @@ export default function ResourcesPage() {
 
                   {resource.type === 'Book' && (
                     <div style={{ marginBottom: '0.75rem' }}>
-                      {resource.book_cover_url && (
+                      {bookCoverSrc && (
                         <div
                           style={{
                             width: '200px',
@@ -533,11 +499,11 @@ export default function ResourcesPage() {
                           }}
                         >
                           <Image
-                            src={resource.book_cover_url}
+                            src={bookCoverSrc}
                             alt={`Cover for ${resource.title}`}
                             fill
                             style={{ objectFit: 'cover' }}
-                            quality={80}
+                            unoptimized // Required for dynamic/proxied URLs
                           />
                         </div>
                       )}
@@ -564,31 +530,6 @@ export default function ResourcesPage() {
                     <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '1rem' }}>
                       Shared in: <strong>{resource.community_source}</strong>
                     </p>
-                  )}
-
-                  {resource.tags.length > 0 && (
-                    <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.25rem' }}>
-                        <Tag size={14} style={{ color: '#92400e' }} />
-                        <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#92400e' }}>Tags</span>
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem' }}>
-                        {resource.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            style={{
-                              padding: '0.125rem 0.5rem',
-                              backgroundColor: '#fef3c7',
-                              color: '#92400e',
-                              borderRadius: '9999px',
-                              fontSize: '0.75rem',
-                            }}
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
                   )}
 
                   {resource.content_warnings.length > 0 && (
@@ -618,12 +559,13 @@ export default function ResourcesPage() {
 
                   {resource.type === 'Video' && (
                     <div style={{ marginBottom: '1rem' }}>
-                      {resource.video_type === 'upload' && resource.video_url ? (
+                      {resource.video_type === 'upload' && videoSrc ? (
                         <video
-                          src={resource.video_url}
+                          src={videoSrc}
                           controls
                           style={{
                             width: '100%',
+                            maxHeight: '300px',
                             borderRadius: '0.25rem',
                             border: '1px solid #e5e7eb',
                           }}
@@ -691,7 +633,7 @@ export default function ResourcesPage() {
                     </div>
                   )}
 
-                  {/* Voting Controls with live count */}
+                  {/* Voting Controls */}
                   <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                     <button
                       onClick={() => handleVote(resource.id, 'helpful')}

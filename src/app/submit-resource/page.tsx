@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
 import { BookOpen, Upload, Link as LinkIcon, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
+
 const CATEGORIES: Record<string, string> = {
   Story: 'Personal Stories',
   Guide: 'Guidance',
@@ -19,8 +20,6 @@ const TAG_SUGGESTIONS = [
   'sudden loss', 'illness', 'suicide', 'overdose', 'estrangement',
   'holidays', 'guilt', 'anger', 'memory', 'ritual', 'hope'
 ];
-
-
 
 export default function SubmitResourcePage() {
   const supabase = createClient();
@@ -42,7 +41,7 @@ export default function SubmitResourcePage() {
     videoFile: null as File | null,
     videoPreview: '' as string,
     bookCoverFile: null as File | null,
-  bookCoverPreview: '' as string,
+    bookCoverPreview: '' as string,
   });
 
   const [newTag, setNewTag] = useState('');
@@ -50,7 +49,6 @@ export default function SubmitResourcePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
 
   const handleTagAdd = () => {
@@ -94,7 +92,6 @@ export default function SubmitResourcePage() {
     const file = e.target.files?.[0] || null;
     
     if (file) {
-      // Validate file type and size
       const validTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
       const maxSize = 100 * 1024 * 1024; // 100MB
       
@@ -110,9 +107,7 @@ export default function SubmitResourcePage() {
         return;
       }
       
-      // Create preview URL
       const previewUrl = URL.createObjectURL(file);
-      
       setFormData(prev => ({
         ...prev,
         videoFile: file,
@@ -128,56 +123,63 @@ export default function SubmitResourcePage() {
   };
 
   const handleBookCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0] || null;
-  if (file) {
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    const maxSize = 5 * 1024 * 1024; // 5MB
+    const file = e.target.files?.[0] || null;
+    if (file) {
+      const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      const maxSize = 5 * 1024 * 1024; // 5MB
 
-    if (!validTypes.includes(file.type)) {
-      setErrorMessage('Please upload a JPG, PNG, or WebP image.');
-      setSubmitStatus('error');
-      return;
+      if (!validTypes.includes(file.type)) {
+        setErrorMessage('Please upload a JPG, PNG, or WebP image.');
+        setSubmitStatus('error');
+        return;
+      }
+      if (file.size > maxSize) {
+        setErrorMessage('Image too large. Max size is 5MB.');
+        setSubmitStatus('error');
+        return;
+      }
+
+      const previewUrl = URL.createObjectURL(file);
+      setFormData(prev => ({
+        ...prev,
+        bookCoverFile: file,
+        bookCoverPreview: previewUrl,
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        bookCoverFile: null,
+        bookCoverPreview: '',
+      }));
     }
-    if (file.size > maxSize) {
-      setErrorMessage('Image too large. Max size is 5MB.');
-      setSubmitStatus('error');
-      return;
-    }
+  };
 
-    const previewUrl = URL.createObjectURL(file);
-    setFormData(prev => ({
-      ...prev,
-      bookCoverFile: file,
-      bookCoverPreview: previewUrl,
-    }));
-  } else {
-    setFormData(prev => ({
-      ...prev,
-      bookCoverFile: null,
-      bookCoverPreview: '',
-    }));
-  }
-};
+  // ✅ Returns STORAGE PATH, not public URL
+  const uploadBookCover = async (file: File) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
 
-const uploadBookCover = async (file: File) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('User not authenticated');
+    const fileName = `${user.id}/${Date.now()}_cover_${file.name}`;
+    const { error } = await supabase.storage
+      .from('book-covers')
+      .upload(fileName, file, { upsert: true });
 
-  const fileName = `${user.id}/${Date.now()}_cover_${file.name}`;
-  const {  error } = await supabase.storage
-    .from('book-covers')
-    .upload(fileName, file, {
-      upsert: true,
-      cacheControl: '3600',
-    });
+    if (error) throw error;
+    return `book-covers/${fileName}`; // ✅ storage path only
+  };
 
-  if (error) throw error;
-  // Get public URL
-  const { data: { publicUrl } } = supabase.storage
-    .from('book-covers')
-    .getPublicUrl(fileName);
-  return publicUrl;
-};
+  const uploadVideo = async (file: File) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+
+    const fileName = `${user.id}/${Date.now()}_${file.name}`;
+    const { error } = await supabase.storage
+      .from('videos')
+      .upload(fileName, file, { upsert: true, contentType: file.type });
+
+    if (error) throw error;
+    return `videos/${fileName}`; // ✅ storage path only
+  };
 
   const validate = () => {
     if (!formData.title.trim() || formData.title.length < 5) {
@@ -190,7 +192,6 @@ const uploadBookCover = async (file: File) => {
       return 'Please add at least one tag.';
     }
     
-    // Book validation
     if (formData.type === 'Book') {
       if (!formData.bookAuthor.trim()) return 'Book author is required.';
       if (!formData.bookQuote.trim() || formData.bookQuote.length > 150) {
@@ -203,7 +204,6 @@ const uploadBookCover = async (file: File) => {
       }
     }
     
-    // Video validation
     if (formData.type === 'Video') {
       if (formData.videoType === 'link') {
         if (!formData.externalUrl.trim()) {
@@ -221,7 +221,6 @@ const uploadBookCover = async (file: File) => {
       }
     }
     
-    // Validate other URLs
     if (formData.externalUrl && formData.type !== 'Book' && formData.type !== 'Video') {
       try {
         new URL(formData.externalUrl);
@@ -233,32 +232,6 @@ const uploadBookCover = async (file: File) => {
     return null;
   };
 
-const uploadVideo = async (file: File) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('User not authenticated');
-
-  const fileName = `${user.id}/${Date.now()}_${file.name}`;
-  const { error } = await supabase.storage
-    .from('videos')
-    .upload(fileName, file, {
-      upsert: true,
-      cacheControl: '3600',
-      contentType: file.type,
-    });
-
-  if (error) throw error;
-
-  // ✅ CORRECT WAY to get public URL
-  const { data } = supabase.storage
-    .from('videos')
-    .getPublicUrl(fileName);
-
-  if (!data?.publicUrl) {
-    throw new Error('Failed to generate public URL for video');
-  }
-
-  return data.publicUrl;
-};
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const error = validate();
@@ -267,15 +240,16 @@ const uploadVideo = async (file: File) => {
       setSubmitStatus('error');
       return;
     }
-    let bookCoverUrl = null;
-if (formData.type === 'Book' && formData.bookCoverFile) {
-  bookCoverUrl = await uploadBookCover(formData.bookCoverFile);
-}
+
+    let bookCoverPath = null;
+    if (formData.type === 'Book' && formData.bookCoverFile) {
+      bookCoverPath = await uploadBookCover(formData.bookCoverFile);
+    }
 
     setIsSubmitting(true);
     setSubmitStatus('idle');
     setErrorMessage('');
-    setUploadProgress(0);
+    setIsUploading(false);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -283,10 +257,10 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
         throw new Error('You must be signed in to submit.');
       }
 
-      let videoUrl = null;
+      let videoPath = null;
       if (formData.type === 'Video' && formData.videoType === 'upload' && formData.videoFile) {
         setIsUploading(true);
-        videoUrl = await uploadVideo(formData.videoFile);
+        videoPath = await uploadVideo(formData.videoFile);
         setIsUploading(false);
       }
 
@@ -298,7 +272,7 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
           excerpt: formData.excerpt.trim(),
           type: formData.type,
           category: CATEGORIES[formData.type],
-          book_cover_url: bookCoverUrl,
+          book_cover_url: bookCoverPath, // ✅ storage path
           tags: formData.tags,
           content_warnings: formData.contentWarnings,
           community_source: formData.communitySource || null,
@@ -309,7 +283,7 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
             : formData.type !== 'Video' && formData.externalUrl
               ? formData.externalUrl.trim()
               : null,
-          video_url: formData.type === 'Video' ? (videoUrl || null) : null,
+          video_url: formData.type === 'Video' ? (videoPath || null) : null, // ✅ storage path
           video_type: formData.type === 'Video' ? formData.videoType : null,
           status: 'pending',
           is_curated: false,
@@ -321,7 +295,6 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
 
       setSubmitStatus('success');
       
-      // Reset form after successful submission
       setFormData({
         title: '',
         excerpt: '',
@@ -335,19 +308,22 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
         videoType: 'link',
         videoFile: null,
         videoPreview: '',
-        bookCoverFile: null as File | null,
-  bookCoverPreview: '' as string,
+        bookCoverFile: null,
+        bookCoverPreview: '',
       });
       
     } catch (error: unknown) {
-  let message = 'Failed to submit. Please try again.';
-  if (error instanceof Error) {
-    message = error.message;
-  }
-  console.error('Submission error:', error);
-  setErrorMessage(message);
-  setSubmitStatus('error');
-}
+      let message = 'Failed to submit. Please try again.';
+      if (error instanceof Error) {
+        message = error.message;
+      }
+      console.error('Submission error:', error);
+      setErrorMessage(message);
+      setSubmitStatus('error');
+    } finally {
+      setIsSubmitting(false);
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -514,29 +490,29 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
                 </div>
 
                 {formData.videoType === 'link' ? (
-  <div>
-    <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
-      Video Link
-    </label>
-    <input
-      name="externalUrl"
-      value={formData.externalUrl}
-      onChange={handleChange}
-      placeholder="https://youtube.com/watch?v=..."
-      type="url"
-      style={{
-        width: '100%',
-        padding: '0.5rem',
-        border: '1px solid #d1d5db',
-        borderRadius: '0.375rem',
-      }}
-      required
-    />
-    <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-      Supported platforms: YouTube, Vimeo, Loom, Google Drive, Dropbox
-    </p>
-  </div>
-)  : (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+                      Video Link
+                    </label>
+                    <input
+                      name="externalUrl"
+                      value={formData.externalUrl}
+                      onChange={handleChange}
+                      placeholder="https://youtube.com/watch?v=..."
+                      type="url"
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.375rem',
+                      }}
+                      required
+                    />
+                    <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                      Supported platforms: YouTube, Vimeo, Loom, Google Drive, Dropbox
+                    </p>
+                  </div>
+                ) : (
                   <div>
                     <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
                       Upload Video (max 100MB)
@@ -593,34 +569,6 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
                         </div>
                       )}
                     </div>
-                    
-                    {isUploading && (
-                      <div style={{ marginTop: '0.5rem' }}>
-                        <div style={{ 
-                          height: '0.5rem', 
-                          backgroundColor: '#e5e7eb', 
-                          borderRadius: '9999px',
-                          overflow: 'hidden'
-                        }}>
-                          <div 
-                            style={{ 
-                              height: '100%', 
-                              backgroundColor: '#f59e0b',
-                              width: `${uploadProgress}%`,
-                              transition: 'width 0.3s'
-                            }} 
-                          />
-                        </div>
-                        <p style={{ 
-                          textAlign: 'center', 
-                          fontSize: '0.75rem', 
-                          color: '#6b7280',
-                          marginTop: '0.25rem'
-                        }}>
-                          Uploading: {uploadProgress}%
-                        </p>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -673,7 +621,7 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
                     name="externalUrl"
                     value={formData.externalUrl}
                     onChange={handleChange}
-                    placeholder="https://bookshop.org/...     "
+                    placeholder="https://bookshop.org/..."
                     type="url"
                     style={{
                       width: '100%',
@@ -685,51 +633,51 @@ if (formData.type === 'Book' && formData.bookCoverFile) {
                 </div>
 
                 <div style={{ marginBottom: '1rem' }}>
-  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
-    Book Cover (optional)
-  </label>
-  <div
-    style={{
-      border: '2px dashed #d1d5db',
-      borderRadius: '0.375rem',
-      padding: '1rem',
-      textAlign: 'center',
-      cursor: 'pointer',
-      backgroundColor: '#f9fafb',
-    }}
-    onClick={() => document.getElementById('bookCoverInput')?.click()}
-  >
-    <input
-      id="bookCoverInput"
-      type="file"
-      accept="image/jpeg,image/png,image/webp"
-      style={{ display: 'none' }}
-      onChange={handleBookCoverChange}
-    />
-    {formData.bookCoverPreview ? (
-  <Image
-    src={formData.bookCoverPreview}
-    alt="Book cover preview"
-    height={150} // Max height you want
-    width={100}  // You may need to adjust based on aspect ratio or use layout='responsive'
-    style={{
-      maxHeight: '150px',
-      maxWidth: '100%',
-      borderRadius: '0.25rem',
-      objectFit: 'contain',
-    }}
-    unoptimized // Optional: if you're using dynamic/local/blob URLs that can't be optimized
-  />
-    ) : (
-      <div>
-        <Upload size={24} style={{ color: '#9ca3af', margin: '0 auto 0.5rem' }} />
-        <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
-          Click to upload cover (JPG/PNG, max 5MB)
-        </p>
-      </div>
-    )}
-  </div>
-</div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '600' }}>
+                    Book Cover (optional)
+                  </label>
+                  <div
+                    style={{
+                      border: '2px dashed #d1d5db',
+                      borderRadius: '0.375rem',
+                      padding: '1rem',
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      backgroundColor: '#f9fafb',
+                    }}
+                    onClick={() => document.getElementById('bookCoverInput')?.click()}
+                  >
+                    <input
+                      id="bookCoverInput"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      style={{ display: 'none' }}
+                      onChange={handleBookCoverChange}
+                    />
+                    {formData.bookCoverPreview ? (
+                      <Image
+                        src={formData.bookCoverPreview}
+                        alt="Book cover preview"
+                        height={150}
+                        width={100}
+                        style={{
+                          maxHeight: '150px',
+                          maxWidth: '100%',
+                          borderRadius: '0.25rem',
+                          objectFit: 'contain',
+                        }}
+                        unoptimized
+                      />
+                    ) : (
+                      <div>
+                        <Upload size={24} style={{ color: '#9ca3af', margin: '0 auto 0.5rem' }} />
+                        <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                          Click to upload cover (JPG/PNG, max 5MB)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </>
             )}
 

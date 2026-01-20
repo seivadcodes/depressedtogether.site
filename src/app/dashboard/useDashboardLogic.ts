@@ -30,6 +30,7 @@ export interface ProfileUpdate {
   full_name?: string;
   avatar_url?: string;
   about?: string;
+   other_loss_description?: string | null; 
   // Add other writable profile fields as needed
 }
 
@@ -39,7 +40,8 @@ export interface UserProfile {
    avatarUrl: string | null; 
   fullName: string;      // Added full name
   email?: string;
-  about?: string;       // Added email for fallback
+  about?: string;
+  otherLossDescription: string | null;         // Added email for fallback
 }
 
 export interface UserPreferences {
@@ -110,6 +112,8 @@ export interface DashboardUIProps {
   isExpanded: boolean;
   setIsExpanded: (expanded: boolean) => void;
   saveAbout: () => Promise<void>;
+  otherLossText: string;
+setOtherLossText: (text: string) => void;
 }
 
 
@@ -143,6 +147,9 @@ export function useDashboardLogic(): DashboardUIProps {
   const [aboutText, setAboutText] = useState('');
   const [isEditingAbout, setIsEditingAbout] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [otherLossText, setOtherLossText] = useState(
+  profile?.otherLossDescription ?? ''
+);
 
   usePresence(profile?.id ?? null);
   useEffect(() => {
@@ -165,7 +172,7 @@ export function useDashboardLogic(): DashboardUIProps {
         router.push('/auth');
         return;
       }
-const avatarUrl = data.avatar_url ? getPublicImageUrl(data.avatar_url) : null;
+const avatarUrl = data.avatar_url ? `/api/media/avatars/${data.avatar_url}` : null;
 
 setProfile({
   id: data.id,
@@ -174,8 +181,9 @@ setProfile({
   fullName: data.full_name || session.user.email?.split('@')[0] || 'Friend',
   email: session.user.email || data.email,
   about: data.about || '',
+  otherLossDescription: data.other_loss_description || '', 
 });
-
+setOtherLossText(data.other_loss_description ?? '');
        setAboutText(data.about || '');
 
       setPreferences({
@@ -303,25 +311,39 @@ setProfile({
   };
 
   const handleSaveGriefTypes = async () => {
-    if (selectedGriefTypes.length === 0) {
-      setError('Please select at least one type of loss.');
-      return;
+  if (selectedGriefTypes.length === 0) {
+    setError('Please select at least one type of loss.');
+    return;
+  }
+
+  try {
+    const updates: ProfileUpdate = { grief_types: selectedGriefTypes };
+
+    if (selectedGriefTypes.includes('other')) {
+      updates.other_loss_description = otherLossText.trim() || null;
+    } else {
+      updates.other_loss_description = null;
     }
 
-    try {
-      await saveProfileToDB({ grief_types: selectedGriefTypes });
+    await saveProfileToDB(updates);
 
-      setProfile(prev => prev ? {
-        ...prev,
-        griefTypes: selectedGriefTypes
-      } : null);
+    // ✅ FIX: Use `otherLossText` from state, NOT `data`
+    setProfile(prev =>
+      prev
+        ? {
+            ...prev,
+            griefTypes: selectedGriefTypes,
+            otherLossDescription: selectedGriefTypes.includes('other') ? otherLossText : null,
+          }
+        : null
+    );
 
-      setShowGriefSetup(false);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save grief types.');
-    }
-  };
+    setShowGriefSetup(false);
+    setError(null);
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Failed to save grief types.');
+  }
+};
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -515,7 +537,7 @@ setProfile({
       // 1. Upload to Supabase Storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${uuidv4()}.${fileExt}`;
-      const filePath = `avatars/${profile.id}/${fileName}`;
+     const filePath = `${profile.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
@@ -530,10 +552,11 @@ setProfile({
       // ✅ CORRECT
       // ✅ Correct
  // Save the RELATIVE path, not the full URL
-await saveProfileToDB({ avatar_url: filePath }); // e.g., "avatars/user123/abc.jpg"
+await saveProfileToDB({ avatar_url: filePath });
       // 4. Update local profile state
-     const publicUrl = supabase.storage.from('avatars').getPublicUrl(filePath).data.publicUrl;
-setProfile((prev) => (prev ? { ...prev, avatarUrl: publicUrl } : null));
+     // ✅ Do this: use your proxy route
+const proxyUrl = `/api/media/avatars/${filePath}`;
+setProfile((prev) => (prev ? { ...prev, avatarUrl: proxyUrl } : null));
       setError(null);
     } catch (err) {
       console.error('Avatar upload failed:', err);
@@ -559,8 +582,7 @@ setProfile((prev) => (prev ? { ...prev, avatarUrl: publicUrl } : null));
   const onCommunitiesClick = () => {
     router.push('/communities');
   };
-
-  return {
+return {
   profile,
   preferences,
   showGriefSetup,
@@ -584,6 +606,10 @@ setProfile((prev) => (prev ? { ...prev, avatarUrl: publicUrl } : null));
   isExpanded,
   setIsExpanded,
   saveAbout,
+
+  // 👇 ADD THESE TWO
+  otherLossText,
+  setOtherLossText,
 
   // Callbacks
   toggleGriefType,
