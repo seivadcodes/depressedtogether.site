@@ -264,8 +264,8 @@ setOtherLossText(data.other_loss_description ?? '');
   id: p.profiles.id,
   fullName: p.profiles.full_name || null,
   avatarUrl: p.profiles.avatar_url
-    ? supabase.storage.from('avatars').getPublicUrl(p.profiles.avatar_url).data.publicUrl
-    : null,
+  ? `/api/media/avatars/${p.profiles.avatar_url}`
+  : null,
   isAnonymous: p.profiles.is_anonymous ?? false,
 } : undefined
 }));
