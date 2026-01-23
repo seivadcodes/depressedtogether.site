@@ -8,10 +8,11 @@ import { useAuth } from '@/hooks/useAuth';
 import { createClient } from '@/lib/supabase/client';
 
 interface PostComposerProps {
-  onSubmit: (text: string, mediaFiles: File[]) => Promise<void>;
+  onSubmit: (text: string, mediaFiles: File[], isAnonymous: boolean) => Promise<void>;
   isSubmitting?: boolean;
   placeholder?: string;
   maxFiles?: number;
+  defaultIsAnonymous?: boolean; // Optional: e.g., preferences.isAnonymous
 }
 
 export function PostComposer({
@@ -19,6 +20,7 @@ export function PostComposer({
   isSubmitting = false,
   placeholder = "What's on your mind?",
   maxFiles = 4,
+  defaultIsAnonymous = false,
 }: PostComposerProps) {
   const { user } = useAuth();
   const supabase = createClient();
@@ -29,6 +31,7 @@ export function PostComposer({
   const [isExpanded, setIsExpanded] = useState(false);
   const [profile, setProfile] = useState<{ full_name?: string; avatar_url?: string } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [isAnonymous, setIsAnonymous] = useState(defaultIsAnonymous); // 👈 per-post anonymity
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -73,7 +76,7 @@ export function PostComposer({
     };
   }, [mediaPreviews]);
 
-  // 🧠 Compute display name and initials
+  // 🧠 Compute display name and initials (only shown if not anonymous)
   const displayName = useMemo(() => {
     if (!user) return 'You';
     return profile?.full_name || user.email?.split('@')[0] || 'You';
@@ -102,11 +105,12 @@ export function PostComposer({
 
   const handleSubmit = async () => {
     if (!text.trim() && mediaFiles.length === 0) return;
-    await onSubmit(text.trim(), mediaFiles);
+    await onSubmit(text.trim(), mediaFiles, isAnonymous);
     setText('');
     setMediaFiles([]);
     setMediaPreviews([]);
     setIsExpanded(false);
+    setIsAnonymous(defaultIsAnonymous); // reset to default after submit
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -144,20 +148,20 @@ export function PostComposer({
           gap: '0.75rem',
         }}
       >
-        {/* Avatar */}
+        {/* Avatar — hidden if anonymous */}
         <div style={{
           width: '2rem',
           height: '2rem',
           borderRadius: '9999px',
-          backgroundColor: avatarUrl ? 'transparent' : '#fef3c7',
+          backgroundColor: avatarUrl && !isAnonymous ? 'transparent' : '#fef3c7',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
           overflow: 'hidden',
-          border: avatarUrl ? 'none' : '1px solid #fde68a',
+          border: (avatarUrl && !isAnonymous) ? 'none' : '1px solid #fde68a',
         }}>
-          {avatarUrl ? (
+          {avatarUrl && !isAnonymous ? (
             <Image
               src={avatarUrl}
               alt={displayName}
@@ -167,7 +171,7 @@ export function PostComposer({
             />
           ) : (
             <span style={{ color: '#92400e', fontWeight: 500, fontSize: '0.875rem' }}>
-              {displayName.charAt(0).toUpperCase()}
+              {!isAnonymous ? displayName.charAt(0).toUpperCase() : '?'}
             </span>
           )}
         </div>
@@ -216,20 +220,20 @@ export function PostComposer({
       boxShadow: '0 1px 2px 0 rgba(0,0,0,0.05)',
     }}>
       <div style={{ display: 'flex', gap: '0.75rem' }}>
-        {/* Avatar */}
+        {/* Avatar — hidden if anonymous */}
         <div style={{
           width: '2.5rem',
           height: '2.5rem',
           borderRadius: '9999px',
-          backgroundColor: avatarUrl ? 'transparent' : '#fef3c7',
-          border: avatarUrl ? 'none' : '1px solid #fde68a',
+          backgroundColor: avatarUrl && !isAnonymous ? 'transparent' : '#fef3c7',
+          border: (avatarUrl && !isAnonymous) ? 'none' : '1px solid #fde68a',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
           overflow: 'hidden',
         }}>
-          {avatarUrl ? (
+          {avatarUrl && !isAnonymous ? (
             <Image
               src={avatarUrl}
               alt={displayName}
@@ -239,7 +243,7 @@ export function PostComposer({
             />
           ) : (
             <span style={{ color: '#92400e', fontWeight: 500, fontSize: '0.875rem' }}>
-              {displayName.charAt(0).toUpperCase()}
+              {!isAnonymous ? displayName.charAt(0).toUpperCase() : '?'}
             </span>
           )}
         </div>
@@ -320,6 +324,28 @@ export function PostComposer({
             paddingTop: '0.75rem',
             borderTop: '1px solid #f5f5f4',
           }}>
+            {/* Anonymity Toggle */}
+            {user && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.875rem',
+                color: '#4b5563',
+              }}>
+                <input
+                  type="checkbox"
+                  id="post-anon"
+                  checked={isAnonymous}
+                  onChange={(e) => setIsAnonymous(e.target.checked)}
+                  style={{ cursor: 'pointer' }}
+                />
+                <label htmlFor="post-anon" style={{ cursor: 'pointer' }}>
+                  Post anonymously
+                </label>
+              </div>
+            )}
+
             <button
               onClick={() => fileInputRef.current?.click()}
               style={{
@@ -360,6 +386,7 @@ export function PostComposer({
                   setText('');
                   setMediaFiles([]);
                   setMediaPreviews([]);
+                  setIsAnonymous(defaultIsAnonymous);
                   if (fileInputRef.current) fileInputRef.current.value = '';
                 }}
                 style={{

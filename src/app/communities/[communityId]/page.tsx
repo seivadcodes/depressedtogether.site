@@ -95,6 +95,7 @@ interface CommunityPost {
   likes_count: number;
   comments_count: number;
   user_id: string;
+  is_anonymous: boolean; // ← MUST be present
 }
 
 // --- Shared Styles (Inline) ---
@@ -244,24 +245,6 @@ export default function CommunityDetailPage() {
     }
   }, []);
 
-  const handleModalPostSubmit = async (text: string, mediaFiles: File[]) => {
-    if (!user || !community) {
-      toast.error('You must be logged in and in a community to post.');
-      return;
-    }
-    setIsModalSubmitting(true);
-    try {
-      const newPost = await createPostWithMedia(text, mediaFiles, user.id);
-      setPosts((prev) => [newPost, ...prev]);
-      setIsModalOpen(false);
-      toast.success('Post shared with the community!');
-    } catch (err) {
-      console.error('Failed to create post via modal:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to share post.');
-    } finally {
-      setIsModalSubmitting(false);
-    }
-  };
 
   const formatRecentActivity = (dateString: string): string => {
     const now = new Date();
@@ -382,25 +365,25 @@ export default function CommunityDetailPage() {
         setCommunity(communityWithPhoto);
 
         // 6. Format members for UI
-const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
-  const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-  const isAnonymous = profile?.is_anonymous || false;
-  
-  // ✅ Correctly assign avatarUrl only if not anonymous and avatar exists
-  const avatarUrl = !isAnonymous && profile?.avatar_url ? profile.avatar_url : null;
+        const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
+          const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+          const isAnonymous = profile?.is_anonymous || false;
 
-  return {
-    user_id: member.user_id,
-    username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-    avatar_url: avatarUrl, // ✅ Now contains the actual storage path (e.g., "avatars/xyz.jpg") or null
-    last_online: profile?.last_online || null,
-    is_online: isUserOnline(profile?.last_online || null),
-    role: member.role,
-    joined_at: member.joined_at,
-  };
-});
+          // ✅ Correctly assign avatarUrl only if not anonymous and avatar exists
+          const avatarUrl = !isAnonymous && profile?.avatar_url ? profile.avatar_url : null;
 
-setMembers(formattedMembers);
+          return {
+            user_id: member.user_id,
+            username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+            avatar_url: avatarUrl, // ✅ Now contains the actual storage path (e.g., "avatars/xyz.jpg") or null
+            last_online: profile?.last_online || null,
+            is_online: isUserOnline(profile?.last_online || null),
+            role: member.role,
+            joined_at: member.joined_at,
+          };
+        });
+
+        setMembers(formattedMembers);
 
         // 7. Check membership status
         let isCurrentUserMember = false;
@@ -425,16 +408,17 @@ setMembers(formattedMembers);
         const { data: postData, error: postError } = await supabase
           .from('community_posts')
           .select(`
-          id,
-          content,
-          created_at,
-          community_id,
-          media_url,
-          media_urls,
-          likes_count,
-          comments_count,
-          user_id
-        `)
+  id,
+  content,
+  created_at,
+  community_id,
+  media_url,
+  media_urls,
+  likes_count,
+  comments_count,
+  user_id,
+  is_anonymous
+`)
           .eq('community_id', communityId)
           .order('created_at', { ascending: false });
         if (postError) throw postError;
@@ -452,7 +436,8 @@ setMembers(formattedMembers);
 
         const postsWithLikes = postData.map((post: CommunityPost) => {
           const userProfile = profilesMap.get(post.user_id) || {};
-          const isAnonymous = userProfile.is_anonymous || false;
+          // Use the post's own is_anonymous field!
+          const isAnonymous = post.is_anonymous === true; // ← critical fix
           return {
             id: post.id,
             content: post.content,
@@ -460,12 +445,13 @@ setMembers(formattedMembers);
             media_urls: post.media_urls,
             created_at: post.created_at,
             user_id: post.user_id,
-            username: isAnonymous ? 'Anonymous' : userProfile.full_name || 'Anonymous',
-            avatar_url: isAnonymous ? null : userProfile.avatar_url || null,
+            username: isAnonymous ? 'Anonymous' : userProfile?.full_name || 'Anonymous',
+            avatar_url: isAnonymous ? null : userProfile?.avatar_url || null,
             community_id: post.community_id,
             likes_count: post.likes_count || 0,
             comments_count: post.comments_count || 0,
             is_liked: false,
+            isAnonymous: isAnonymous, // explicit
           };
         });
         setPosts(postsWithLikes);
@@ -703,7 +689,7 @@ setMembers(formattedMembers);
     }
   };
 
-  const createPostWithMedia = async (content: string, files: File[], userId: string) => {
+  const createPostWithMedia = async (content: string, files: File[], userId: string, isAnonymous: boolean) => {
     if (!community) throw new Error('Community not loaded');
     let insertedPostId: string | null = null;
     try {
@@ -715,15 +701,17 @@ setMembers(formattedMembers);
           content: content.trim(),
           created_at: new Date().toISOString(),
           media_urls: [],
+          is_anonymous: isAnonymous,
         })
         .select(`
-          id,
-          content,
-          created_at,
-          community_id,
-          media_urls,
-          user_id
-        `)
+id,
+content,
+created_at,
+community_id,
+media_urls,
+user_id,
+is_anonymous
+`)
         .single();
       if (postError) throw postError;
       insertedPostId = postData.id;
@@ -761,10 +749,9 @@ setMembers(formattedMembers);
 
       const { data: userData } = await supabase
         .from('profiles')
-        .select('full_name, avatar_url, is_anonymous')
+        .select('full_name, avatar_url') // no need for is_anonymous here!
         .eq('id', userId)
         .single();
-      const isAnonymous = userData?.is_anonymous || false;
 
       return {
         id: postData.id,
@@ -773,12 +760,13 @@ setMembers(formattedMembers);
         media_urls: mediaUrls,
         created_at: postData.created_at,
         user_id: postData.user_id,
-        username: isAnonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
-        avatar_url: isAnonymous ? null : userData?.avatar_url || null,
+        username: postData.is_anonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
+        avatar_url: postData.is_anonymous ? null : userData?.avatar_url || null,
         community_id: postData.community_id,
         likes_count: 0,
         comments_count: 0,
         is_liked: false,
+        isAnonymous: postData.is_anonymous, // ← ensure UI knows
       };
     } catch (error) {
       console.error('Post creation failed:', error);
@@ -789,25 +777,7 @@ setMembers(formattedMembers);
     }
   };
 
-  const handleCreatePost = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!user || !community || (!newPostContent.trim() && newPostMedia.length === 0)) return;
-    setError(null);
-    setUploadingMedia(newPostMedia.length > 0);
-    try {
-      const newPost = await createPostWithMedia(newPostContent.trim(), newPostMedia, user.id);
-      setPosts((prev) => [newPost, ...prev]);
-      setNewPostContent('');
-      setNewPostMedia([]);
-      toast.success('Post created successfully!');
-    } catch (err) {
-      console.error('Error creating post:', err);
-      const errorMessage =
-        err instanceof Error ? err.message : typeof err === 'string' ? err : 'Failed to create post';
-      setError(errorMessage);
-      toast.error('Failed to create post');
-    }
-  };
+  
 
   const updateBanner = async (file: File) => {
     if (!community) return;
@@ -1033,12 +1003,12 @@ setMembers(formattedMembers);
         : ['other'];
 
     const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
-    ? post.media_urls
-      .filter(Boolean)
-      .map(path => `/api/media/communities/${path}`)
-  : post.media_url
-    ? [`/api/media/communities/${post.media_url}`]
-    : [];
+      ? post.media_urls
+        .filter(Boolean)
+        .map(path => `/api/media/communities/${path}`)
+      : post.media_url
+        ? [`/api/media/communities/${post.media_url}`]
+        : [];
 
     return {
       id: post.id,
@@ -1079,23 +1049,23 @@ setMembers(formattedMembers);
               cursor: 'pointer',
             }}
           >
-           <Image
-  src={
-    community.cover_photo_url
-      ? `/api/media/${community.cover_photo_url}`
-      : `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`
-  }
-  alt={community.name}
-  fill
-  sizes="100vw"
-  style={{ objectFit: 'cover' }}
-  unoptimized
-  onError={(e) => {
-    (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(
-      community.name
-    )}`;
-  }}
-/>
+            <Image
+              src={
+                community.cover_photo_url
+                  ? `/api/media/${community.cover_photo_url}`
+                  : `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(community.name)}`
+              }
+              alt={community.name}
+              fill
+              sizes="100vw"
+              style={{ objectFit: 'cover' }}
+              unoptimized
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = `https://via.placeholder.com/1200x300/fcd34d-f97316?text=${encodeURIComponent(
+                  community.name
+                )}`;
+              }}
+            />
             <div
               style={{
                 position: 'absolute',
@@ -1235,13 +1205,13 @@ setMembers(formattedMembers);
                   >
                     {community.cover_photo_url ? (
                       <Image
-   src={`/api/media/${community.cover_photo_url}`}
-    alt={community.name}
-    fill
-    sizes="100vw"
-    style={{ objectFit: 'cover' }}
-    unoptimized // 👈 MUST BE HERE TOO
-  />
+                        src={`/api/media/${community.cover_photo_url}`}
+                        alt={community.name}
+                        fill
+                        sizes="100vw"
+                        style={{ objectFit: 'cover' }}
+                        unoptimized // 👈 MUST BE HERE TOO
+                      />
                     ) : (
                       <div
                         style={{
@@ -1445,21 +1415,21 @@ setMembers(formattedMembers);
           </div>
 
           {/* Create Post */}
-{isMember && (
-  <div ref={composerRef} style={{ marginBottom: spacing.lg }}>
-    <PostComposer
-      onSubmit={async (text: string, mediaFiles: File[]) => {
-        if (!user) return;
-        const newPost = await createPostWithMedia(text, mediaFiles, user.id);
-        setPosts((prev) => [newPost, ...prev]);
-        toast.success('Shared with the community!');
-      }}
-      isSubmitting={uploadingMedia}
-      placeholder={`What’s on your mind, ${authUsername}? You’re not alone...`}
-      maxFiles={4}
-    />
-  </div>
-)}
+          {isMember && (
+            <div ref={composerRef} style={{ marginBottom: spacing.lg }}>
+              <PostComposer
+                onSubmit={async (text: string, mediaFiles: File[], isAnonymous: boolean) => {
+                  if (!user) return;
+                  const newPost = await createPostWithMedia(text, mediaFiles, user.id, isAnonymous);
+                  setPosts((prev) => [newPost, ...prev]);
+                  toast.success('Shared with the community!');
+                }}
+                isSubmitting={uploadingMedia}
+                placeholder={`What’s on your mind, ${authUsername}? You’re not alone...`}
+                maxFiles={4}
+              />
+            </div>
+          )}
 
           {/* Posts */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
@@ -1563,13 +1533,13 @@ setMembers(formattedMembers);
                       >
                         {member.avatar_url ? (
                           <Image
-  src={`/api/media/avatars/${member.avatar_url}`}
-  alt={member.username}
-  width={36}
-  height={36}
-  style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
-  unoptimized
-/>
+                            src={`/api/media/avatars/${member.avatar_url}`}
+                            alt={member.username}
+                            width={36}
+                            height={36}
+                            style={{ borderRadius: borderRadius.full, objectFit: 'cover' }}
+                            unoptimized
+                          />
                         ) : (
                           member.username[0]?.toUpperCase() || 'U'
                         )}
