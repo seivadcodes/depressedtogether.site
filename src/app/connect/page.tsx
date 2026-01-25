@@ -146,6 +146,12 @@ const styles = {
     margin: '0 auto 1rem',
     flexShrink: 0 as const,
   },
+  highlightedRequest: {
+    border: '2px solid #fbbf24',
+    boxShadow: '0 0 0 3px rgba(251, 191, 36, 0.3)',
+    transform: 'scale(1.02)',
+    transition: 'all 0.3s ease',
+  },
 };
 
 export default function ConnectPage() {
@@ -157,17 +163,18 @@ export default function ConnectPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const searchParams = useSearchParams(); // Not used yet, but hash is in window.location
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
   const [isPostingOneOnOne, setIsPostingOneOnOne] = useState(false);
   const [isPostingGroup, setIsPostingGroup] = useState(false);
   const isRedirectingRef = useRef(false);
   const [acceptingRequestId, setAcceptingRequestId] = useState<string | null>(null);
   const [showContextModal, setShowContextModal] = useState<'one-on-one' | 'group' | null>(null);
   const [tempContext, setTempContext] = useState('');
-
+const [otherParticipantName, setOtherParticipantName] = useState<string | null>(null);
   // Refs for scrolling
-  const availableSectionRef = useRef<HTMLDivElement>(null);
+  const availableRequestsSectionRef = useRef<HTMLDivElement>(null);
   const requestRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const fetchActiveOneOnOne = useCallback(async (userId: string) => {
@@ -314,37 +321,6 @@ export default function ConnectPage() {
     }
   }, [supabase]);
 
-  // 👇 SCROLL LOGIC HERE — easy to modify later
-  const handleScrollIfNeeded = useCallback((allRequests: AvailableRequest[]) => {
-    // You can later wrap this in a condition like:
-    // if (hasVisitedBefore) return;
-    
-    if (allRequests.length === 0) return;
-
-    // Check URL hash for specific request
-    const hash = window.location.hash;
-    if (hash.startsWith('#req-')) {
-      const targetId = hash.substring(5); // remove "#req-"
-      setTimeout(() => {
-        const element = requestRefs.current[targetId];
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Optional: highlight it briefly
-          element.style.transition = 'background 0.8s ease';
-          element.style.background = '#fff9db';
-          setTimeout(() => {
-            element.style.background = '';
-          }, 1000);
-        }
-      }, 200);
-    } else {
-      // Just scroll to section
-      setTimeout(() => {
-        availableSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 150);
-    }
-  }, []);
-
   useEffect(() => {
     let isMounted = true;
     let pollInterval: NodeJS.Timeout | null = null;
@@ -376,6 +352,7 @@ export default function ConnectPage() {
       poll();
     };
 
+
     const initialize = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -391,70 +368,6 @@ export default function ConnectPage() {
         if (profileError) throw profileError;
         if (isMounted) {
           setUser(profile);
-
-          // Fetch data once before polling
-          let oneOnOneReqs: AvailableRequest[] = [];
-          let groupReqs: AvailableRequest[] = [];
-
-          if (profile.accepts_calls !== false) {
-            // Fetch 1:1
-            const { data: oneOnOneData, error: oneErr } = await supabase
-              .from('quick_connect_requests')
-              .select('id, created_at, user_id, status, expires_at, context')
-              .eq('status', 'available')
-              .neq('user_id', session.user.id)
-              .gt('expires_at', new Date().toISOString())
-              .order('created_at', { ascending: true });
-
-            if (!oneErr && oneOnOneData?.length) {
-              const userIds = oneOnOneData.map(r => r.user_id);
-              const { data: profiles } = await supabase
-                .from('profiles')
-                .select('id, full_name, avatar_url')
-                .in('id', userIds);
-              const profileMap = new Map(profiles?.map(p => [p.id, p]));
-              oneOnOneReqs = oneOnOneData.map(req => ({
-                ...req,
-                type: 'one-on-one' as const,
-                user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
-              }));
-            }
-
-            // Fetch groups
-            const { data: groupData, error: groupErr } = await supabase
-              .from('quick_group_requests')
-              .select('id, created_at, user_id, status, expires_at, context')
-              .eq('status', 'available')
-              .neq('user_id', session.user.id)
-              .gt('expires_at', new Date().toISOString())
-              .order('created_at', { ascending: true });
-
-            if (!groupErr && groupData?.length) {
-              const userIds = groupData.map(r => r.user_id);
-              const { data: profiles } = await supabase
-                .from('profiles')
-                .select('id, full_name, avatar_url')
-                .in('id', userIds);
-              const profileMap = new Map(profiles?.map(p => [p.id, p]));
-              groupReqs = groupData.map(req => ({
-                ...req,
-                type: 'group' as const,
-                user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
-              }));
-            }
-          }
-
-          setAvailableOneOnOne(oneOnOneReqs);
-          setAvailableGroups(groupReqs);
-
-          // Also fetch active
-          await fetchActiveOneOnOne(session.user.id);
-          await fetchActiveGroup(session.user.id);
-
-          // 👇 Scroll if needed — only on initial load
-          const allReqs = [...oneOnOneReqs, ...groupReqs];
-          handleScrollIfNeeded(allReqs);
-
           startPolling(session.user.id, profile.accepts_calls ?? null);
         }
       } catch (err) {
@@ -478,8 +391,42 @@ export default function ConnectPage() {
     fetchAvailableGroups,
     router,
     supabase,
-    handleScrollIfNeeded,
   ]);
+
+  // Scroll logic after data loads
+  useEffect(() => {
+    const allRequests = [...availableOneOnOne, ...availableGroups];
+    const requestId = searchParams.get('requestId');
+
+    if (allRequests.length > 0) {
+      // If a specific request is targeted
+      if (requestId && requestRefs.current[requestId]) {
+        const targetElement = requestRefs.current[requestId];
+        if (targetElement) {
+          // Add temporary highlight
+          targetElement.style.border = '2px solid #fbbf24';
+          targetElement.style.boxShadow = '0 0 0 3px rgba(251, 191, 36, 0.3)';
+          targetElement.style.transform = 'scale(1.02)';
+          setTimeout(() => {
+            if (targetElement) {
+              targetElement.style.border = '';
+              targetElement.style.boxShadow = '';
+              targetElement.style.transform = '';
+            }
+          }, 3000);
+
+          // Scroll into view
+          targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+      }
+
+      // Otherwise scroll to section
+      if (availableRequestsSectionRef.current) {
+        availableRequestsSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  }, [availableOneOnOne, availableGroups, searchParams]);
 
   const postOneOnOneWithContext = async (context: string) => {
     if (!user || activeOneOnOne || activeGroup || isPostingOneOnOne || isRedirectingRef.current) return;
@@ -989,12 +936,17 @@ export default function ConnectPage() {
         )}
 
         {/* Available Requests */}
-        <div ref={availableSectionRef} style={{ ...styles.card, ...styles.sectionGap, padding: 0, overflow: 'hidden' }}>
-          <div style={{
-            padding: '1.5rem 1.75rem',
-            borderBottom: '1px solid rgba(59, 130, 246, 0.1)',
-            background: 'linear-gradient(135deg, #f0f7ff 0%, #e6f0ff 100%)',
-          }}>
+        <div
+          ref={availableRequestsSectionRef}
+          style={{ ...styles.card, ...styles.sectionGap, padding: 0, overflow: 'hidden' }}
+        >
+          <div
+            style={{
+              padding: '1.5rem 1.75rem',
+              borderBottom: '1px solid rgba(59, 130, 246, 0.1)',
+              background: 'linear-gradient(135deg, #f0f7ff 0%, #e6f0ff 100%)',
+            }}
+          >
             <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e40af' }}>Available Support Requests</h2>
             <p style={{ color: '#4b5563', marginTop: '0.5rem' }}>
               {allRequests.length > 0
@@ -1010,7 +962,10 @@ export default function ConnectPage() {
                   ref={(el) => {
                     requestRefs.current[request.id] = el;
                   }}
-                  onClick={() => !isRedirectingRef.current && (request.type === 'group' ? acceptGroup(request.id) : acceptOneOnOne(request.id))}
+                  onClick={() =>
+                    !isRedirectingRef.current &&
+                    (request.type === 'group' ? acceptGroup(request.id) : acceptOneOnOne(request.id))
+                  }
                   style={{
                     padding: '1.75rem',
                     cursor: 'pointer',
@@ -1034,19 +989,21 @@ export default function ConnectPage() {
                   }}
                 >
                   <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
-                    <div style={{
-                      width: '3.5rem',
-                      height: '3.5rem',
-                      borderRadius: '9999px',
-                      background: request.type === 'group'
-                        ? 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)'
-                        : 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-                      border: `2px solid ${request.type === 'group' ? '#8b5cf6' : '#3b82f6'}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexShrink: 0,
-                    }}>
+                    <div
+                      style={{
+                        width: '3.5rem',
+                        height: '3.5rem',
+                        borderRadius: '9999px',
+                        background: request.type === 'group'
+                          ? 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)'
+                          : 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
+                        border: `2px solid ${request.type === 'group' ? '#8b5cf6' : '#3b82f6'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
                       {request.user?.avatar_url ? (
                         <Image
                           src={`/api/media/avatars/${request.user.avatar_url}`}
@@ -1057,45 +1014,60 @@ export default function ConnectPage() {
                           onError={(e) => (e.currentTarget.style.display = 'none')}
                         />
                       ) : (
-                        <span style={{
-                          color: request.type === 'group' ? '#7c3aed' : '#1d4ed8',
-                          fontWeight: '700',
-                          fontSize: '1.125rem'
-                        }}>
+                        <span
+                          style={{
+                            color: request.type === 'group' ? '#7c3aed' : '#1d4ed8',
+                            fontWeight: '700',
+                            fontSize: '1.125rem',
+                          }}
+                        >
                           {request.user?.full_name?.charAt(0) || '👤'}
                         </span>
                       )}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                        <h3 style={{
-                          fontWeight: '700',
-                          color: '#1e40af',
-                          fontSize: '1.125rem',
-                        }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          marginBottom: '0.5rem',
+                        }}
+                      >
+                        <h3
+                          style={{
+                            fontWeight: '700',
+                            color: '#1e40af',
+                            fontSize: '1.125rem',
+                          }}
+                        >
                           {request.user?.full_name} {request.type === 'group' ? ' (Group)' : ''}
                         </h3>
-                        <span style={{
-                          background: request.type === 'group'
-                            ? 'rgba(139, 92, 246, 0.1)'
-                            : 'rgba(59, 130, 246, 0.1)',
-                          color: request.type === 'group' ? '#7c3aed' : '#1d4ed8',
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '9999px',
-                          fontSize: '0.875rem',
-                          fontWeight: '600',
-                        }}>
+                        <span
+                          style={{
+                            background: request.type === 'group'
+                              ? 'rgba(139, 92, 246, 0.1)'
+                              : 'rgba(59, 130, 246, 0.1)',
+                            color: request.type === 'group' ? '#7c3aed' : '#1d4ed8',
+                            padding: '0.25rem 0.75rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                          }}
+                        >
                           {request.type === 'group' ? 'Group' : 'One-on-One'}
                         </span>
                       </div>
-                      <p style={{
-                        color: '#6b7280',
-                        fontSize: '0.95rem',
-                        marginBottom: '0.75rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                      }}>
+                      <p
+                        style={{
+                          color: '#6b7280',
+                          fontSize: '0.95rem',
+                          marginBottom: '0.75rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                        }}
+                      >
                         <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           <Clock size={14} />
                           {timeAgo(request.created_at)}
@@ -1104,26 +1076,30 @@ export default function ConnectPage() {
                         <span>{request.type === 'group' ? 'Looking for group support' : 'Seeking understanding'}</span>
                       </p>
                       {request.context && (
-                        <div style={{
-                          background: 'rgba(249, 250, 251, 0.8)',
-                          border: '1px solid rgba(209, 213, 219, 0.5)',
-                          borderRadius: '0.75rem',
-                          padding: '1rem',
-                          fontSize: '0.95rem',
-                          color: '#4b5563',
-                          lineHeight: 1.6,
-                          marginBottom: '1rem',
-                          fontStyle: 'italic',
-                          position: 'relative',
-                        }}>
-                          <div style={{
-                            position: 'absolute',
-                            top: '0.5rem',
-                            left: '0.5rem',
-                            fontSize: '2rem',
-                            color: 'rgba(59, 130, 246, 0.2)',
-                            lineHeight: 1,
-                          }}></div>
+                        <div
+                          style={{
+                            background: 'rgba(249, 250, 251, 0.8)',
+                            border: '1px solid rgba(209, 213, 219, 0.5)',
+                            borderRadius: '0.75rem',
+                            padding: '1rem',
+                            fontSize: '0.95rem',
+                            color: '#4b5563',
+                            lineHeight: 1.6,
+                            marginBottom: '1rem',
+                            fontStyle: 'italic',
+                            position: 'relative',
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute',
+                              top: '0.5rem',
+                              left: '0.5rem',
+                              fontSize: '2rem',
+                              color: 'rgba(59, 130, 246, 0.2)',
+                              lineHeight: 1,
+                            }}
+                          ></div>
                           {request.context}
                         </div>
                       )}
@@ -1143,8 +1119,8 @@ export default function ConnectPage() {
                           background: acceptingRequestId === request.id
                             ? '#9ca3af'
                             : request.type === 'group'
-                              ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'
-                              : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+                            ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'
+                            : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                           color: 'white',
                           border: 'none',
                           borderRadius: '9999px',
