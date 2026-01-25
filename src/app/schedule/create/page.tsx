@@ -1,22 +1,9 @@
-// src/app/schedule/create/page.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Image from 'next/image';
-const GRIEF_TYPES = [
-  'loss_of_parent',
-  'loss_of_child',
-  'loss_of_spouse',
-  'loss_of_sibling',
-  'loss_of_friend',
-  'suicide_loss',
-  'pet_loss',
-  'miscarriage',
-  'anticipatory_grief',
-  'other',
-];
 
 // Helper to format Date to local YYYY-MM-DDTHH:mm (for datetime-local input)
 const formatDateToLocalInput = (date: Date): string => {
@@ -34,7 +21,6 @@ export default function CreateEventPage() {
   const [hostName, setHostName] = useState('');
   const [startTime, setStartTime] = useState('');
   const [duration, setDuration] = useState(60);
-  const [selectedGriefTypes, setSelectedGriefTypes] = useState<string[]>([]);
   const [isRecurring, setIsRecurring] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -82,12 +68,6 @@ export default function CreateEventPage() {
     init();
   }, [supabase, router]);
 
-  const toggleGriefType = (type: string) => {
-    setSelectedGriefTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
-    );
-  };
-
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -130,7 +110,7 @@ export default function CreateEventPage() {
     const cleanHostName = hostName.trim();
     const hasValidTime = startTime && !isNaN(new Date(startTime).getTime());
 
-    if (!cleanTitle || !cleanHostName || !hasValidTime || selectedGriefTypes.length === 0) {
+    if (!cleanTitle || !cleanHostName || !hasValidTime) {
       setError('Please fill in all required fields.');
       return;
     }
@@ -154,7 +134,6 @@ export default function CreateEventPage() {
           host_name: cleanHostName,
           start_time: utcISO,
           duration: duration,
-          grief_types: selectedGriefTypes,
           is_recurring: isRecurring,
         })
         .select('id')
@@ -198,71 +177,50 @@ export default function CreateEventPage() {
     fileInputRef.current?.click();
   };
 
-  // Helper: format grief type label
-  const formatGriefType = (type: string) => {
-    return type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
-  };
-
   return (
     <div style={styles.pageContainer}>
       <div style={styles.contentContainer}>
         <button
           onClick={() => router.back()}
           style={styles.backButton}
-          onMouseEnter={e => e.currentTarget.style.color = '#1f2937'}
-          onMouseLeave={e => e.currentTarget.style.color = '#4b5563'}
+          onMouseEnter={(e) => (e.currentTarget.style.color = '#1f2937')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = '#4b5563')}
         >
           ← Back to schedule
         </button>
 
-        <h1 style={styles.heading}>
-          Create a New Event
-        </h1>
+        <h1 style={styles.heading}>Create a New Support Event</h1>
 
-        {error && (
-          <div style={styles.errorContainer}>
-            {error}
-          </div>
-        )}
-        {success && (
-          <div style={styles.successContainer}>
-            Event created! Redirecting...
-          </div>
-        )}
+        {error && <div style={styles.errorContainer}>{error}</div>}
+        {success && <div style={styles.successContainer}>Event created! Redirecting...</div>}
 
         <form onSubmit={handleSubmit} style={styles.form}>
           {/* Image Upload */}
           <div style={styles.formGroup}>
-            <label style={styles.label}>
-              Event Image (optional)
-            </label>
+            <label style={styles.label}>Event Image (optional)</label>
             <div
               onClick={triggerFileInput}
               onMouseEnter={() => setImageBoxHover(true)}
               onMouseLeave={() => setImageBoxHover(false)}
               style={{
                 ...styles.imageUploadBox,
-                backgroundColor: imageBoxHover ? '#f9fafb' : '#ffffff'
+                backgroundColor: imageBoxHover ? '#f9fafb' : '#ffffff',
               }}
             >
               {imagePreview ? (
-  <div style={styles.imagePreviewContainer}>
-    <Image
-      src={imagePreview}
-      alt="Preview"
-      fill
-      style={styles.imagePreview} // Ensure this includes objectFit if needed
-      unoptimized
-    />
-  </div>
+                <div style={styles.imagePreviewContainer}>
+                  <Image
+                    src={imagePreview}
+                    alt="Preview"
+                    fill
+                    style={styles.imagePreview}
+                    unoptimized
+                  />
+                </div>
               ) : (
                 <div style={styles.imagePlaceholder}>
-                  <p style={styles.imagePlaceholderText}>
-                    Click to upload an image (max 5MB)
-                  </p>
-                  <p style={styles.imagePlaceholderSubtext}>
-                    JPG, PNG, or GIF
-                  </p>
+                  <p style={styles.imagePlaceholderText}>Click to upload an image (max 5MB)</p>
+                  <p style={styles.imagePlaceholderSubtext}>JPG, PNG, or GIF</p>
                 </div>
               )}
             </div>
@@ -277,53 +235,45 @@ export default function CreateEventPage() {
 
           {/* Title */}
           <div style={styles.formGroup}>
-            <label style={styles.label}>
-              Event Title *
-            </label>
+            <label style={styles.label}>Event Title *</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               style={styles.input}
-              placeholder="e.g., Evening Grief Circle"
+              placeholder="e.g., Evening Check-In Circle"
               required
             />
           </div>
 
           {/* Host Name */}
           <div style={styles.formGroup}>
-            <label style={styles.label}>
-              Host Name *
-            </label>
+            <label style={styles.label}>Host Name *</label>
             <input
               type="text"
               value={hostName}
               onChange={(e) => setHostName(e.target.value)}
               style={styles.input}
-              placeholder="e.g., Maria or Grief Support Team"
+              placeholder="e.g., Jane or Support Team"
               required
             />
           </div>
 
           {/* Description */}
           <div style={styles.formGroup}>
-            <label style={styles.label}>
-              Description
-            </label>
+            <label style={styles.label}>Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
               style={styles.textarea}
-              placeholder="What will happen? Who is it for?"
+              placeholder="What will happen? Who is it for? What kind of support will be offered?"
             />
           </div>
 
           {/* Start Time */}
           <div style={styles.formGroup}>
-            <label style={styles.label}>
-              Start Time (your local time) *
-            </label>
+            <label style={styles.label}>Start Time (your local time) *</label>
             <input
               type="datetime-local"
               value={startTime}
@@ -331,16 +281,12 @@ export default function CreateEventPage() {
               style={styles.input}
               required
             />
-            <p style={styles.helperText}>
-              Shown in your local time.
-            </p>
+            <p style={styles.helperText}>Shown in your local time.</p>
           </div>
 
           {/* Duration */}
           <div style={styles.formGroup}>
-            <label style={styles.label}>
-              Duration (minutes) *
-            </label>
+            <label style={styles.label}>Duration (minutes) *</label>
             <input
               type="number"
               min="10"
@@ -349,49 +295,6 @@ export default function CreateEventPage() {
               onChange={(e) => setDuration(Number(e.target.value))}
               style={styles.input}
             />
-          </div>
-
-          {/* Grief Types */}
-          <div style={styles.formGroup}>
-            <label style={styles.label}>
-              Grief Type(s) *
-            </label>
-            <div style={styles.griefTypesContainer}>
-              {GRIEF_TYPES.map((type) => {
-                const isSelected = selectedGriefTypes.includes(type);
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => toggleGriefType(type)}
-                    style={{
-                      ...styles.griefTypeButton,
-                      ...(isSelected ? styles.griefTypeButtonSelected : {}),
-                      borderColor: isSelected ? '#3b82f6' : '#d1d5db',
-                      backgroundColor: isSelected ? '#eff6ff' : '#f3f4f6',
-                      color: isSelected ? '#1d4ed8' : '#374151'
-                    }}
-                    onMouseEnter={e => {
-                      if (!isSelected) {
-                        e.currentTarget.style.backgroundColor = '#e5e7eb';
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (!isSelected) {
-                        e.currentTarget.style.backgroundColor = '#f3f4f6';
-                      }
-                    }}
-                  >
-                    {formatGriefType(type)}
-                  </button>
-                );
-              })}
-            </div>
-            {selectedGriefTypes.length === 0 && (
-              <p style={styles.errorText}>
-                Please select at least one grief type.
-              </p>
-            )}
           </div>
 
           {/* Recurring */}
@@ -404,7 +307,7 @@ export default function CreateEventPage() {
               style={styles.checkbox}
             />
             <label htmlFor="recurring" style={styles.checkboxLabel}>
-              This is a recurring event
+              This is a recurring support event
             </label>
           </div>
 
@@ -414,8 +317,8 @@ export default function CreateEventPage() {
             disabled={loading}
             style={{
               ...styles.submitButton,
-              backgroundColor: loading ? '#9ca3af' : '#3b82f6',
-              cursor: loading ? 'not-allowed' : 'pointer'
+              backgroundColor: loading ? '#9ca3af' : styles.submitButton.backgroundColor,
+              cursor: loading ? 'not-allowed' : 'pointer',
             }}
           >
             {loading ? 'Creating...' : 'Create Event'}
@@ -426,11 +329,11 @@ export default function CreateEventPage() {
   );
 }
 
-// Inline CSS styles
+// Inline CSS styles — updated for depression support theme
 const styles = {
   pageContainer: {
     minHeight: '100vh',
-    background: 'linear-gradient(to bottom, #ffffff, #f9fafb, #f5f5f5)',
+    background: 'linear-gradient(to bottom, #f8fafc, #f1f5f9, #e2e8f0)', // soft blue-gray calming gradient
     padding: '1rem',
     paddingBottom: '6rem',
     display: 'flex',
@@ -455,7 +358,7 @@ const styles = {
   heading: {
     fontSize: '1.5rem',
     fontWeight: '700' as const,
-    color: '#111827',
+    color: '#1e293b', // dark slate for clarity
     marginBottom: '1.5rem',
   },
   errorContainer: {
@@ -494,22 +397,24 @@ const styles = {
   input: {
     width: '100%',
     padding: '0.75rem',
-    border: '1px solid #d1d5db',
+    border: '1px solid #cbd5e1', // softer border
     borderRadius: '0.5rem',
     fontSize: '1rem',
     boxSizing: 'border-box' as const,
+    backgroundColor: '#ffffff',
   },
   textarea: {
     width: '100%',
     padding: '0.75rem',
-    border: '1px solid #d1d5db',
+    border: '1px solid #cbd5e1',
     borderRadius: '0.5rem',
     fontSize: '1rem',
     boxSizing: 'border-box' as const,
     resize: 'vertical' as const,
+    backgroundColor: '#ffffff',
   },
   imageUploadBox: {
-    border: '2px dashed #d1d5db',
+    border: '2px dashed #cbd5e1',
     borderRadius: '0.75rem',
     padding: '1rem',
     textAlign: 'center' as const,
@@ -532,7 +437,7 @@ const styles = {
     maxWidth: '100%',
   },
   imagePlaceholder: {
-    color: '#6b7280',
+    color: '#64748b', // muted gray-blue
     fontSize: '0.875rem',
   },
   imagePlaceholderText: {
@@ -541,7 +446,7 @@ const styles = {
   imagePlaceholderSubtext: {
     fontSize: '0.75rem',
     marginTop: '0.25rem',
-    color: '#9ca3af',
+    color: '#94a3b8',
     margin: '0',
   },
   hiddenInput: {
@@ -549,29 +454,7 @@ const styles = {
   },
   helperText: {
     fontSize: '0.75rem',
-    color: '#6b7280',
-    marginTop: '0.25rem',
-  },
-  griefTypesContainer: {
-    display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: '0.5rem',
-    marginBottom: '0.5rem',
-  },
-  griefTypeButton: {
-    padding: '0.25rem 0.75rem',
-    border: '1px solid',
-    borderRadius: '9999px',
-    fontSize: '0.75rem',
-    cursor: 'pointer',
-    transition: 'all 0.2s',
-  },
-  griefTypeButtonSelected: {
-    // Selected state styles are applied conditionally in JSX
-  },
-  errorText: {
-    color: '#ef4444',
-    fontSize: '0.75rem',
+    color: '#64748b',
     marginTop: '0.25rem',
   },
   checkboxContainer: {
@@ -583,7 +466,7 @@ const styles = {
   checkbox: {
     width: '1rem',
     height: '1rem',
-    accentColor: '#3b82f6',
+    accentColor: '#3b82f6', // keep primary action color
   },
   checkboxLabel: {
     color: '#374151',
@@ -599,5 +482,6 @@ const styles = {
     fontSize: '1rem',
     marginTop: '0.5rem',
     transition: 'background-color 0.2s',
+    backgroundColor: '#3b82f6', // consistent with your brand
   },
 };

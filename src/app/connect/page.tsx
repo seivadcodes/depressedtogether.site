@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { Phone, MessageCircle, Clock, Users, Brain, Heart } from 'lucide-react';
 import Image from 'next/image';
@@ -157,6 +157,7 @@ export default function ConnectPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams(); // Not used yet, but hash is in window.location
   const supabase = createClient();
   const [isPostingOneOnOne, setIsPostingOneOnOne] = useState(false);
   const [isPostingGroup, setIsPostingGroup] = useState(false);
@@ -164,6 +165,10 @@ export default function ConnectPage() {
   const [acceptingRequestId, setAcceptingRequestId] = useState<string | null>(null);
   const [showContextModal, setShowContextModal] = useState<'one-on-one' | 'group' | null>(null);
   const [tempContext, setTempContext] = useState('');
+
+  // Refs for scrolling
+  const availableSectionRef = useRef<HTMLDivElement>(null);
+  const requestRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const fetchActiveOneOnOne = useCallback(async (userId: string) => {
     try {
@@ -236,7 +241,6 @@ export default function ConnectPage() {
       setAvailableOneOnOne([]);
       return;
     }
-
     try {
       const { data: requests, error: reqError } = await supabase
         .from('quick_connect_requests')
@@ -245,31 +249,25 @@ export default function ConnectPage() {
         .neq('user_id', currentUserId)
         .gt('expires_at', new Date().toISOString())
         .order('created_at', { ascending: true });
-
       if (reqError) throw reqError;
-
       const userIds = requests.map((r) => r.user_id);
       if (userIds.length === 0) {
         setAvailableOneOnOne([]);
         return;
       }
-
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, full_name, avatar_url')
         .in('id', userIds);
-
       const profileMap = new Map(
         (profiles || []).map((p) => [p.id, p])
       );
-
       const formatted = requests
         .map((req) => ({
           ...req,
           type: 'one-on-one' as const,
           user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
         })) as AvailableRequest[];
-
       setAvailableOneOnOne(formatted);
     } catch (err) {
       console.error('Error fetching available 1:1:', err);
@@ -282,7 +280,6 @@ export default function ConnectPage() {
       setAvailableGroups([]);
       return;
     }
-
     try {
       const { data: requests, error: reqError } = await supabase
         .from('quick_group_requests')
@@ -291,37 +288,62 @@ export default function ConnectPage() {
         .neq('user_id', currentUserId)
         .gt('expires_at', new Date().toISOString())
         .order('created_at', { ascending: true });
-
       if (reqError) throw reqError;
-
       const userIds = requests.map((r) => r.user_id);
       if (userIds.length === 0) {
         setAvailableGroups([]);
         return;
       }
-
       const { data: profiles } = await supabase
         .from('profiles')
         .select('id, full_name, avatar_url')
         .in('id', userIds);
-
       const profileMap = new Map(
         (profiles || []).map((p) => [p.id, p])
       );
-
       const formatted = requests
         .map((req) => ({
           ...req,
           type: 'group' as const,
           user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
         })) as AvailableRequest[];
-
       setAvailableGroups(formatted);
     } catch (err) {
       console.error('Error fetching available groups:', err);
       setAvailableGroups([]);
     }
   }, [supabase]);
+
+  // 👇 SCROLL LOGIC HERE — easy to modify later
+  const handleScrollIfNeeded = useCallback((allRequests: AvailableRequest[]) => {
+    // You can later wrap this in a condition like:
+    // if (hasVisitedBefore) return;
+    
+    if (allRequests.length === 0) return;
+
+    // Check URL hash for specific request
+    const hash = window.location.hash;
+    if (hash.startsWith('#req-')) {
+      const targetId = hash.substring(5); // remove "#req-"
+      setTimeout(() => {
+        const element = requestRefs.current[targetId];
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Optional: highlight it briefly
+          element.style.transition = 'background 0.8s ease';
+          element.style.background = '#fff9db';
+          setTimeout(() => {
+            element.style.background = '';
+          }, 1000);
+        }
+      }, 200);
+    } else {
+      // Just scroll to section
+      setTimeout(() => {
+        availableSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -361,17 +383,78 @@ export default function ConnectPage() {
           router.push('/auth');
           return;
         }
-
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('id, full_name, avatar_url, accepts_calls')
           .eq('id', session.user.id)
           .single();
-
         if (profileError) throw profileError;
-
         if (isMounted) {
           setUser(profile);
+
+          // Fetch data once before polling
+          let oneOnOneReqs: AvailableRequest[] = [];
+          let groupReqs: AvailableRequest[] = [];
+
+          if (profile.accepts_calls !== false) {
+            // Fetch 1:1
+            const { data: oneOnOneData, error: oneErr } = await supabase
+              .from('quick_connect_requests')
+              .select('id, created_at, user_id, status, expires_at, context')
+              .eq('status', 'available')
+              .neq('user_id', session.user.id)
+              .gt('expires_at', new Date().toISOString())
+              .order('created_at', { ascending: true });
+
+            if (!oneErr && oneOnOneData?.length) {
+              const userIds = oneOnOneData.map(r => r.user_id);
+              const { data: profiles } = await supabase
+                .from('profiles')
+                .select('id, full_name, avatar_url')
+                .in('id', userIds);
+              const profileMap = new Map(profiles?.map(p => [p.id, p]));
+              oneOnOneReqs = oneOnOneData.map(req => ({
+                ...req,
+                type: 'one-on-one' as const,
+                user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
+              }));
+            }
+
+            // Fetch groups
+            const { data: groupData, error: groupErr } = await supabase
+              .from('quick_group_requests')
+              .select('id, created_at, user_id, status, expires_at, context')
+              .eq('status', 'available')
+              .neq('user_id', session.user.id)
+              .gt('expires_at', new Date().toISOString())
+              .order('created_at', { ascending: true });
+
+            if (!groupErr && groupData?.length) {
+              const userIds = groupData.map(r => r.user_id);
+              const { data: profiles } = await supabase
+                .from('profiles')
+                .select('id, full_name, avatar_url')
+                .in('id', userIds);
+              const profileMap = new Map(profiles?.map(p => [p.id, p]));
+              groupReqs = groupData.map(req => ({
+                ...req,
+                type: 'group' as const,
+                user: profileMap.get(req.user_id) || { id: req.user_id, full_name: 'Anonymous', avatar_url: null },
+              }));
+            }
+          }
+
+          setAvailableOneOnOne(oneOnOneReqs);
+          setAvailableGroups(groupReqs);
+
+          // Also fetch active
+          await fetchActiveOneOnOne(session.user.id);
+          await fetchActiveGroup(session.user.id);
+
+          // 👇 Scroll if needed — only on initial load
+          const allReqs = [...oneOnOneReqs, ...groupReqs];
+          handleScrollIfNeeded(allReqs);
+
           startPolling(session.user.id, profile.accepts_calls ?? null);
         }
       } catch (err) {
@@ -394,14 +477,14 @@ export default function ConnectPage() {
     fetchAvailableOneOnOne,
     fetchAvailableGroups,
     router,
-    supabase
+    supabase,
+    handleScrollIfNeeded,
   ]);
 
   const postOneOnOneWithContext = async (context: string) => {
     if (!user || activeOneOnOne || activeGroup || isPostingOneOnOne || isRedirectingRef.current) return;
     setIsPostingOneOnOne(true);
     setError(null);
-
     try {
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
       const { data, error } = await supabase
@@ -414,18 +497,14 @@ export default function ConnectPage() {
         })
         .select()
         .single();
-
       if (error) throw error;
-
       const { error: notifyError } = await supabase.rpc('create_targeted_notifications', {
         req_type: 'one_on_one',
         req_id: data.id,
       });
-
       if (notifyError) {
         console.warn('Non-critical: failed to create notifications:', notifyError.message);
       }
-
       setActiveOneOnOne({
         ...data,
         user: {
@@ -446,11 +525,9 @@ export default function ConnectPage() {
     if (!user || activeOneOnOne || activeGroup || isPostingGroup || isRedirectingRef.current) return;
     setIsPostingGroup(true);
     setError(null);
-
     try {
       const roomId = `group-call-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
       const { error: insertErr } = await supabase
         .from('quick_group_requests')
         .insert({
@@ -460,9 +537,7 @@ export default function ConnectPage() {
           room_id: roomId,
           context: context.trim() || null,
         });
-
       if (insertErr) throw insertErr;
-
       const { error: participantErr } = await supabase
         .from('room_participants')
         .insert({
@@ -470,27 +545,22 @@ export default function ConnectPage() {
           user_id: user.id,
           role: 'host',
         });
-
       if (participantErr) throw participantErr;
-
       const { data: reqData, error: fetchErr } = await supabase
         .from('quick_group_requests')
         .select('id')
         .eq('room_id', roomId)
         .eq('user_id', user.id)
         .single();
-
       if (!fetchErr && reqData?.id) {
         const { error: notifyError } = await supabase.rpc('create_targeted_notifications', {
           req_type: 'group',
           req_id: reqData.id,
         });
-
         if (notifyError) {
           console.warn('Non-critical: failed to create group notifications:', notifyError.message);
         }
       }
-
       isRedirectingRef.current = true;
       router.push(`/room/${roomId}`);
     } catch (err) {
@@ -504,14 +574,12 @@ export default function ConnectPage() {
   const cancelOneOnOne = async () => {
     if (!activeOneOnOne || isRedirectingRef.current) return;
     setActiveOneOnOne(null);
-
     try {
       const { error } = await supabase
         .from('quick_connect_requests')
         .update({ status: 'completed' })
         .eq('id', activeOneOnOne.id)
         .eq('status', 'available');
-
       if (!error) {
         await supabase
           .from('notifications')
@@ -526,7 +594,6 @@ export default function ConnectPage() {
 
   const cancelGroup = async () => {
     if (!activeGroup || isRedirectingRef.current) return;
-
     try {
       const { data, error } = await supabase
         .from('quick_group_requests')
@@ -534,9 +601,7 @@ export default function ConnectPage() {
         .eq('id', activeGroup.id)
         .eq('status', 'available')
         .select();
-
       if (error) throw error;
-
       if (data && data.length > 0) {
         await supabase
           .from('notifications')
@@ -544,7 +609,6 @@ export default function ConnectPage() {
           .eq('source_id', activeGroup.id)
           .eq('type', 'group_request');
       }
-
       setActiveGroup(null);
     } catch (err) {
       console.error('Cancel group error:', err);
@@ -554,7 +618,6 @@ export default function ConnectPage() {
 
   const acceptOneOnOne = async (requestId: string) => {
     if (!user || isRedirectingRef.current || acceptingRequestId) return;
-    
     setAcceptingRequestId(requestId);
     try {
       const roomId = `quick-connect-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -565,13 +628,11 @@ export default function ConnectPage() {
         .eq('status', 'available')
         .gt('expires_at', new Date().toISOString())
         .single();
-
       if (!existing) {
         setError('One-on-one request not found or expired.');
         setAcceptingRequestId(null);
         return;
       }
-
       const { error: updateErr } = await supabase
         .from('quick_connect_requests')
         .update({
@@ -581,14 +642,11 @@ export default function ConnectPage() {
         })
         .eq('id', requestId)
         .eq('status', 'available');
-
       if (updateErr) throw updateErr;
-
       await supabase.from('room_participants').upsert([
         { room_id: roomId, user_id: existing.user_id, role: 'participant' },
         { room_id: roomId, user_id: user.id, role: 'participant' }
       ], { onConflict: 'room_id,user_id' });
-
       isRedirectingRef.current = true;
       router.push(`/room/${roomId}`);
     } catch (err) {
@@ -601,7 +659,6 @@ export default function ConnectPage() {
 
   const acceptGroup = async (requestId: string) => {
     if (!user || isRedirectingRef.current || acceptingRequestId) return;
-    
     setAcceptingRequestId(requestId);
     try {
       const { data: existing } = await supabase
@@ -611,13 +668,11 @@ export default function ConnectPage() {
         .eq('status', 'available')
         .gt('expires_at', new Date().toISOString())
         .single();
-
       if (!existing) {
         setError('Group request not found or expired.');
         setAcceptingRequestId(null);
         return;
       }
-
       let roomId = existing.room_id;
       if (!roomId) {
         roomId = `group-call-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -628,7 +683,6 @@ export default function ConnectPage() {
           .eq('status', 'available');
         if (updateErr) throw updateErr;
       }
-
       await supabase.from('room_participants').upsert(
         { room_id: roomId, user_id: user.id, role: 'participant' },
         { onConflict: 'room_id,user_id' }
@@ -637,7 +691,6 @@ export default function ConnectPage() {
         { room_id: roomId, user_id: existing.user_id, role: 'host' },
         { onConflict: 'room_id,user_id' }
       );
-
       isRedirectingRef.current = true;
       router.push(`/room/${roomId}`);
     } catch (err) {
@@ -652,7 +705,6 @@ export default function ConnectPage() {
     const now = new Date();
     const posted = new Date(timestamp);
     const diffSeconds = Math.floor((now.getTime() - posted.getTime()) / 1000);
-
     if (diffSeconds < 60) {
       return 'just now';
     }
@@ -937,10 +989,10 @@ export default function ConnectPage() {
         )}
 
         {/* Available Requests */}
-        <div style={{ ...styles.card, ...styles.sectionGap, padding: 0, overflow: 'hidden' }}>
-          <div style={{ 
-            padding: '1.5rem 1.75rem', 
-            borderBottom: '1px solid rgba(59, 130, 246, 0.1)', 
+        <div ref={availableSectionRef} style={{ ...styles.card, ...styles.sectionGap, padding: 0, overflow: 'hidden' }}>
+          <div style={{
+            padding: '1.5rem 1.75rem',
+            borderBottom: '1px solid rgba(59, 130, 246, 0.1)',
             background: 'linear-gradient(135deg, #f0f7ff 0%, #e6f0ff 100%)',
           }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#1e40af' }}>Available Support Requests</h2>
@@ -955,6 +1007,9 @@ export default function ConnectPage() {
               {allRequests.map((request) => (
                 <div
                   key={request.id}
+                  ref={(el) => {
+                    requestRefs.current[request.id] = el;
+                  }}
                   onClick={() => !isRedirectingRef.current && (request.type === 'group' ? acceptGroup(request.id) : acceptOneOnOne(request.id))}
                   style={{
                     padding: '1.75rem',
@@ -983,8 +1038,8 @@ export default function ConnectPage() {
                       width: '3.5rem',
                       height: '3.5rem',
                       borderRadius: '9999px',
-                      background: request.type === 'group' 
-                        ? 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)' 
+                      background: request.type === 'group'
+                        ? 'linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%)'
                         : 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
                       border: `2px solid ${request.type === 'group' ? '#8b5cf6' : '#3b82f6'}`,
                       display: 'flex',
@@ -1002,16 +1057,15 @@ export default function ConnectPage() {
                           onError={(e) => (e.currentTarget.style.display = 'none')}
                         />
                       ) : (
-                        <span style={{ 
-                          color: request.type === 'group' ? '#7c3aed' : '#1d4ed8', 
-                          fontWeight: '700', 
-                          fontSize: '1.125rem' 
+                        <span style={{
+                          color: request.type === 'group' ? '#7c3aed' : '#1d4ed8',
+                          fontWeight: '700',
+                          fontSize: '1.125rem'
                         }}>
                           {request.user?.full_name?.charAt(0) || '👤'}
                         </span>
                       )}
                     </div>
-
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                         <h3 style={{
@@ -1022,8 +1076,8 @@ export default function ConnectPage() {
                           {request.user?.full_name} {request.type === 'group' ? ' (Group)' : ''}
                         </h3>
                         <span style={{
-                          background: request.type === 'group' 
-                            ? 'rgba(139, 92, 246, 0.1)' 
+                          background: request.type === 'group'
+                            ? 'rgba(139, 92, 246, 0.1)'
                             : 'rgba(59, 130, 246, 0.1)',
                           color: request.type === 'group' ? '#7c3aed' : '#1d4ed8',
                           padding: '0.25rem 0.75rem',
@@ -1034,7 +1088,6 @@ export default function ConnectPage() {
                           {request.type === 'group' ? 'Group' : 'One-on-One'}
                         </span>
                       </div>
-
                       <p style={{
                         color: '#6b7280',
                         fontSize: '0.95rem',
@@ -1050,7 +1103,6 @@ export default function ConnectPage() {
                         <span>•</span>
                         <span>{request.type === 'group' ? 'Looking for group support' : 'Seeking understanding'}</span>
                       </p>
-
                       {request.context && (
                         <div style={{
                           background: 'rgba(249, 250, 251, 0.8)',
@@ -1075,7 +1127,6 @@ export default function ConnectPage() {
                           {request.context}
                         </div>
                       )}
-
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1172,7 +1223,7 @@ export default function ConnectPage() {
               </div>
               <h3 style={{ fontWeight: '700', color: '#7c3aed', marginBottom: '0.5rem' }}>Group Circles</h3>
               <p style={{ color: '#6b7280', fontSize: '0.95rem', lineHeight: '1.5' }}>
-                Join supportive group conversations where everyone gets what you areexperiencing.
+                Join supportive group conversations where everyone gets what you are experiencing.
               </p>
             </div>
             <div style={styles.gridItem}>
@@ -1291,8 +1342,8 @@ export default function ConnectPage() {
                     }}
                     style={{
                       padding: '0.75rem 1.5rem',
-                      background: showContextModal === 'group' 
-                        ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)' 
+                      background: showContextModal === 'group'
+                        ? 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'
                         : 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
                       color: '#fff',
                       border: 'none',

@@ -345,7 +345,7 @@ export default function Header() {
               fontSize: '1rem',
             }}
           >
-            Surviving Death Loss
+            Depressed Together
           </span>
 
           {/* Right side: Authed or guest actions */}
