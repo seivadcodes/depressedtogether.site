@@ -3,14 +3,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { GriefType } from '../dashboard/useDashboardLogic';
+
 import Image from 'next/image';
 
 interface OnlineUser {
   id: string;
   full_name: string | null;
   avatar_url: string | null;
-  grief_types: GriefType[] | null;
+ 
   last_seen: string;
   is_online: boolean;
 }
@@ -304,23 +304,7 @@ export default function PresencePage() {
                     <h2 className="text-lg font-semibold text-gray-900 truncate">
                       {user.full_name || 'Anonymous'}
                     </h2>
-                    {user.grief_types && user.grief_types.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {user.grief_types.slice(0, 3).map((type) => (
-                          <span
-                            key={type}
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
-                          >
-                            {type}
-                          </span>
-                        ))}
-                        {user.grief_types.length > 3 && (
-                          <span className="text-xs text-gray-500">
-                            +{user.grief_types.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                   
                     <p className="text-sm text-gray-500 mt-1">
                       {user.is_online ? (
                         <span className="flex items-center gap-1">
