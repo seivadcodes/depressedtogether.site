@@ -1,45 +1,18 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { createClient } from '@/lib/supabase/client';
 import { usePresence } from '@/hooks/usePresence';
 
-export type GriefType =
-  | 'parent'
-  | 'child'
-  | 'spouse'
-  | 'sibling'
-  | 'friend'
-  | 'pet'
-  | 'miscarriage'
-  | 'caregiver'
-  | 'suicide'
-  | 'other';
-
-export interface ProfileUpdate {
-  grief_types?: GriefType[];
-  accepts_calls?: boolean;
-  accepts_video_calls?: boolean;
-  accept_from_genders?: ('male' | 'female' | 'nonbinary' | 'any')[];
-  accept_from_countries?: string[];
-  accept_from_languages?: string[];
-  is_anonymous?: boolean;
-  full_name?: string;
-  avatar_url?: string;
-  about?: string;
-  other_loss_description?: string | null;
-}
-
 export interface UserProfile {
   id: string;
-  griefTypes: GriefType[];
   avatarUrl: string | null;
   fullName: string;
   email?: string;
   about?: string;
-  otherLossDescription: string | null;
+  currentMood?: string;
 }
 
 export interface UserPreferences {
@@ -56,7 +29,6 @@ export interface Post {
   userId: string;
   text: string;
   mediaUrls?: string[];
-  griefTypes: GriefType[];
   createdAt: Date;
   likes: number;
   commentsCount: number;
@@ -70,22 +42,26 @@ export interface Post {
   };
 }
 
+// ✅ Updated signature: matches PostComposer's onSubmit
 export interface DashboardUIProps {
   profile: UserProfile | null;
   preferences: UserPreferences;
-  showGriefSetup: boolean;
+  showMoodSetup: boolean;
   showSettings: boolean;
-  selectedGriefTypes: GriefType[];
+  newPostText: string;
+  mediaFiles: File[];
+  mediaPreviews: string[];
   posts: Post[];
   onlineCount: number;
   isLoading: boolean;
   isSubmitting: boolean;
   error: string | null;
-
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
   // Callbacks
-  toggleGriefType: (type: GriefType) => void;
-  handleSaveGriefTypes: () => Promise<void>;
-  // ✅ Updated signature for PostComposer
+  handleSaveMoodSetup: () => Promise<void>;
+  handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  removeMedia: (index: number) => void;
+  // ✅ Updated type
   handlePostSubmit: (text: string, mediaFiles: File[], isAnonymous: boolean) => Promise<void>;
   toggleAcceptsCalls: () => Promise<void>;
   toggleAcceptsVideoCalls: () => Promise<void>;
@@ -93,11 +69,10 @@ export interface DashboardUIProps {
   updateFullName: (firstName: string, lastName: string) => Promise<void>;
   updateAvatar: (file: File) => Promise<void>;
   setShowSettings: (show: boolean) => void;
-  setShowGriefSetup: (show: boolean) => void;
+  setShowMoodSetup: (show: boolean) => void;
+  setNewPostText: (text: string) => void;
   onConnectClick: () => void;
   onCommunitiesClick: () => void;
-
-  // About & Other Loss
   aboutText: string;
   setAboutText: (text: string) => void;
   isEditingAbout: boolean;
@@ -105,13 +80,27 @@ export interface DashboardUIProps {
   isExpanded: boolean;
   setIsExpanded: (expanded: boolean) => void;
   saveAbout: () => Promise<void>;
-  otherLossText: string;
-  setOtherLossText: (text: string) => void;
+  currentMood: string;
+  setCurrentMood: (mood: string) => void;
+}
+
+export interface ProfileUpdate {
+  current_mood?: string;
+  accepts_calls?: boolean;
+  accepts_video_calls?: boolean;
+  accept_from_genders?: ('male' | 'female' | 'nonbinary' | 'any')[];
+  accept_from_countries?: string[];
+  accept_from_languages?: string[];
+  is_anonymous?: boolean;
+  full_name?: string;
+  avatar_url?: string;
+  about?: string;
 }
 
 export function useDashboardLogic(): DashboardUIProps {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [preferences, setPreferences] = useState<UserPreferences>({
@@ -123,19 +112,20 @@ export function useDashboardLogic(): DashboardUIProps {
     isAnonymous: false,
   });
 
-  const [showGriefSetup, setShowGriefSetup] = useState(false);
+  const [showMoodSetup, setShowMoodSetup] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [selectedGriefTypes, setSelectedGriefTypes] = useState<GriefType[]>([]);
+  const [newPostText, setNewPostText] = useState('');
+  const [mediaFiles, setMediaFiles] = useState<File[]>([]);
+  const [mediaPreviews, setMediaPreviews] = useState<string[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [aboutText, setAboutText] = useState('');
   const [isEditingAbout, setIsEditingAbout] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [otherLossText, setOtherLossText] = useState('');
+  const [currentMood, setCurrentMood] = useState('');
 
   usePresence(profile?.id ?? null);
 
@@ -163,15 +153,14 @@ export function useDashboardLogic(): DashboardUIProps {
 
       setProfile({
         id: data.id,
-        griefTypes: data.grief_types || [],
         avatarUrl,
         fullName: data.full_name || session.user.email?.split('@')[0] || 'Friend',
         email: session.user.email || data.email,
         about: data.about || '',
-        otherLossDescription: data.other_loss_description || null,
+        currentMood: data.current_mood || '',
       });
 
-      setOtherLossText(data.other_loss_description ?? '');
+      setCurrentMood(data.current_mood || '');
       setAboutText(data.about || '');
 
       setPreferences({
@@ -183,8 +172,8 @@ export function useDashboardLogic(): DashboardUIProps {
         isAnonymous: data.is_anonymous ?? false,
       });
 
-      if ((data.grief_types?.length || 0) === 0) {
-        setShowGriefSetup(true);
+      if (!data.current_mood) {
+        setShowMoodSetup(true);
       }
 
       setIsLoading(false);
@@ -193,6 +182,7 @@ export function useDashboardLogic(): DashboardUIProps {
     init();
   }, [router, supabase]);
 
+  // Online count effect
   useEffect(() => {
     if (isLoading) return;
 
@@ -210,6 +200,7 @@ export function useDashboardLogic(): DashboardUIProps {
     return () => clearInterval(interval);
   }, [isLoading, supabase]);
 
+  // Posts effect
   useEffect(() => {
     if (!profile || isLoading) return;
 
@@ -242,16 +233,13 @@ export function useDashboardLogic(): DashboardUIProps {
 
         const avatarUrl = p.profiles?.is_anonymous
           ? null
-          : p.profiles?.avatar_url
-            ? `/api/media/avatars/${p.profiles.avatar_url}`
-            : null;
+          : p.profiles?.avatar_url || null;
 
         return {
           id: p.id,
           userId: p.user_id,
           text: p.text,
           mediaUrls: proxiedMediaUrls,
-          griefTypes: p.grief_types as GriefType[],
           createdAt: new Date(p.created_at),
           likes: p.likes_count || 0,
           commentsCount: p.comments_count || 0,
@@ -274,11 +262,12 @@ export function useDashboardLogic(): DashboardUIProps {
     loadPosts();
   }, [profile, isLoading, supabase]);
 
-  const toggleGriefType = (type: GriefType) => {
-    setSelectedGriefTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
-    );
-  };
+  // Cleanup media previews
+  useEffect(() => {
+    return () => {
+      mediaPreviews.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [mediaPreviews]);
 
   const saveProfileToDB = async (updates: ProfileUpdate) => {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -302,46 +291,42 @@ export function useDashboardLogic(): DashboardUIProps {
     }
   };
 
-  const handleSaveGriefTypes = async () => {
-    if (selectedGriefTypes.length === 0) {
-      setError('Please select at least one type of loss.');
+  const handleSaveMoodSetup = async () => {
+    if (!currentMood) {
+      setError("Please select how you're feeling today.");
       return;
     }
 
     try {
-      const updates: ProfileUpdate = { grief_types: selectedGriefTypes };
-
-      if (selectedGriefTypes.includes('other')) {
-        updates.other_loss_description = otherLossText.trim() || null;
-      } else {
-        updates.other_loss_description = null;
-      }
-
-      await saveProfileToDB(updates);
-
-      setProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              griefTypes: selectedGriefTypes,
-              otherLossDescription: selectedGriefTypes.includes('other') ? otherLossText : null,
-            }
-          : null
-      );
-
-      setShowGriefSetup(false);
+      await saveProfileToDB({ current_mood: currentMood });
+      setProfile(prev => (prev ? { ...prev, currentMood } : null));
+      setShowMoodSetup(false);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save grief types.');
+      setError(err instanceof Error ? err.message : 'Failed to save mood information.');
     }
   };
 
-  // ✅ FIXED: Accepts arguments from PostComposer
-  const handlePostSubmit = async (
-    text: string,
-    mediaFiles: File[],
-    isAnonymous: boolean
-  ) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const validFiles = Array.from(files).slice(0, 4 - mediaFiles.length);
+    setMediaFiles(prev => [...prev, ...validFiles]);
+    const newPreviews = validFiles.map(file => URL.createObjectURL(file));
+    setMediaPreviews(prev => [...prev, ...newPreviews]);
+  };
+
+  const removeMedia = (index: number) => {
+    setMediaFiles(prev => prev.filter((_, i) => i !== index));
+    setMediaPreviews(prev => {
+      URL.revokeObjectURL(prev[index]);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  // ✅ Corrected: no duplicate, uses single ID, optimistic update
+  const handlePostSubmit = async (text: string, mediaFiles: File[], isAnonymous: boolean) => {
     if (!text.trim() || !profile) return;
 
     setIsSubmitting(true);
@@ -354,6 +339,7 @@ export function useDashboardLogic(): DashboardUIProps {
         throw new Error('Authentication required');
       }
 
+      // Upload media
       if (mediaFiles.length > 0) {
         const uploadPromises = mediaFiles.map(async (file) => {
           const fileExt = file.name.split('.').pop();
@@ -374,41 +360,45 @@ export function useDashboardLogic(): DashboardUIProps {
         mediaUrls = await Promise.all(uploadPromises);
       }
 
-      const postId = uuidv4();
+      // Generate ID once
+      const newPostId = uuidv4();
+
+      // Insert into DB
       const { error: postError } = await supabase
         .from('posts')
         .insert({
-          id: postId,
+          id: newPostId,
           user_id: session.user.id,
           text: text.trim(),
           media_urls: mediaUrls.length > 0 ? mediaUrls : null,
-          grief_types: profile.griefTypes,
           is_anonymous: isAnonymous,
           created_at: new Date().toISOString(),
         });
 
       if (postError) throw postError;
 
+      // ✅ Build optimistic post (only once!)
       const newPost: Post = {
-        id: postId,
+        id: newPostId,
         userId: session.user.id,
         text: text.trim(),
-        mediaUrls: mediaUrls.map((path) => `/api/media/posts/${path}`),
-        griefTypes: profile.griefTypes,
+        mediaUrls: mediaUrls.map(path => `/api/media/posts/${path}`),
         createdAt: new Date(),
         likes: 0,
         commentsCount: 0,
         isLiked: false,
         isAnonymous,
-        user: {
-          id: profile!.id,
-          fullName: isAnonymous ? null : profile!.fullName,
-          avatarUrl: isAnonymous ? null : profile!.avatarUrl,
-          isAnonymous,
-        },
+        user: profile
+          ? {
+              id: profile.id,
+              fullName: isAnonymous ? null : profile.fullName,
+              avatarUrl: isAnonymous ? null : profile.avatarUrl,
+              isAnonymous,
+            }
+          : undefined,
       };
 
-      setPosts((prev) => [newPost, ...prev]);
+      setPosts(prev => [newPost, ...prev]);
     } catch (err) {
       console.error('Post creation failed:', err);
       setError(err instanceof Error ? err.message : 'Failed to share post. Please try again.');
@@ -420,7 +410,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const toggleAcceptsCalls = async () => {
     try {
       const newValue = !preferences.acceptsCalls;
-      setPreferences((prev) => ({ ...prev, acceptsCalls: newValue }));
+      setPreferences(prev => ({ ...prev, acceptsCalls: newValue }));
       await saveProfileToDB({ accepts_calls: newValue });
     } catch (err) {
       console.error('Failed to update call preference:', err);
@@ -431,7 +421,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const toggleAcceptsVideoCalls = async () => {
     try {
       const newValue = !preferences.acceptsVideoCalls;
-      setPreferences((prev) => ({ ...prev, acceptsVideoCalls: newValue }));
+      setPreferences(prev => ({ ...prev, acceptsVideoCalls: newValue }));
       await saveProfileToDB({ accepts_video_calls: newValue });
     } catch (err) {
       console.error('Failed to update video call preference:', err);
@@ -442,7 +432,7 @@ export function useDashboardLogic(): DashboardUIProps {
   const toggleAnonymity = async () => {
     try {
       const newValue = !preferences.isAnonymous;
-      setPreferences((prev) => ({ ...prev, isAnonymous: newValue }));
+      setPreferences(prev => ({ ...prev, isAnonymous: newValue }));
       await saveProfileToDB({ is_anonymous: newValue });
     } catch (err) {
       console.error('Failed to update anonymity preference:', err);
@@ -458,7 +448,7 @@ export function useDashboardLogic(): DashboardUIProps {
 
     try {
       await saveProfileToDB({ full_name: fullName });
-      setProfile((prev) => (prev ? { ...prev, fullName } : null));
+      setProfile(prev => (prev ? { ...prev, fullName } : null));
       setError(null);
     } catch (err) {
       console.error('Name update failed:', err);
@@ -486,7 +476,7 @@ export function useDashboardLogic(): DashboardUIProps {
       await saveProfileToDB({ avatar_url: filePath });
 
       const proxyUrl = `/api/media/avatars/${filePath}`;
-      setProfile((prev) => (prev ? { ...prev, avatarUrl: proxyUrl } : null));
+      setProfile(prev => (prev ? { ...prev, avatarUrl: proxyUrl } : null));
       setError(null);
     } catch (err) {
       console.error('Avatar upload failed:', err);
@@ -496,9 +486,10 @@ export function useDashboardLogic(): DashboardUIProps {
 
   const saveAbout = async () => {
     if (!profile) return;
+
     try {
       await saveProfileToDB({ about: aboutText });
-      setProfile((prev) => (prev ? { ...prev, about: aboutText } : null));
+      setProfile(prev => (prev ? { ...prev, about: aboutText } : null));
       setIsEditingAbout(false);
       setError(null);
     } catch (err) {
@@ -517,16 +508,17 @@ export function useDashboardLogic(): DashboardUIProps {
   return {
     profile,
     preferences,
-    showGriefSetup,
+    showMoodSetup,
     showSettings,
-    selectedGriefTypes,
+    newPostText,
+    mediaFiles,
+    mediaPreviews,
     posts,
     onlineCount,
     isLoading,
     isSubmitting,
     error,
-
-    // About & Other Loss
+    fileInputRef,
     aboutText,
     setAboutText,
     isEditingAbout,
@@ -534,20 +526,20 @@ export function useDashboardLogic(): DashboardUIProps {
     isExpanded,
     setIsExpanded,
     saveAbout,
-    otherLossText,
-    setOtherLossText,
-
-    // Callbacks
-    toggleGriefType,
-    handleSaveGriefTypes,
-    handlePostSubmit,
+    currentMood,
+    setCurrentMood,
+    handleSaveMoodSetup,
+    handleFileChange,
+    removeMedia,
+    handlePostSubmit, // ✅ Now matches interface
     toggleAcceptsCalls,
     toggleAcceptsVideoCalls,
     toggleAnonymity,
     updateFullName,
     updateAvatar,
     setShowSettings,
-    setShowGriefSetup,
+    setShowMoodSetup,
+    setNewPostText,
     onConnectClick,
     onCommunitiesClick,
   };
