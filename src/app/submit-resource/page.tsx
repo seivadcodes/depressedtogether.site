@@ -35,7 +35,7 @@ export default function SubmitResourcePage() {
     contentWarnings: [] as string[],
     communitySource: '',
     bookAuthor: '',
-    bookQuote: '',
+   
     externalUrl: '',
     videoType: 'link' as 'link' | 'upload',
     videoFile: null as File | null,
@@ -187,15 +187,11 @@ export default function SubmitResourcePage() {
     if (!formData.excerpt.trim() || formData.excerpt.length < 20) {
       return 'Please share a meaningful reflection (min 20 characters).';
     }
-    if (formData.tags.length === 0) {
-      return 'Please add at least one tag.';
-    }
+   
     
     if (formData.type === 'Book') {
       if (!formData.bookAuthor.trim()) return 'Book author is required.';
-      if (!formData.bookQuote.trim() || formData.bookQuote.length > 150) {
-        return 'Book quote is required and should be under 150 characters.';
-      }
+     
       try {
         new URL(formData.externalUrl);
       } catch {
@@ -276,7 +272,7 @@ export default function SubmitResourcePage() {
           content_warnings: formData.contentWarnings,
           community_source: formData.communitySource || null,
           book_author: formData.type === 'Book' ? formData.bookAuthor.trim() : null,
-          book_quote: formData.type === 'Book' ? formData.bookQuote.trim() : null,
+          
           external_url: formData.type === 'Video' && formData.videoType === 'link'
             ? formData.externalUrl.trim()
             : formData.type !== 'Video' && formData.externalUrl
@@ -302,7 +298,7 @@ export default function SubmitResourcePage() {
         contentWarnings: [],
         communitySource: '',
         bookAuthor: '',
-        bookQuote: '',
+     
         externalUrl: '',
         videoType: 'link',
         videoFile: null,
@@ -755,34 +751,7 @@ export default function SubmitResourcePage() {
                   />
                 </div>
 
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ 
-                    display: 'block', 
-                    marginBottom: '0.5rem', 
-                    fontWeight: '600',
-                    color: '#1e40af'
-                  }}>
-                    Short Quote (max 150 chars)
-                  </label>
-                  <input
-                    name="bookQuote"
-                    value={formData.bookQuote}
-                    onChange={handleChange}
-                    placeholder="e.g., 'The opposite of depression is not happiness, but vitality.'"
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '0.75rem',
-                      backgroundColor: 'white',
-                      color: '#374151',
-                      fontSize: '0.875rem',
-                      transition: 'all 150ms ease-in-out',
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                  />
-                </div>
+                
 
                 <div style={{ marginBottom: '1.5rem' }}>
                   <label style={{ 
@@ -936,7 +905,7 @@ export default function SubmitResourcePage() {
             </div>
 
             {/* Tags */}
-            <div style={{ marginBottom: '1.5rem' }}>
+            {/*<div style={{ marginBottom: '1.5rem' }}>
               <label style={{ 
                 display: 'block', 
                 marginBottom: '0.5rem', 
@@ -1026,7 +995,7 @@ export default function SubmitResourcePage() {
               <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
                 Suggestions: {TAG_SUGGESTIONS.slice(0, 6).join(', ')}
               </div>
-            </div>
+            </div>*/}
 
             {/* Content Warnings */}
             <div style={{ marginBottom: '2rem' }}>

@@ -53,7 +53,7 @@ export default function ResourcesPage() {
   const [error, setError] = useState<string | null>(null);
   const [userVotes, setUserVotes] = useState<Record<string, 'helpful' | 'unhelpful'>>({});
   const [resourceCounts, setResourceCounts] = useState<Record<string, { helpful: number; unhelpful: number }>>({});
-  
+
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<FilterType>(ALL_TYPES);
@@ -64,7 +64,7 @@ export default function ResourcesPage() {
       if (selectedType !== ALL_TYPES && resource.type !== selectedType) {
         return false;
       }
-      
+
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
@@ -74,7 +74,7 @@ export default function ResourcesPage() {
           (resource.community_source && resource.community_source.toLowerCase().includes(query))
         );
       }
-      
+
       return true;
     });
   }, [resources, searchQuery, selectedType]);
@@ -264,13 +264,13 @@ export default function ResourcesPage() {
 
   if (loading) {
     return (
-      <div style={{ 
-        minHeight: '100vh', 
-        backgroundColor: '#f0f7ff', 
-        padding: '1.5rem 1rem 3.5rem', 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center' 
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: '#f0f7ff',
+        padding: '1.5rem 1rem 3.5rem',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center'
       }}>
         <p style={{ color: '#1e40af' }}>Loading resources...</p>
       </div>
@@ -279,17 +279,17 @@ export default function ResourcesPage() {
 
   if (error) {
     return (
-      <div style={{ 
-        minHeight: '100vh', 
-        backgroundColor: '#f0f7ff', 
-        padding: '1.5rem 2rem' 
+      <div style={{
+        minHeight: '100vh',
+        backgroundColor: '#f0f7ff',
+        padding: '1.5rem 2rem'
       }}>
-        <div style={{ 
-          maxWidth: '768px', 
-          margin: '0 auto', 
-          backgroundColor: '#fee2e2', 
-          padding: '1rem', 
-          borderRadius: '0.5rem' 
+        <div style={{
+          maxWidth: '768px',
+          margin: '0 auto',
+          backgroundColor: '#fee2e2',
+          padding: '1rem',
+          borderRadius: '0.5rem'
         }}>
           <p style={{ color: '#b91c1c' }}>{error}</p>
         </div>
@@ -298,10 +298,10 @@ export default function ResourcesPage() {
   }
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: '#f0f7ff', 
-      padding: '1.5rem 1rem 3.5rem' 
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#f0f7ff',
+      padding: '1.5rem 1rem 3.5rem'
     }}>
       <div style={{ maxWidth: '768px', margin: '0 auto' }}>
         {/* Header */}
@@ -321,9 +321,9 @@ export default function ResourcesPage() {
           >
             <BookOpen size={18} />
           </div>
-          <h1 style={{ 
-            fontSize: '1.875rem', 
-            fontWeight: '700', 
+          <h1 style={{
+            fontSize: '1.875rem',
+            fontWeight: '700',
             color: '#1e40af',
             background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
             WebkitBackgroundClip: 'text',
@@ -339,15 +339,15 @@ export default function ResourcesPage() {
         {/* Search Bar */}
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ position: 'relative' }}>
-            <Search 
-              size={20} 
-              style={{ 
-                position: 'absolute', 
-                left: '0.75rem', 
-                top: '50%', 
-                transform: 'translateY(-50%)', 
-                color: '#6b7280' 
-              }} 
+            <Search
+              size={20}
+              style={{
+                position: 'absolute',
+                left: '0.75rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: '#6b7280'
+              }}
             />
             <input
               type="text"
@@ -422,10 +422,10 @@ export default function ResourcesPage() {
           </div>
 
           {(searchQuery || selectedType !== ALL_TYPES) && (
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between', 
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
               marginTop: '1rem',
               padding: '0.75rem',
               backgroundColor: 'rgba(59, 130, 246, 0.05)',
@@ -466,11 +466,11 @@ export default function ResourcesPage() {
         </div>
 
         {filteredResources.length === 0 ? (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '3rem', 
-            backgroundColor: 'white', 
-            borderRadius: '1rem', 
+          <div style={{
+            textAlign: 'center',
+            padding: '3rem',
+            backgroundColor: 'white',
+            borderRadius: '1rem',
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
             border: '1px solid rgba(59, 130, 246, 0.1)'
           }}>
@@ -513,7 +513,7 @@ export default function ResourcesPage() {
                 unhelpful: 0,
               };
 
-              const bookCoverSrc = resource.book_cover_url 
+              const bookCoverSrc = resource.book_cover_url
                 ? `/api/media/${resource.book_cover_url}`
                 : null;
 
@@ -558,10 +558,10 @@ export default function ResourcesPage() {
                     </span>
                   </div>
 
-                  <h2 style={{ 
-                    fontSize: '1.25rem', 
-                    fontWeight: '700', 
-                    color: '#1e40af', 
+                  <h2 style={{
+                    fontSize: '1.25rem',
+                    fontWeight: '700',
+                    color: '#1e40af',
                     marginBottom: '0.75rem',
                     lineHeight: '1.4'
                   }}>
@@ -593,34 +593,22 @@ export default function ResourcesPage() {
                         </div>
                       )}
                       {resource.book_author && (
-                        <p style={{ 
-                          color: '#4b5563', 
-                          fontStyle: 'italic', 
+                        <p style={{
+                          color: '#4b5563',
+                          fontStyle: 'italic',
                           marginBottom: '0.5rem',
                           fontSize: '0.95rem'
                         }}>
                           by {resource.book_author}
                         </p>
                       )}
-                      {resource.book_quote && (
-                      <p style={{ 
-  color: '#374151', 
-  fontStyle: 'normal', 
-  margin: 0,
-  padding: '0.75rem',
-  backgroundColor: '#f8fafc',
-  borderRadius: '0.5rem',
-  borderLeft: '3px solid #3b82f6'
-}}>
-  &ldquo;{resource.book_quote}&rdquo;
-</p>
-                      )}
+                     
                     </div>
                   )}
 
                   {resource.type !== 'Book' && resource.excerpt && (
-                    <p style={{ 
-                      color: '#4b5563', 
+                    <p style={{
+                      color: '#4b5563',
                       marginBottom: '1rem',
                       lineHeight: '1.6'
                     }}>
@@ -629,9 +617,9 @@ export default function ResourcesPage() {
                   )}
 
                   {resource.community_source && (
-                    <p style={{ 
-                      fontSize: '0.875rem', 
-                      color: '#6b7280', 
+                    <p style={{
+                      fontSize: '0.875rem',
+                      color: '#6b7280',
                       marginBottom: '1rem',
                       padding: '0.5rem 0.75rem',
                       backgroundColor: '#f8fafc',
@@ -644,17 +632,17 @@ export default function ResourcesPage() {
 
                   {resource.content_warnings.length > 0 && (
                     <div style={{ marginBottom: '1rem' }}>
-                      <div style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '0.375rem', 
-                        marginBottom: '0.5rem' 
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.375rem',
+                        marginBottom: '0.5rem'
                       }}>
                         <AlertTriangle size={14} style={{ color: '#8b5cf6' }} />
-                        <span style={{ 
-                          fontSize: '0.875rem', 
-                          fontWeight: '600', 
-                          color: '#8b5cf6' 
+                        <span style={{
+                          fontSize: '0.875rem',
+                          fontWeight: '600',
+                          color: '#8b5cf6'
                         }}>
                           Content Warnings
                         </span>
@@ -696,11 +684,11 @@ export default function ResourcesPage() {
                         />
                       ) : resource.video_type === 'link' && resource.external_url ? (
                         getYouTubeEmbedUrl(resource.external_url) ? (
-                          <div style={{ 
-                            position: 'relative', 
-                            paddingBottom: '56.25%', 
-                            height: 0, 
-                            overflow: 'hidden', 
+                          <div style={{
+                            position: 'relative',
+                            paddingBottom: '56.25%',
+                            height: 0,
+                            overflow: 'hidden',
                             borderRadius: '0.75rem',
                             border: '1px solid #e5e7eb'
                           }}>
@@ -791,10 +779,10 @@ export default function ResourcesPage() {
                   )}
 
                   {/* Voting Controls */}
-                  <div style={{ 
-                    marginTop: '1.5rem', 
-                    display: 'flex', 
-                    gap: '0.75rem', 
+                  <div style={{
+                    marginTop: '1.5rem',
+                    display: 'flex',
+                    gap: '0.75rem',
                     alignItems: 'center',
                     paddingTop: '1rem',
                     borderTop: '1px solid #e5e7eb'
