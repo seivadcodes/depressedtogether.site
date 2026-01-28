@@ -202,15 +202,15 @@ export default function SubmitResourcePage() {
   };
 
   const uploadToolImage = async (file: File) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('User not authenticated');
-    const fileName = `${user.id}/${Date.now()}_tool_${file.name}`;
-    const { error } = await supabase.storage
-      .from('tool-images')
-      .upload(fileName, file, { upsert: true });
-    if (error) throw error;
-    return `tool-images/${fileName}`;
-  };
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('User not authenticated');
+  const fileName = `${user.id}/${Date.now()}_tool_${file.name}`;
+  const { error } = await supabase.storage
+    .from('book-covers') // 👈 same bucket as book covers
+    .upload(fileName, file, { upsert: true });
+  if (error) throw error;
+  return `book-covers/${fileName}`; // 👈 consistent path
+};
 
   const validate = () => {
     if (!formData.title.trim() || formData.title.length < 5) {
