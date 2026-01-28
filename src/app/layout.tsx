@@ -17,10 +17,8 @@ export default async function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className={`${inter.className} flex flex-col h-full bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 text-stone-900`}>
-        {/* ✅ Analytics must be placed directly inside <body>, before children */}
-        <Analytics />
-        
         <ClientLayout user={user}>{children}</ClientLayout>
+        <Analytics />
       </body>
     </html>
   );
