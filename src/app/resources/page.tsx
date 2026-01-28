@@ -30,6 +30,7 @@ interface Resource {
   external_url: string | null;
   created_at: string;
   book_cover_url: string | null;
+  tool_image_url: string | null; // <-- added
   user_id: string;
   video_url: string | null;
   video_type: 'link' | 'upload';
@@ -48,7 +49,7 @@ type FilterType = ResourceType | 'All';
 
 export default function ResourcesPage() {
   const supabase = createClient();
-  const [resources, setResources] = useState<Resource[]>([]);
+ const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userVotes, setUserVotes] = useState<Record<string, 'helpful' | 'unhelpful'>>({});
@@ -517,6 +518,10 @@ export default function ResourcesPage() {
                 ? `/api/media/${resource.book_cover_url}`
                 : null;
 
+              const toolImageSrc = resource.tool_image_url
+                ? `/api/media/${resource.tool_image_url}`
+                : null;
+
               const videoSrc = resource.video_url && resource.video_type === 'upload'
                 ? `/api/media/${resource.video_url}`
                 : null;
@@ -568,6 +573,7 @@ export default function ResourcesPage() {
                     {resource.title}
                   </h2>
 
+                  {/* Book Cover */}
                   {resource.type === 'Book' && (
                     <div style={{ marginBottom: '1rem' }}>
                       {bookCoverSrc && (
@@ -602,10 +608,36 @@ export default function ResourcesPage() {
                           by {resource.book_author}
                         </p>
                       )}
-                     
                     </div>
                   )}
 
+                  {/* Tool Image */}
+                  {resource.type === 'Tool' && toolImageSrc && (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <div
+                        style={{
+                          width: '200px',
+                          height: '200px',
+                          marginBottom: '0.75rem',
+                          overflow: 'hidden',
+                          borderRadius: '0.5rem',
+                          border: '1px solid #e5e7eb',
+                          position: 'relative',
+                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                        }}
+                      >
+                        <Image
+                          src={toolImageSrc}
+                          alt={`Preview for ${resource.title}`}
+                          fill
+                          style={{ objectFit: 'contain', backgroundColor: '#f9fafb' }}
+                          unoptimized
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Excerpt (for non-book types or if no cover) */}
                   {resource.type !== 'Book' && resource.excerpt && (
                     <p style={{
                       color: '#4b5563',
@@ -668,6 +700,7 @@ export default function ResourcesPage() {
                     </div>
                   )}
 
+                  {/* Video Display */}
                   {resource.type === 'Video' && (
                     <div style={{ marginBottom: '1rem' }}>
                       {resource.video_type === 'upload' && videoSrc ? (
@@ -745,6 +778,7 @@ export default function ResourcesPage() {
                     </div>
                   )}
 
+                  {/* External URL for non-video, non-book, non-tool (or fallback) */}
                   {resource.external_url && resource.type !== 'Video' && (
                     <div style={{ marginTop: '1rem' }}>
                       <Link

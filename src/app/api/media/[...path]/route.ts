@@ -13,6 +13,7 @@ const ALLOWED_BUCKETS = [
   'community-files',
   'book-covers',
   'videos',
+  'tool-images',
   'posts',
   'angels',
 ] as const;

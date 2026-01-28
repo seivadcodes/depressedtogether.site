@@ -1,6 +1,5 @@
 // src/app/submit-resource/page.tsx
 'use client';
-
 import { useState, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
@@ -24,6 +23,7 @@ const TAG_SUGGESTIONS = [
 export default function SubmitResourcePage() {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toolImageInputRef = useRef<HTMLInputElement>(null);
 
   type ResourceType = 'Story' | 'Guide' | 'Tool' | 'Video' | 'Book';
 
@@ -35,13 +35,14 @@ export default function SubmitResourcePage() {
     contentWarnings: [] as string[],
     communitySource: '',
     bookAuthor: '',
-   
     externalUrl: '',
     videoType: 'link' as 'link' | 'upload',
     videoFile: null as File | null,
     videoPreview: '' as string,
     bookCoverFile: null as File | null,
     bookCoverPreview: '' as string,
+    toolImageFile: null as File | null,
+    toolImagePreview: '' as string,
   });
 
   const [newTag, setNewTag] = useState('');
@@ -90,23 +91,19 @@ export default function SubmitResourcePage() {
 
   const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null;
-    
     if (file) {
       const validTypes = ['video/mp4', 'video/webm', 'video/quicktime'];
       const maxSize = 100 * 1024 * 1024; // 100MB
-      
       if (!validTypes.includes(file.type)) {
         setErrorMessage('Invalid file type. Please upload MP4, WebM, or MOV files.');
         setSubmitStatus('error');
         return;
       }
-      
       if (file.size > maxSize) {
         setErrorMessage('File too large. Maximum size is 100MB.');
         setSubmitStatus('error');
         return;
       }
-      
       const previewUrl = URL.createObjectURL(file);
       setFormData(prev => ({
         ...prev,
@@ -127,7 +124,6 @@ export default function SubmitResourcePage() {
     if (file) {
       const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
       const maxSize = 5 * 1024 * 1024; // 5MB
-
       if (!validTypes.includes(file.type)) {
         setErrorMessage('Please upload a JPG, PNG, or WebP image.');
         setSubmitStatus('error');
@@ -138,7 +134,6 @@ export default function SubmitResourcePage() {
         setSubmitStatus('error');
         return;
       }
-
       const previewUrl = URL.createObjectURL(file);
       setFormData(prev => ({
         ...prev,
@@ -154,15 +149,43 @@ export default function SubmitResourcePage() {
     }
   };
 
+  const handleToolImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file) {
+      const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (!validTypes.includes(file.type)) {
+        setErrorMessage('Please upload a JPG, PNG, or WebP image.');
+        setSubmitStatus('error');
+        return;
+      }
+      if (file.size > maxSize) {
+        setErrorMessage('Image too large. Max size is 5MB.');
+        setSubmitStatus('error');
+        return;
+      }
+      const previewUrl = URL.createObjectURL(file);
+      setFormData(prev => ({
+        ...prev,
+        toolImageFile: file,
+        toolImagePreview: previewUrl,
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        toolImageFile: null,
+        toolImagePreview: '',
+      }));
+    }
+  };
+
   const uploadBookCover = async (file: File) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
-
     const fileName = `${user.id}/${Date.now()}_cover_${file.name}`;
     const { error } = await supabase.storage
       .from('book-covers')
       .upload(fileName, file, { upsert: true });
-
     if (error) throw error;
     return `book-covers/${fileName}`;
   };
@@ -170,14 +193,23 @@ export default function SubmitResourcePage() {
   const uploadVideo = async (file: File) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
-
     const fileName = `${user.id}/${Date.now()}_${file.name}`;
     const { error } = await supabase.storage
       .from('videos')
       .upload(fileName, file, { upsert: true, contentType: file.type });
-
     if (error) throw error;
     return `videos/${fileName}`;
+  };
+
+  const uploadToolImage = async (file: File) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+    const fileName = `${user.id}/${Date.now()}_tool_${file.name}`;
+    const { error } = await supabase.storage
+      .from('tool-images')
+      .upload(fileName, file, { upsert: true });
+    if (error) throw error;
+    return `tool-images/${fileName}`;
   };
 
   const validate = () => {
@@ -187,18 +219,14 @@ export default function SubmitResourcePage() {
     if (!formData.excerpt.trim() || formData.excerpt.length < 20) {
       return 'Please share a meaningful reflection (min 20 characters).';
     }
-   
-    
     if (formData.type === 'Book') {
       if (!formData.bookAuthor.trim()) return 'Book author is required.';
-     
       try {
         new URL(formData.externalUrl);
       } catch {
         return 'Please provide a valid book link.';
       }
     }
-    
     if (formData.type === 'Video') {
       if (formData.videoType === 'link') {
         if (!formData.externalUrl.trim()) {
@@ -215,7 +243,6 @@ export default function SubmitResourcePage() {
         }
       }
     }
-    
     if (formData.externalUrl && formData.type !== 'Book' && formData.type !== 'Video') {
       try {
         new URL(formData.externalUrl);
@@ -223,7 +250,6 @@ export default function SubmitResourcePage() {
         return 'Please provide a valid URL.';
       }
     }
-    
     return null;
   };
 
@@ -239,6 +265,11 @@ export default function SubmitResourcePage() {
     let bookCoverPath = null;
     if (formData.type === 'Book' && formData.bookCoverFile) {
       bookCoverPath = await uploadBookCover(formData.bookCoverFile);
+    }
+
+    let toolImagePath = null;
+    if (formData.type === 'Tool' && formData.toolImageFile) {
+      toolImagePath = await uploadToolImage(formData.toolImageFile);
     }
 
     setIsSubmitting(true);
@@ -268,11 +299,11 @@ export default function SubmitResourcePage() {
           type: formData.type,
           category: CATEGORIES[formData.type],
           book_cover_url: bookCoverPath,
+          tool_image_url: toolImagePath,
           tags: formData.tags,
           content_warnings: formData.contentWarnings,
           community_source: formData.communitySource || null,
           book_author: formData.type === 'Book' ? formData.bookAuthor.trim() : null,
-          
           external_url: formData.type === 'Video' && formData.videoType === 'link'
             ? formData.externalUrl.trim()
             : formData.type !== 'Video' && formData.externalUrl
@@ -289,7 +320,6 @@ export default function SubmitResourcePage() {
       }
 
       setSubmitStatus('success');
-      
       setFormData({
         title: '',
         excerpt: '',
@@ -298,15 +328,15 @@ export default function SubmitResourcePage() {
         contentWarnings: [],
         communitySource: '',
         bookAuthor: '',
-     
         externalUrl: '',
         videoType: 'link',
         videoFile: null,
         videoPreview: '',
         bookCoverFile: null,
         bookCoverPreview: '',
+        toolImageFile: null,
+        toolImagePreview: '',
       });
-      
     } catch (error: unknown) {
       let message = 'Failed to submit. Please try again.';
       if (error instanceof Error) {
@@ -322,20 +352,20 @@ export default function SubmitResourcePage() {
   };
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      backgroundColor: '#f0f7ff', 
+    <div style={{
+      minHeight: '100vh',
+      backgroundColor: '#f0f7ff',
       padding: '1.5rem 1rem',
       background: 'linear-gradient(135deg, #f0f7ff 0%, #dbeafe 50%, #bfdbfe 100%)',
     }}>
-      <div style={{ 
-        maxWidth: '640px', 
+      <div style={{
+        maxWidth: '640px',
         margin: '0 auto',
         position: 'relative',
         zIndex: 1,
       }}>
-        <div style={{ 
-          textAlign: 'center', 
+        <div style={{
+          textAlign: 'center',
           marginBottom: '2rem',
           background: 'rgba(255, 255, 255, 0.9)',
           backdropFilter: 'blur(10px)',
@@ -358,9 +388,9 @@ export default function SubmitResourcePage() {
           }}>
             <Brain size={20} />
           </div>
-          <h1 style={{ 
-            fontSize: '1.875rem', 
-            fontWeight: '800', 
+          <h1 style={{
+            fontSize: '1.875rem',
+            fontWeight: '800',
             color: '#1e40af',
             background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
             WebkitBackgroundClip: 'text',
@@ -375,11 +405,11 @@ export default function SubmitResourcePage() {
         </div>
 
         {submitStatus === 'success' ? (
-          <div style={{ 
-            backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+          <div style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
             backdropFilter: 'blur(10px)',
-            padding: '1.5rem', 
-            borderRadius: '1rem', 
+            padding: '1.5rem',
+            borderRadius: '1rem',
             textAlign: 'center',
             border: '1px solid rgba(59, 130, 246, 0.2)',
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
@@ -402,10 +432,10 @@ export default function SubmitResourcePage() {
             </p>
             <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem' }}>
               Approved resources appear on the{' '}
-              <Link 
-                href="/resources" 
-                style={{ 
-                  color: '#3b82f6', 
+              <Link
+                href="/resources"
+                style={{
+                  color: '#3b82f6',
                   fontWeight: '600',
                   textDecoration: 'none',
                 }}
@@ -418,23 +448,23 @@ export default function SubmitResourcePage() {
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ 
-            backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+          <form onSubmit={handleSubmit} style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
             backdropFilter: 'blur(10px)',
-            padding: '1.5rem', 
-            borderRadius: '1rem', 
+            padding: '1.5rem',
+            borderRadius: '1rem',
             boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
             border: '1px solid rgba(59, 130, 246, 0.2)',
           }}>
             {submitStatus === 'error' && (
-              <div style={{ 
-                backgroundColor: '#fee2e2', 
-                color: '#b91c1c', 
-                padding: '0.75rem', 
-                borderRadius: '0.5rem', 
-                marginBottom: '1rem', 
-                display: 'flex', 
-                gap: '0.5rem', 
+              <div style={{
+                backgroundColor: '#fee2e2',
+                color: '#b91c1c',
+                padding: '0.75rem',
+                borderRadius: '0.5rem',
+                marginBottom: '1rem',
+                display: 'flex',
+                gap: '0.5rem',
                 alignItems: 'flex-start',
                 border: '1px solid #fecaca',
               }}>
@@ -445,9 +475,9 @@ export default function SubmitResourcePage() {
 
             {/* Type */}
             <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
+              <label style={{
+                display: 'block',
+                marginBottom: '0.5rem',
                 fontWeight: '600',
                 color: '#1e40af'
               }}>
@@ -481,9 +511,9 @@ export default function SubmitResourcePage() {
 
             {/* Title */}
             <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
+              <label style={{
+                display: 'block',
+                marginBottom: '0.5rem',
                 fontWeight: '600',
                 color: '#1e40af'
               }}>
@@ -494,8 +524,8 @@ export default function SubmitResourcePage() {
                 value={formData.title}
                 onChange={handleChange}
                 placeholder={
-                  formData.type === 'Book' 
-                    ? "Book title" 
+                  formData.type === 'Book'
+                    ? "Book title"
                     : formData.type === 'Video'
                       ? "Video title"
                       : "A meaningful title about depression support"
@@ -517,9 +547,9 @@ export default function SubmitResourcePage() {
 
             {/* Excerpt */}
             <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
+              <label style={{
+                display: 'block',
+                marginBottom: '0.5rem',
                 fontWeight: '600',
                 color: '#1e40af'
               }}>
@@ -560,10 +590,10 @@ export default function SubmitResourcePage() {
 
             {/* Video Options */}
             {formData.type === 'Video' && (
-              <div style={{ 
-                marginBottom: '1.5rem', 
-                border: '1px solid rgba(59, 130, 246, 0.2)', 
-                borderRadius: '0.75rem', 
+              <div style={{
+                marginBottom: '1.5rem',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+                borderRadius: '0.75rem',
                 padding: '1.25rem',
                 backgroundColor: 'rgba(219, 234, 254, 0.3)',
               }}>
@@ -613,12 +643,11 @@ export default function SubmitResourcePage() {
                     <span style={{ fontSize: '0.875rem' }}>Upload</span>
                   </button>
                 </div>
-
                 {formData.videoType === 'link' ? (
                   <div>
-                    <label style={{ 
-                      display: 'block', 
-                      marginBottom: '0.5rem', 
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '0.5rem',
                       fontWeight: '600',
                       color: '#1e40af'
                     }}>
@@ -650,17 +679,17 @@ export default function SubmitResourcePage() {
                   </div>
                 ) : (
                   <div>
-                    <label style={{ 
-                      display: 'block', 
-                      marginBottom: '0.5rem', 
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '0.5rem',
                       fontWeight: '600',
                       color: '#1e40af'
                     }}>
                       Upload Video (max 100MB)
                     </label>
-                    <div 
-                      style={{ 
-                        border: '2px dashed #d1d5db', 
+                    <div
+                      style={{
+                        border: '2px dashed #d1d5db',
                         borderRadius: '0.75rem',
                         padding: '1.5rem',
                         textAlign: 'center',
@@ -681,19 +710,18 @@ export default function SubmitResourcePage() {
                         style={{ display: 'none' }}
                         onChange={handleVideoFileChange}
                       />
-                      
                       {formData.videoPreview ? (
                         <div>
-                          <video 
-                            src={formData.videoPreview} 
+                          <video
+                            src={formData.videoPreview}
                             controls
-                            style={{ 
+                            style={{
                               maxWidth: '100%',
                               maxHeight: '150px',
                               borderRadius: '0.5rem',
                               marginBottom: '0.5rem',
                               backgroundColor: '#000',
-                            }} 
+                            }}
                           />
                           <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#1e40af' }}>
                             {formData.videoFile?.name}
@@ -723,9 +751,9 @@ export default function SubmitResourcePage() {
             {formData.type === 'Book' && (
               <>
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ 
-                    display: 'block', 
-                    marginBottom: '0.5rem', 
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
                     fontWeight: '600',
                     color: '#1e40af'
                   }}>
@@ -750,13 +778,10 @@ export default function SubmitResourcePage() {
                     onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                   />
                 </div>
-
-                
-
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ 
-                    display: 'block', 
-                    marginBottom: '0.5rem', 
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
                     fontWeight: '600',
                     color: '#1e40af'
                   }}>
@@ -782,11 +807,10 @@ export default function SubmitResourcePage() {
                     onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
                   />
                 </div>
-
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ 
-                    display: 'block', 
-                    marginBottom: '0.5rem', 
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
                     fontWeight: '600',
                     color: '#1e40af'
                   }}>
@@ -841,12 +865,71 @@ export default function SubmitResourcePage() {
               </>
             )}
 
+            {/* Tool Image Upload */}
+            {formData.type === 'Tool' && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  fontWeight: '600',
+                  color: '#1e40af'
+                }}>
+                  Tool Image (optional)
+                </label>
+                <div
+                  style={{
+                    border: '2px dashed #d1d5db',
+                    borderRadius: '0.75rem',
+                    padding: '1.25rem',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    backgroundColor: '#f9fafb',
+                    transition: 'all 150ms ease-in-out',
+                  }}
+                  onClick={() => toolImageInputRef.current?.click()}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = '#3b82f6'}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = '#d1d5db'}
+                >
+                  <input
+                    ref={toolImageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={handleToolImageChange}
+                  />
+                  {formData.toolImagePreview ? (
+                    <Image
+                      src={formData.toolImagePreview}
+                      alt="Tool preview"
+                      height={150}
+                      width={150}
+                      style={{
+                        maxHeight: '150px',
+                        maxWidth: '100%',
+                        borderRadius: '0.5rem',
+                        objectFit: 'contain',
+                        margin: '0 auto',
+                      }}
+                      unoptimized
+                    />
+                  ) : (
+                    <div>
+                      <Upload size={24} style={{ color: '#9ca3af', margin: '0 auto 0.5rem' }} />
+                      <p style={{ fontSize: '0.875rem', color: '#4b5563' }}>
+                        Click to upload image (JPG/PNG, max 5MB)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* External URL for non-video, non-book resources */}
             {formData.type !== 'Book' && formData.type !== 'Video' && (
               <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ 
-                  display: 'block', 
-                  marginBottom: '0.5rem', 
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
                   fontWeight: '600',
                   color: '#1e40af'
                 }}>
@@ -876,9 +959,9 @@ export default function SubmitResourcePage() {
 
             {/* Community Source */}
             <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
+              <label style={{
+                display: 'block',
+                marginBottom: '0.5rem',
                 fontWeight: '600',
                 color: '#1e40af'
               }}>
@@ -904,104 +987,11 @@ export default function SubmitResourcePage() {
               />
             </div>
 
-            {/* Tags */}
-            {/*<div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
-                fontWeight: '600',
-                color: '#1e40af'
-              }}>
-                Tags (up to 5)
-              </label>
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <input
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleTagAdd())}
-                  placeholder="Add a tag (e.g., depression, self-care)"
-                  style={{
-                    flex: 1,
-                    padding: '0.5rem 0.75rem',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '9999px',
-                    fontSize: '0.875rem',
-                    backgroundColor: 'white',
-                    color: '#374151',
-                    transition: 'all 150ms ease-in-out',
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                  onBlur={(e) => e.target.style.borderColor = '#d1d5db'}
-                />
-                <button
-                  type="button"
-                  onClick={handleTagAdd}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    backgroundColor: '#dbeafe',
-                    border: '1px solid #3b82f6',
-                    borderRadius: '9999px',
-                    fontWeight: '600',
-                    color: '#1e40af',
-                    cursor: 'pointer',
-                    transition: 'all 150ms ease-in-out',
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#3b82f6'}
-                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#dbeafe'}
-                >
-                  Add
-                </button>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
-                {formData.tags.map(tag => (
-                  <span
-                    key={tag}
-                    style={{
-                      padding: '0.375rem 0.75rem',
-                      backgroundColor: '#dbeafe',
-                      color: '#1e40af',
-                      borderRadius: '9999px',
-                      fontSize: '0.75rem',
-                      fontWeight: '500',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.375rem',
-                      border: '1px solid rgba(59, 130, 246, 0.3)',
-                    }}
-                  >
-                    {tag}
-                    <button
-                      type="button"
-                      onClick={() => handleTagRemove(tag)}
-                      style={{ 
-                        background: 'none', 
-                        border: 'none', 
-                        color: '#1e40af', 
-                        fontSize: '1rem',
-                        cursor: 'pointer',
-                        padding: 0,
-                        width: '16px',
-                        height: '16px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
-                Suggestions: {TAG_SUGGESTIONS.slice(0, 6).join(', ')}
-              </div>
-            </div>*/}
-
             {/* Content Warnings */}
             <div style={{ marginBottom: '2rem' }}>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
+              <label style={{
+                display: 'block',
+                marginBottom: '0.5rem',
                 fontWeight: '600',
                 color: '#1e40af'
               }}>
@@ -1066,10 +1056,10 @@ export default function SubmitResourcePage() {
                     <button
                       type="button"
                       onClick={() => handleWarningRemove(warning)}
-                      style={{ 
-                        background: 'none', 
-                        border: 'none', 
-                        color: '#7c3aed', 
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#7c3aed',
                         fontSize: '1rem',
                         cursor: 'pointer',
                         padding: 0,
@@ -1093,8 +1083,8 @@ export default function SubmitResourcePage() {
               style={{
                 width: '100%',
                 padding: '0.875rem',
-                background: isSubmitting || isUploading 
-                  ? 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)' 
+                background: isSubmitting || isUploading
+                  ? 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)'
                   : 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
                 color: 'white',
                 border: 'none',
@@ -1125,11 +1115,11 @@ export default function SubmitResourcePage() {
               {isUploading ? (
                 <>
                   <span>Uploading video...</span>
-                  <div style={{ 
-                    width: '1rem', 
-                    height: '1rem', 
-                    border: '2px solid white', 
-                    borderTopColor: 'transparent', 
+                  <div style={{
+                    width: '1rem',
+                    height: '1rem',
+                    border: '2px solid white',
+                    borderTopColor: 'transparent',
                     borderRadius: '50%',
                     animation: 'spin 1s linear infinite'
                   }} />
@@ -1146,10 +1136,10 @@ export default function SubmitResourcePage() {
           </form>
         )}
 
-        <div style={{ 
-          marginTop: '2rem', 
-          textAlign: 'center', 
-          fontSize: '0.875rem', 
+        <div style={{
+          marginTop: '2rem',
+          textAlign: 'center',
+          fontSize: '0.875rem',
           color: '#4b5563',
           padding: '1rem',
           backgroundColor: 'rgba(255, 255, 255, 0.9)',
@@ -1157,13 +1147,12 @@ export default function SubmitResourcePage() {
           borderRadius: '0.75rem',
           border: '1px solid rgba(59, 130, 246, 0.2)',
         }}>
-          <p><strong>Important:</strong> All submissions are reviewed before appearing publicly..</p>
+          <p><strong>Important:</strong> All submissions are reviewed before appearing publicly.</p>
           <p style={{ marginTop: '0.25rem' }}>
             Video uploads are stored securely and only accessible after approval.
           </p>
         </div>
       </div>
-
       <style jsx global>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
