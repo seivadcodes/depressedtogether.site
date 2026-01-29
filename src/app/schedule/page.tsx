@@ -141,7 +141,7 @@ export default function EventsPage() {
     <div style={styles.pageContainer}>
       <div style={styles.headerContainer}>
         <h1 style={styles.heading}>Upcoming Events</h1>
-        <button 
+        <button
           onClick={handleCreateEvent}
           style={styles.createEventButton}
         >
@@ -152,7 +152,7 @@ export default function EventsPage() {
       {events.length === 0 ? (
         <div style={styles.noEventsContainer}>
           <p style={styles.noEventsText}>No upcoming events.</p>
-          <button 
+          <button
             onClick={handleCreateEvent}
             style={styles.createEventButtonLarge}
           >
@@ -182,6 +182,7 @@ export default function EventsPage() {
                       fill
                       style={styles.image}
                       sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                      unoptimized // 👈 ADD THIS
                     />
                   </div>
                 )}
