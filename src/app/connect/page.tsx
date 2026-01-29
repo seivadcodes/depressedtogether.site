@@ -521,12 +521,14 @@ const [otherParticipantName, setOtherParticipantName] = useState<string | null>(
   const cancelOneOnOne = async () => {
     if (!activeOneOnOne || isRedirectingRef.current) return;
     setActiveOneOnOne(null);
+
     try {
       const { error } = await supabase
         .from('quick_connect_requests')
         .update({ status: 'completed' })
         .eq('id', activeOneOnOne.id)
         .eq('status', 'available');
+
       if (!error) {
         await supabase
           .from('notifications')

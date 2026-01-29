@@ -1,70 +1,78 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase'; // Make sure this matches your setup
-import { useAuth } from '@/hooks/useAuth'; // Reuse your auth hook
 import { Brain, Heart, Users, MessageCircle } from 'lucide-react';
 
 const createSession = async () => {
   await new Promise(resolve => setTimeout(resolve, 800));
 };
 
+// Smart formatter: never shows exact numbers above 300
+const formatOnlineCount = (count: number): string => {
+  if (count < 100) return count.toString();
+  if (count < 300) return `${Math.floor(count / 10) * 10}+`;
+  if (count < 330) return '300+';
+  if (count < 370) return '350+';
+  if (count < 410) return '400+';
+  if (count < 460) return '450+';
+  return '450+';
+};
+
+// Deterministic, time-based count — same for all users in the same 45-min window
+const getStableOnlineCount = (): number => {
+  const intervalMinutes = 45;
+  const intervalMs = intervalMinutes * 60 * 1000;
+  const seed = Math.floor(Date.now() / intervalMs);
+  const hash = (seed * 1664525 + 1013904223) % 2147483647;
+  const normalized = hash / 2147483647;
+  return Math.floor(300 + normalized * 151); // 300 to 450 inclusive
+};
+
+// ✅ Pure, no side effects, no state
+const useSimulatedOnlineCount = () => {
+  return useMemo(() => getStableOnlineCount(), []);
+};
+
+// ✅ Clean animated display hook (no require)
+const useAnimatedDisplay = (target: number) => {
+  const [display, setDisplay] = useState(target);
+  const lastTargetRef = useRef(target);
+
+  useEffect(() => {
+    if (target === lastTargetRef.current) return;
+
+    const start = Date.now();
+    const startVal = display;
+    const endVal = target;
+    const duration = 1000;
+
+    const animate = () => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = progress < 0.5 
+        ? 2 * progress * progress 
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+      
+      setDisplay(Math.round(startVal + (endVal - startVal) * eased));
+      if (progress < 1) requestAnimationFrame(animate);
+    };
+
+    animate();
+    lastTargetRef.current = target;
+  }, [target, display]);
+
+  return display;
+};
+
 export default function HomePage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const supabase = createClient();
-
   const [isConnecting, setIsConnecting] = useState(false);
-  const [onlineCount, setOnlineCount] = useState(0); // Start at 0, will update
-  const heartbeatRef = useRef<HTMLDivElement>(null);
 
-  // 🔁 Update user's last_online every 45s (if logged in)
-  useEffect(() => {
-    if (!user) return;
+  const rawCount = useSimulatedOnlineCount();
+  const animatedCount = useAnimatedDisplay(rawCount);
+  const formattedCount = formatOnlineCount(animatedCount);
 
-    const updateLastOnline = async () => {
-      try {
-        await supabase
-          .from('profiles')
-          .update({ last_online: new Date().toISOString() })
-          .eq('id', user.id);
-      } catch (err) {
-        console.warn('Failed to update last_online:', err);
-      }
-    };
-
-    updateLastOnline(); // Run immediately
-    const interval = setInterval(updateLastOnline, 45_000);
-    return () => clearInterval(interval);
-  }, [user, supabase]);
-
-  // 📊 Fetch global online count every 30s
-  useEffect(() => {
-    const fetchGlobalOnlineCount = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('global_online_count')
-          .select('online_count')
-          .single();
-
-        if (error) {
-          console.error('Error fetching global online count:', error);
-          return;
-        }
-
-        setOnlineCount(data?.online_count || 0);
-      } catch (err) {
-        console.error('Unexpected error:', err);
-      }
-    };
-
-    fetchGlobalOnlineCount(); // Initial fetch
-    const interval = setInterval(fetchGlobalOnlineCount, 30_000);
-    return () => clearInterval(interval);
-  }, [supabase]);
-
-  // === UI Handlers ===
   const handleQuickConnect = async () => {
     if (isConnecting) return;
     setIsConnecting(true);
@@ -83,7 +91,6 @@ export default function HomePage() {
     router.push('/communities');
   };
 
-  // === Shared Styles (same as your original) ===
   const baseColors = {
     primary: '#3b82f6',
     accent: '#10b981',
@@ -92,8 +99,6 @@ export default function HomePage() {
     border: '#e2e8f0',
     text: { primary: '#1e293b', secondary: '#6b7280' },
   };
-
-  const spacing = { sm: '0.5rem', md: '0.75rem', lg: '1rem', xl: '1.25rem', '2xl': '1.5rem' };
   const borderRadius = { md: '0.5rem', lg: '0.75rem', xl: '1rem', full: '9999px' };
 
   return (
@@ -158,7 +163,6 @@ export default function HomePage() {
 
         {/* Main Heartbeat Circle */}
         <div
-          ref={heartbeatRef}
           style={{
             position: 'relative',
             display: 'flex',
@@ -178,6 +182,8 @@ export default function HomePage() {
             transition: 'all 1s ease',
             opacity: 1,
             zIndex: 1,
+            animation: 'gentlePulse 8s ease-in-out infinite',
+            transformOrigin: 'center',
           }}
         >
           <div
@@ -195,7 +201,7 @@ export default function HomePage() {
           <div style={{ textAlign: 'center', padding: '0 2rem', zIndex: 2 }}>
             <Heart size={48} style={{ color: baseColors.primary, marginBottom: '1rem' }} />
             <h2 style={{ fontSize: '1.75rem', fontWeight: '600', color: '#1e40af', marginBottom: '0.5rem' }}>
-              {onlineCount} people understand
+              {formattedCount} people understand
             </h2>
             <p style={{ color: baseColors.text.secondary, fontSize: '1.125rem' }}>Right now. Right here.</p>
           </div>
@@ -235,7 +241,7 @@ export default function HomePage() {
                 animation: 'pulse 2s infinite',
               }}
             ></span>
-            {onlineCount} person{onlineCount !== 1 ? 's' : ''} available to connect
+            {formattedCount} people available to connect
           </span>
         </div>
 
@@ -325,6 +331,14 @@ export default function HomePage() {
           <p style={{ color: baseColors.text.secondary, fontSize: '0.95rem', lineHeight: '1.6' }}>
             <strong>Important:</strong> This platform connects people for peer support. It&apos;s not a replacement for professional mental health care. If you&apos;re in crisis, please contact emergency services.
           </p>
+          <p style={{ 
+            color: baseColors.text.secondary, 
+            fontSize: '0.85rem', 
+            marginTop: '0.5rem',
+            fontStyle: 'italic'
+          }}>
+            (Simulated count — updates every 45 minutes)
+          </p>
         </div>
       </div>
 
@@ -332,7 +346,11 @@ export default function HomePage() {
       <style jsx global>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.05); }
+          50% { opacity: 0.6; transform: scale(1.03); }
+        }
+        @keyframes gentlePulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.015); }
         }
         .animate-spin {
           animation: spin 1s linear infinite;

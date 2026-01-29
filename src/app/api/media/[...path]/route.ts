@@ -16,6 +16,7 @@ const ALLOWED_BUCKETS = [
   'tool-images',
   'posts',
   'angels',
+  'event-images',
 ] as const;
 
 type AllowedBucket = typeof ALLOWED_BUCKETS[number];

@@ -1,9 +1,11 @@
+// app/schedule/create/page.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Image from 'next/image';
+import { v4 as uuidv4 } from 'uuid'; // Add this import
 
 // Helper to format Date to local YYYY-MM-DDTHH:mm (for datetime-local input)
 const formatDateToLocalInput = (date: Date): string => {
@@ -34,7 +36,6 @@ export default function CreateEventPage() {
   const supabase = createClient();
   const router = useRouter();
 
-  // Initialize user & defaults
   useEffect(() => {
     const init = async () => {
       const { data: { session }, error: authError } = await supabase.auth.getSession();
@@ -59,7 +60,6 @@ export default function CreateEventPage() {
 
       setHostName(profile.full_name || 'Host');
 
-      // Set default start time to LOCAL time +30 min
       const now = new Date();
       now.setMinutes(now.getMinutes() + 30);
       setStartTime(formatDateToLocalInput(now));
@@ -84,8 +84,14 @@ export default function CreateEventPage() {
     }
   };
 
-  const uploadImage = async (file: File, eventId: string): Promise<string | null> => {
-    const fileExt = file.name.split('.').pop();
+  // ✅ Returns RELATIVE PATH like "event-images/abc123.jpg"
+  const uploadImage = async (file: File, eventId: string): Promise<string> => {
+    // Extract extension safely
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    const validExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    const fileExt = validExts.includes(ext || '') ? ext : 'jpg';
+
+    // Use eventId + clean extension → deterministic and safe
     const fileName = `${eventId}.${fileExt}`;
     const filePath = `event-images/${fileName}`;
 
@@ -98,8 +104,7 @@ export default function CreateEventPage() {
       throw new Error('Failed to upload event image.');
     }
 
-    const { data } = supabase.storage.from('event-images').getPublicUrl(filePath);
-    return data.publicUrl;
+    return filePath; // ← Only store this in DB
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -142,19 +147,19 @@ export default function CreateEventPage() {
       if (insertError) throw insertError;
       if (!data) throw new Error('Event creation failed.');
 
-      let imageUrl = null;
+      let imagePath = null;
       if (imageFile) {
-        imageUrl = await uploadImage(imageFile, data.id);
+        imagePath = await uploadImage(imageFile, data.id); // ← relative path
       }
 
-      if (imageUrl) {
+      if (imagePath) {
         const { error: updateError } = await supabase
           .from('events')
-          .update({ image_url: imageUrl })
+          .update({ image_url: imagePath }) // ← save path, not URL
           .eq('id', data.id);
 
         if (updateError) {
-          console.warn('Failed to update image URL:', updateError);
+          console.warn('Failed to update image path:', updateError);
         }
       }
 
@@ -162,7 +167,6 @@ export default function CreateEventPage() {
       setTimeout(() => router.push('/schedule'), 1500);
     } catch (err) {
       console.error('Event creation error:', err);
-
       if (err instanceof Error) {
         setError(err.message || 'Unable to create event. Please try again.');
       } else {
@@ -212,7 +216,8 @@ export default function CreateEventPage() {
                   <Image
                     src={imagePreview}
                     alt="Preview"
-                    fill
+                    width={200}
+                    height={100}
                     style={styles.imagePreview}
                     unoptimized
                   />
@@ -329,11 +334,11 @@ export default function CreateEventPage() {
   );
 }
 
-// Inline CSS styles — updated for depression support theme
+// Inline CSS styles — unchanged
 const styles = {
   pageContainer: {
     minHeight: '100vh',
-    background: 'linear-gradient(to bottom, #f8fafc, #f1f5f9, #e2e8f0)', // soft blue-gray calming gradient
+    background: 'linear-gradient(to bottom, #f8fafc, #f1f5f9, #e2e8f0)',
     padding: '1rem',
     paddingBottom: '6rem',
     display: 'flex',
@@ -358,7 +363,7 @@ const styles = {
   heading: {
     fontSize: '1.5rem',
     fontWeight: '700' as const,
-    color: '#1e293b', // dark slate for clarity
+    color: '#1e293b',
     marginBottom: '1.5rem',
   },
   errorContainer: {
@@ -397,7 +402,7 @@ const styles = {
   input: {
     width: '100%',
     padding: '0.75rem',
-    border: '1px solid #cbd5e1', // softer border
+    border: '1px solid #cbd5e1',
     borderRadius: '0.5rem',
     fontSize: '1rem',
     boxSizing: 'border-box' as const,
@@ -437,7 +442,7 @@ const styles = {
     maxWidth: '100%',
   },
   imagePlaceholder: {
-    color: '#64748b', // muted gray-blue
+    color: '#64748b',
     fontSize: '0.875rem',
   },
   imagePlaceholderText: {
@@ -466,7 +471,7 @@ const styles = {
   checkbox: {
     width: '1rem',
     height: '1rem',
-    accentColor: '#3b82f6', // keep primary action color
+    accentColor: '#3b82f6',
   },
   checkboxLabel: {
     color: '#374151',
@@ -482,6 +487,6 @@ const styles = {
     fontSize: '1rem',
     marginTop: '0.5rem',
     transition: 'background-color 0.2s',
-    backgroundColor: '#3b82f6', // consistent with your brand
+    backgroundColor: '#3b82f6',
   },
 };

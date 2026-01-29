@@ -1,4 +1,5 @@
-﻿﻿'use client';
+﻿﻿// app/schedule/page.tsx
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -13,7 +14,7 @@ type Event = {
   start_time: string;
   duration: number;
   max_attendees: number | null;
-  image_url: string | null;
+  image_url: string | null; // ← relative path: "event-images/xyz.jpg"
 };
 
 type Reservation = {
@@ -32,15 +33,9 @@ export default function EventsPage() {
 
   useEffect(() => {
     const init = async () => {
-      // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
 
-      if (!user) {
-        console.warn('User not signed in');
-      }
-
-      // Fetch events
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('id, title, description, host_name, start_time, duration, max_attendees, image_url')
@@ -54,13 +49,12 @@ export default function EventsPage() {
         setEvents(eventsData || []);
       }
 
-      // Fetch total attendee counts per event
-      const { data: countData, error: countError } = await supabase
+      const { data: countData } = await supabase
         .from('reservations')
         .select('event_id')
         .in('event_id', (eventsData || []).map(e => e.id));
 
-      if (!countError && countData) {
+      if (countData) {
         const counts: Record<string, number> = {};
         countData.forEach((r: { event_id: string }) => {
           counts[r.event_id] = (counts[r.event_id] || 0) + 1;
@@ -68,16 +62,12 @@ export default function EventsPage() {
         setAttendeeCounts(counts);
       }
 
-      // Fetch user's reservations
       if (user) {
-        const { data: myRes, error: resError } = await supabase
+        const { data: myRes } = await supabase
           .from('reservations')
           .select('event_id')
           .eq('user_id', user.id);
-
-        if (!resError) {
-          setReservations(myRes || []);
-        }
+        setReservations(myRes || []);
       }
 
       setLoading(false);
@@ -86,7 +76,6 @@ export default function EventsPage() {
     init();
   }, [supabase]);
 
-  // Helper: is user reserved for this event?
   const isReserved = (eventId: string) => {
     return reservations.some(r => r.event_id === eventId);
   };
@@ -102,10 +91,8 @@ export default function EventsPage() {
       .insert({ event_id: eventId, user_id: user.id });
 
     if (error) {
-      console.error('Reservation failed:', error.message);
       alert('Failed to reserve. You may have already reserved or the event is full.');
     } else {
-      // Optimistically update UI
       setReservations(prev => [...prev, { event_id: eventId }]);
       setAttendeeCounts(prev => ({
         ...prev,
@@ -124,10 +111,8 @@ export default function EventsPage() {
       .eq('user_id', user.id);
 
     if (error) {
-      console.error('Unreserve failed:', error);
       alert('Failed to cancel reservation.');
     } else {
-      // Optimistically update UI
       setReservations(prev => prev.filter(r => r.event_id !== eventId));
       setAttendeeCounts(prev => ({
         ...prev,
@@ -192,7 +177,7 @@ export default function EventsPage() {
                 {event.image_url && (
                   <div style={styles.imageContainer}>
                     <Image
-                      src={event.image_url}
+                      src={`/api/media/${event.image_url}`}
                       alt={event.title}
                       fill
                       style={styles.image}
@@ -213,7 +198,6 @@ export default function EventsPage() {
                 </p>
 
                 <div style={styles.buttonsContainer}>
-                  {/* Reserve / Cancel button */}
                   {reserved ? (
                     <button
                       onClick={() => handleUnreserve(event.id)}
@@ -238,7 +222,6 @@ export default function EventsPage() {
                     </button>
                   )}
 
-                  {/* Join button */}
                   <button
                     onClick={() => handleJoin(event.id)}
                     style={styles.joinButton}
@@ -255,7 +238,6 @@ export default function EventsPage() {
   );
 }
 
-// Inline CSS styles
 const styles = {
   pageContainer: {
     padding: '80px 1.5rem 1.5rem',
@@ -358,9 +340,6 @@ const styles = {
     backgroundColor: '#f59e0b',
     color: 'white',
   },
-  reserveButtonHover: {
-    backgroundColor: '#d97706',
-  },
   fullButton: {
     backgroundColor: '#f6e05e',
     color: '#4a5568',
@@ -382,9 +361,6 @@ const styles = {
     cursor: 'pointer',
     transition: 'all 0.2s ease',
   },
-  cancelButtonHover: {
-    backgroundColor: '#dc2626',
-  },
   joinButton: {
     backgroundColor: '#3b82f6',
     color: 'white',
@@ -395,9 +371,6 @@ const styles = {
     border: 'none',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
-  },
-  joinButtonHover: {
-    backgroundColor: '#2563eb',
   },
   createEventButton: {
     backgroundColor: '#10b981',
