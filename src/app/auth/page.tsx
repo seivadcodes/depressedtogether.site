@@ -227,7 +227,7 @@ export default function AuthPage() {
           color: '#666',
           fontStyle: 'italic'
         }}>
-          We detect your country to personalize your experience 
+          
         </p>
       )}
     </div>

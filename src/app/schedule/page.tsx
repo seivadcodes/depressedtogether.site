@@ -291,14 +291,14 @@ const styles = {
   },
   imageContainer: {
     position: 'relative' as const,
-    width: '100%',
+    width: '35%',
     height: '10rem',
     marginBottom: '1rem',
     borderRadius: '0.375rem',
     overflow: 'hidden',
   },
   image: {
-    objectFit: 'cover' as const,
+    objectFit: 'fill' as const,
   },
   eventTitle: {
     fontSize: '1.25rem',

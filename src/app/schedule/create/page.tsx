@@ -4,10 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import Image from 'next/image';
-import { v4 as uuidv4 } from 'uuid'; // Add this import
 
-// Helper to format Date to local YYYY-MM-DDTHH:mm (for datetime-local input)
 const formatDateToLocalInput = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -24,13 +21,13 @@ export default function CreateEventPage() {
   const [startTime, setStartTime] = useState('');
   const [duration, setDuration] = useState(60);
   const [isRecurring, setIsRecurring] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [imageBoxHover, setImageBoxHover] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
@@ -68,43 +65,27 @@ export default function CreateEventPage() {
     init();
   }, [supabase, router]);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError('Image must be less than 5MB.');
-        return;
-      }
-      if (!file.type.startsWith('image/')) {
-        setError('Please upload an image (jpg, png, etc.).');
-        return;
-      }
-      setImageFile(file);
-      setImagePreview(URL.createObjectURL(file));
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (!selected) return;
+
+    if (!selected.type.startsWith('image/')) {
+      setError('Please select an image (JPEG, PNG, etc.).');
+      return;
     }
+
+    if (selected.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5MB.');
+      return;
+    }
+
+    setFile(selected);
+    setPreview(URL.createObjectURL(selected));
+    setError(null);
   };
 
-  // ✅ Returns RELATIVE PATH like "event-images/abc123.jpg"
-  const uploadImage = async (file: File, eventId: string): Promise<string> => {
-    // Extract extension safely
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    const validExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-    const fileExt = validExts.includes(ext || '') ? ext : 'jpg';
-
-    // Use eventId + clean extension → deterministic and safe
-    const fileName = `${eventId}.${fileExt}`;
-    const filePath = `event-images/${fileName}`;
-
-    const { error } = await supabase.storage
-      .from('event-images')
-      .upload(filePath, file, { upsert: true });
-
-    if (error) {
-      console.error('Image upload error:', error);
-      throw new Error('Failed to upload event image.');
-    }
-
-    return filePath; // ← Only store this in DB
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -124,13 +105,38 @@ export default function CreateEventPage() {
       return;
     }
 
+    let imagePath: string | null = null;
+
+    if (file) {
+      setUploadingImage(true);
+      try {
+        const fileName = `event-${userId}-${Date.now()}-${file.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from('event-images')
+          .upload(fileName, file, {
+            upsert: true,
+            contentType: file.type,
+          });
+
+        if (uploadError) throw uploadError;
+        imagePath = `event-images/${fileName}`;
+      } catch (err) {
+        console.error('Image upload failed:', err);
+        setError('Failed to upload image. Please try again.');
+        setUploadingImage(false);
+        return;
+      } finally {
+        setUploadingImage(false);
+      }
+    }
+
     setLoading(true);
 
     try {
       const localDateTime = new Date(startTime);
       const utcISO = localDateTime.toISOString();
 
-      const { data, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('events')
         .insert({
           title: cleanTitle,
@@ -140,45 +146,19 @@ export default function CreateEventPage() {
           start_time: utcISO,
           duration: duration,
           is_recurring: isRecurring,
-        })
-        .select('id')
-        .single();
+          image_url: imagePath,
+        });
 
       if (insertError) throw insertError;
-      if (!data) throw new Error('Event creation failed.');
-
-      let imagePath = null;
-      if (imageFile) {
-        imagePath = await uploadImage(imageFile, data.id); // ← relative path
-      }
-
-      if (imagePath) {
-        const { error: updateError } = await supabase
-          .from('events')
-          .update({ image_url: imagePath }) // ← save path, not URL
-          .eq('id', data.id);
-
-        if (updateError) {
-          console.warn('Failed to update image path:', updateError);
-        }
-      }
 
       setSuccess(true);
       setTimeout(() => router.push('/schedule'), 1500);
     } catch (err) {
       console.error('Event creation error:', err);
-      if (err instanceof Error) {
-        setError(err.message || 'Unable to create event. Please try again.');
-      } else {
-        setError('Unable to create event. Please try again.');
-      }
+      setError('Unable to create event. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
   };
 
   return (
@@ -199,42 +179,44 @@ export default function CreateEventPage() {
         {success && <div style={styles.successContainer}>Event created! Redirecting...</div>}
 
         <form onSubmit={handleSubmit} style={styles.form}>
-          {/* Image Upload */}
+          {/* Image Upload – Styled */}
           <div style={styles.formGroup}>
             <label style={styles.label}>Event Image (optional)</label>
             <div
-              onClick={triggerFileInput}
-              onMouseEnter={() => setImageBoxHover(true)}
-              onMouseLeave={() => setImageBoxHover(false)}
               style={{
                 ...styles.imageUploadBox,
-                backgroundColor: imageBoxHover ? '#f9fafb' : '#ffffff',
+                cursor: 'pointer',
+                position: 'relative',
+                backgroundColor: preview ? '#f8fafc' : '#ffffff',
               }}
+              onClick={triggerFileInput}
             >
-              {imagePreview ? (
-                <div style={styles.imagePreviewContainer}>
-                  <Image
-                    src={imagePreview}
-                    alt="Preview"
-                    width={200}
-                    height={100}
-                    style={styles.imagePreview}
-                    unoptimized
-                  />
-                </div>
+              {preview ? (
+                <img
+                  src={preview}
+                  alt="Event preview"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    borderRadius: '0.75rem',
+                  }}
+                />
               ) : (
                 <div style={styles.imagePlaceholder}>
-                  <p style={styles.imagePlaceholderText}>Click to upload an image (max 5MB)</p>
-                  <p style={styles.imagePlaceholderSubtext}>JPG, PNG, or GIF</p>
+                  <p style={styles.imagePlaceholderText}>Click to upload an image</p>
+                  <p style={styles.imagePlaceholderSubtext}>JPEG or PNG, max 5MB</p>
                 </div>
               )}
             </div>
+            {/* Hidden file input */}
             <input
               type="file"
-              ref={fileInputRef}
-              onChange={handleImageChange}
               accept="image/*"
-              style={styles.hiddenInput}
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+              aria-label="Upload event image"
             />
           </div>
 
@@ -319,14 +301,18 @@ export default function CreateEventPage() {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || uploadingImage}
             style={{
               ...styles.submitButton,
-              backgroundColor: loading ? '#9ca3af' : styles.submitButton.backgroundColor,
-              cursor: loading ? 'not-allowed' : 'pointer',
+              backgroundColor: loading || uploadingImage ? '#9ca3af' : styles.submitButton.backgroundColor,
+              cursor: loading || uploadingImage ? 'not-allowed' : 'pointer',
             }}
           >
-            {loading ? 'Creating...' : 'Create Event'}
+            {uploadingImage
+              ? 'Uploading image...'
+              : loading
+                ? 'Creating event...'
+                : 'Create Event'}
           </button>
         </form>
       </div>
@@ -334,7 +320,7 @@ export default function CreateEventPage() {
   );
 }
 
-// Inline CSS styles — unchanged
+// Reuse your existing styles — only minor tweak to imageUploadBox
 const styles = {
   pageContainer: {
     minHeight: '100vh',
@@ -423,23 +409,11 @@ const styles = {
     borderRadius: '0.75rem',
     padding: '1rem',
     textAlign: 'center' as const,
-    cursor: 'pointer',
     backgroundColor: '#ffffff',
-    transition: 'background-color 0.2s',
-  },
-  imagePreviewContainer: {
+    minHeight: '120px',
     display: 'flex',
-    justifyContent: 'center',
     alignItems: 'center',
-    height: '10rem',
-  },
-  imagePreview: {
-    maxHeight: '10rem',
-    borderRadius: '0.5rem',
-    objectFit: 'cover' as const,
-    width: 'auto',
-    height: 'auto',
-    maxWidth: '100%',
+    justifyContent: 'center',
   },
   imagePlaceholder: {
     color: '#64748b',
@@ -447,15 +421,13 @@ const styles = {
   },
   imagePlaceholderText: {
     margin: '0',
+    fontWeight: '500',
   },
   imagePlaceholderSubtext: {
     fontSize: '0.75rem',
     marginTop: '0.25rem',
     color: '#94a3b8',
     margin: '0',
-  },
-  hiddenInput: {
-    display: 'none',
   },
   helperText: {
     fontSize: '0.75rem',

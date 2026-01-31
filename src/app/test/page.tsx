@@ -1,129 +1,217 @@
-// src/app/test-upload-resources/page.tsx
+// src/app/test/create-event-test/page.tsx
 'use client';
 
-import { useState, ChangeEvent } from 'react';
-import { createClient } from '@/lib/supabase';
-import { useAuth } from '@/hooks/useAuth';
+import { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 import { toast } from 'react-hot-toast';
 
-export default function TestUploadResourcesPage() {
-  const { user } = useAuth();
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
+type Event = {
+  id: string;
+  title: string;
+  start_time: string;
+  image_url: string | null;
+};
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] || null;
+export default function CreateEventTest() {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState('');
+  const [startTime, setStartTime] = useState('');
+
+  const [createdEvent, setCreatedEvent] = useState<Event | null>(null);
+
+  const supabase = createClient();
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
     if (!selected) return;
 
-    console.debug('[DEBUG] Selected file:', {
-      name: selected.name,
-      type: selected.type,
-      size: selected.size,
-    });
-
     if (!selected.type.startsWith('image/')) {
-      toast.error('Please select an image (JPEG, PNG, GIF, etc.)');
+      toast.error('Please select an image file.');
       return;
     }
 
     if (selected.size > 5 * 1024 * 1024) {
-      toast.error('Image must be under 5MB');
+      toast.error('File must be under 5MB.');
       return;
     }
 
     setFile(selected);
-    const reader = new FileReader();
-    reader.onloadend = () => setPreview(reader.result as string);
-    reader.readAsDataURL(selected);
+    setPreview(URL.createObjectURL(selected));
   };
 
-  const handleUpload = async () => {
-    if (!user) {
-      toast.error('You must be signed in to upload.');
+  const handleCreateEvent = async () => {
+    if (!title.trim()) {
+      toast.error('Please enter an event title.');
       return;
     }
-    if (!file) {
-      toast.error('No file selected.');
+    if (!startTime) {
+      toast.error('Please select a start time.');
       return;
     }
 
-    setUploading(true);
-    const supabase = createClient();
+    let imagePath: string | null = null;
 
-    try {
-      // Path format: resources/{userId}/test-upload-{timestamp}.ext
-      const ext = file.name.split('.').pop() || 'jpg';
-      const fileName = `${user.id}/test-upload-${Date.now()}.${ext}`;
-      console.debug('[DEBUG] Uploading to resources bucket with path:', fileName);
+    // Upload image if provided
+    if (file) {
+      setUploading(true);
+      try {
+        const fileName = `test-event-${Date.now()}-${file.name}`;
+        const { error } = await supabase.storage
+          .from('event-images')
+          .upload(fileName, file, {
+            upsert: true,
+            contentType: file.type,
+          });
 
-      const { data, error } = await supabase.storage
-        .from('resources')
-        .upload(fileName, file, {
-          upsert: true,
-          contentType: file.type,
-        });
-
-      if (error) {
-        console.error('[ERROR] Upload failed:', error);
-        toast.error(`Upload failed: ${error.message}`);
+        if (error) throw error;
+        imagePath = `event-images/${fileName}`;
+      } catch (err) {
+        console.error('Upload failed:', err);
+        toast.error('Image upload failed.');
+        setUploading(false);
         return;
+      } finally {
+        setUploading(false);
       }
+    }
 
-      console.log('[SUCCESS] File uploaded:', data);
-      toast.success('✅ Image uploaded to "resources" bucket!');
+    // Create event in DB
+    setCreating(true);
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .insert({
+          title,
+          start_time: startTime,
+          image_url: imagePath,
+          duration: 60, // default 1 hour
+          max_attendees: 10,
+          host_name: 'Test Host',
+          description: 'This is a test event created from the dev tool.',
+        })
+        .select()
+        .single();
 
-      // Optional: Log public URL
-      const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/resources/${fileName}`;
-      console.debug('[DEBUG] Public URL (if bucket is public):', publicUrl);
+      if (error) throw error;
 
-      // Reset
-      setFile(null);
-      setPreview(null);
+      setCreatedEvent(data);
+      toast.success('Event created successfully!');
     } catch (err) {
-      console.error('[CATCH] Unexpected error:', err);
-      toast.error('Unexpected error during upload.');
+      console.error('Event creation failed:', err);
+      toast.error('Failed to create event.');
     } finally {
-      setUploading(false);
+      setCreating(false);
     }
   };
 
   return (
     <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
-      <h1>🧪 Test Upload to `resources` Bucket</h1>
-      <p>This tool uploads images to the <code>resources</code> Supabase Storage bucket.</p>
+      <h1>Create Test Event</h1>
+      <p>Upload an image and create a minimal event for testing display.</p>
 
-      <input type="file" accept="image/*" onChange={handleFileChange} />
+      <div style={{ marginTop: '1rem' }}>
+        <label>Title:</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Event title"
+          style={{
+            width: '100%',
+            padding: '0.5rem',
+            marginTop: '0.25rem',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+          }}
+        />
+      </div>
+
+      <div style={{ marginTop: '1rem' }}>
+        <label>Start Time:</label>
+        <input
+          type="datetime-local"
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '0.5rem',
+            marginTop: '0.25rem',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+          }}
+        />
+      </div>
+
+      <div style={{ marginTop: '1rem' }}>
+        <label>Event Image (optional):</label>
+        <input type="file" accept="image/*" onChange={handleFileChange} />
+      </div>
+
       {preview && (
         <div style={{ marginTop: '1rem' }}>
+          <h3>Image Preview:</h3>
           <img
             src={preview}
             alt="Preview"
-            style={{ maxHeight: '200px', maxWidth: '100%', objectFit: 'contain' }}
+            style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '8px' }}
           />
         </div>
       )}
 
       <button
-        onClick={handleUpload}
-        disabled={!file || uploading || !user}
+        onClick={handleCreateEvent}
+        disabled={uploading || creating}
         style={{
-          marginTop: '1rem',
+          marginTop: '1.5rem',
           padding: '0.5rem 1rem',
-          backgroundColor: uploading ? '#ccc' : '#3b82f6',
+          backgroundColor: '#10b981',
           color: 'white',
           border: 'none',
-          borderRadius: '0.375rem',
-          cursor: uploading ? 'not-allowed' : 'pointer',
+          borderRadius: '6px',
+          cursor: 'pointer',
+          opacity: uploading || creating ? 0.7 : 1,
         }}
       >
-        {uploading ? 'Uploading…' : '📤 Upload to resources'}
+        {uploading
+          ? 'Uploading image...'
+          : creating
+            ? 'Creating event...'
+            : 'Create Test Event'}
       </button>
 
-      {!user && (
-        <p style={{ color: 'red', marginTop: '1rem' }}>
-          ⚠️ You are not signed in. Authentication is required.
-        </p>
+      {createdEvent && (
+        <div style={{ marginTop: '2rem', padding: '1rem', border: '1px solid #eee', borderRadius: '8px' }}>
+          <h2>✅ Created Event</h2>
+          <p><strong>Title:</strong> {createdEvent.title}</p>
+          <p><strong>Start:</strong> {new Date(createdEvent.start_time).toLocaleString()}</p>
+          {createdEvent.image_url && (
+            <>
+              <p><strong>Image (via /api/media):</strong></p>
+              <img
+                src={`/api/media/${createdEvent.image_url}`}
+                alt="Uploaded via API"
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '300px',
+                  borderRadius: '8px',
+                  border: '1px solid #ddd',
+                }}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = '/placeholder-failed.png';
+                }}
+              />
+              <p style={{ fontSize: '0.875rem', color: '#666', marginTop: '0.5rem' }}>
+                Path: <code>{createdEvent.image_url}</code>
+              </p>
+            </>
+          )}
+          <p style={{ marginTop: '1rem' }}>
+            Now visit <a href="/schedule">/schedule</a> to see it in the real list.
+          </p>
+        </div>
       )}
     </div>
   );
