@@ -1,116 +1,87 @@
-// app/install/page.tsx
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { toast } from 'react-hot-toast';
+import { useState, useEffect } from 'react';
+
+// Proper type for the beforeinstallprompt event
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+  prompt(): Promise<void>;
+}
 
 export default function InstallPage() {
-  // Detect iOS at module level or during render — no effect needed
-  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  // Detect values **during render** (no useEffect needed for initial read)
+  const isIOS = /iPad|iPhone|iPod/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
+  
+  const isStandalone =
+    typeof window !== 'undefined' &&
+    (window.matchMedia('(display-mode: standalone)').matches ||
+      // Safari iOS uses non-standard `standalone` property
+      (navigator as Navigator & { standalone?: boolean }).standalone === true);
 
-  const [deferredPrompt, setDeferredPrompt] = useState<Event | null>(null);
-  const [showAndroidButton, setShowAndroidButton] = useState(false);
-  const router = useRouter();
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [canInstall, setCanInstall] = useState(false);
 
-  // Only use effect for event subscription (not for setting static state like isIOS)
   useEffect(() => {
+    if (isStandalone) return;
+
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e);
-      setShowAndroidButton(true);
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      setCanInstall(true);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, [isStandalone]);
 
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, []);
-
-  const handleAndroidInstall = async () => {
+  const handleInstall = async () => {
     if (!deferredPrompt) return;
-
-    try {
-      // @ts-expect-error — standard web API
-      const { outcome } = await deferredPrompt.prompt();
-      if (outcome === 'accepted') {
-        toast.success('App installed! 🎉');
-        setTimeout(() => router.push('/'), 2000);
-      }
-    } catch {
-      // ✅ Removed unused `err` — just ignore or log if needed
-      toast.error('Installation failed. Please try manually.');
-    }
+    await deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User ${outcome} the install prompt`);
+    setCanInstall(false);
   };
 
   return (
-    <div style={{ padding: '24px', maxWidth: '600px', margin: '0 auto' }}>
-      <h1 style={{ fontSize: '28px', fontWeight: '700', marginBottom: '16px' }}>
-        Install Depressed Together
+    <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto', fontFamily: 'system-ui' }}>
+      <h1 style={{ fontSize: '1.8rem', fontWeight: '700', marginBottom: '1.5rem' }}>
+        📲 Install Healing Shoulder
       </h1>
-      <p style={{ fontSize: '16px', color: '#475569', marginBottom: '24px' }}>
-        Add this app to your home screen for quick access, offline support, and a better experience.
-      </p>
 
-      {showAndroidButton && !isIOS ? (
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <button
-            onClick={handleAndroidInstall}
-            style={{
-              background: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '12px 24px',
-              fontSize: '16px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
-            }}
-          >
-            ✅ Install App
-          </button>
-          <p style={{ fontSize: '14px', color: '#64748b', marginTop: '8px' }}>
-            (Tap to install directly)
-          </p>
-        </div>
-      ) : (
-        <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '12px' }}>
-            {isIOS ? 'On iPhone or iPad:' : 'On Android (manual):'}
-          </h2>
-          <ol style={{ paddingLeft: '20px', lineHeight: '1.6' }}>
-            <li>Open this page in **Safari** (iOS) or **Chrome** (Android)</li>
-            <li>
-              Tap the <strong>{isIOS ? 'Share' : 'Menu'}</strong> button:
-              <div style={{ display: 'flex', gap: '12px', margin: '12px 0', justifyContent: 'center' }}>
-                {isIOS ? <span>📤</span> : <span>⋮</span>}
-              </div>
-            </li>
-            <li>
-              Scroll down and tap <strong>“Add to Home Screen”</strong>
-            </li>
-            <li>Tap <strong>“Add”</strong> (iOS) or <strong>“Install”</strong> (Android)</li>
+      {isStandalone ? (
+        <p style={{ background: '#dcfce7', padding: '1rem', borderRadius: '8px' }}>
+          ✅ This app is already installed!
+        </p>
+      ) : isIOS ? (
+        <div style={{ background: '#fffbeb', padding: '1.2rem', borderRadius: '12px', border: '1px solid #fde68a' }}>
+          <h3 style={{ margin: '0 0 0.75rem', fontWeight: '600' }}>📱 iOS Installation</h3>
+          <ol style={{ paddingLeft: '1.2rem', lineHeight: 1.6 }}>
+            <li>Tap the <strong>Share</strong> button (bottom toolbar)</li>
+            <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
+            <li>Tap <strong>Add</strong></li>
           </ol>
         </div>
-      )}
-
-      <div style={{ textAlign: 'center', marginTop: '32px' }}>
+      ) : canInstall ? (
         <button
-          onClick={() => router.back()}
+          onClick={handleInstall}
           style={{
-            background: 'transparent',
-            border: '1px solid #cbd5e1',
+            background: '#4f46e5',
+            color: 'white',
+            border: 'none',
             borderRadius: '8px',
-            padding: '8px 16px',
-            color: '#475569',
+            padding: '12px 24px',
+            fontSize: '1.1rem',
             cursor: 'pointer',
           }}
         >
-          ← Back to App
+          📲 Install App
         </button>
-      </div>
+      ) : (
+        <p>
+          Waiting for installability... Visit this page twice with a few minutes between visits.
+        </p>
+      )}
     </div>
   );
 }
