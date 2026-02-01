@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "site.depressedtogether.www.twa",
+        "sha256_cert_fingerprints": ["B4:34:05:F6:3E:69:26:66:08:26:55:BF:EA:EB:0E:9C:BE:12:2C:ED:77:09:F0:84:AD:07:9A:FD:8D:84:C0:78"]
+      }
+    }]
