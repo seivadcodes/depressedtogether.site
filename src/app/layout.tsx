@@ -67,7 +67,7 @@ export default async function RootLayout({
 
         <ServiceWorkerRegister />
         <ClientLayout user={user}>{children}</ClientLayout>
-        <PWAInstaller />
+       
       </body>
     </html>
   );
