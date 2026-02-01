@@ -25,7 +25,7 @@ type Event = {
 export default function LiveEventPage() {
   const params = useParams();
   const router = useRouter();
-  const eventId = params.id as string;
+  const eventId = typeof params?.id === 'string' ? params.id : null;
   const [event, setEvent] = useState<Event | null>(null);
   const [hostName, setHostName] = useState<string>('Loading...');
   const [token, setToken] = useState<string>('');

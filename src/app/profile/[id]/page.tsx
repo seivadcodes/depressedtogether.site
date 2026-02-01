@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCall } from '@/context/CallContext';
 import SendMessageOverlay from '@/components/modals/SendMessageOverlay';
 import { PostComposer } from '@/components/PostComposer'; // Import the PostComposer
+import Image from 'next/image';
 
 interface Profile {
   id: string;
@@ -297,14 +298,14 @@ export default function PublicProfile() {
             }}
           >
             {profile.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt={name}
-                width={72}
-                height={72}
-                style={{ objectFit: 'cover', borderRadius: '50%' }}
-                loading="lazy"
-              />
+              <Image
+  src={profile.avatar_url}
+  alt={name}
+  width={72}
+  height={72}
+  unoptimized
+  style={{ objectFit: 'cover', borderRadius: '50%' }}
+/>
             ) : (
               name.charAt(0).toUpperCase()
             )}
