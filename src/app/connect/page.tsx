@@ -396,7 +396,7 @@ const [otherParticipantName, setOtherParticipantName] = useState<string | null>(
   // Scroll logic after data loads
   useEffect(() => {
     const allRequests = [...availableOneOnOne, ...availableGroups];
-    const requestId = searchParams.get('requestId');
+    const requestId = searchParams?.get('requestId') ?? null;
 
     if (allRequests.length > 0) {
       // If a specific request is targeted
