@@ -233,7 +233,7 @@ export default function CommunitiesPage() {
   const containerStyle: React.CSSProperties = {
     minHeight: '100vh',
     background: 'linear-gradient(135deg, #f0f7ff 0%, #dbeafe 50%, #bfdbfe 100%)',
-    paddingTop: '3rem',
+    paddingTop: '3.5rem',
     paddingBottom: '2rem',
     paddingLeft: '1rem',
     paddingRight: '1rem',
