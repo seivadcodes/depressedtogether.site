@@ -244,7 +244,6 @@ export default function CommunitiesPage() {
     margin: '0 auto',
   };
 
-  // Format online count with correct pluralization
   const formattedOnlineText = totalOnline === 1 ? '1 person' : `${totalOnline} people`;
 
   return (
@@ -282,14 +281,14 @@ export default function CommunitiesPage() {
             Find Your Support Circle
           </h1>
           <p style={{ 
-  color: '#4b5563', 
-  maxWidth: '42rem', 
-  margin: '0 auto 1rem',
-  fontSize: '1.125rem',
-  lineHeight: '1.6'
-}}>
-  Join a community where your depression is understood &mdash; not explained away. Share your story, read others&rsquo; stories, or simply be present.
-</p>
+            color: '#4b5563', 
+            maxWidth: '42rem', 
+            margin: '0 auto 1rem',
+            fontSize: '1.125rem',
+            lineHeight: '1.6'
+          }}>
+            Join a community where your depression is understood &mdash; not explained away. Share your story, read others&rsquo; stories, or simply be present.
+          </p>
           <div
             style={{
               display: 'inline-block',
@@ -322,16 +321,16 @@ export default function CommunitiesPage() {
             <Link
               key={community.id}
               href={`/communities/${community.id}`}
+              className="community-link"
               style={{
                 display: 'block',
                 textDecoration: 'none',
                 transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
                 marginBottom: '1.25rem',
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-4px)')}
-              onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
             >
               <div
+                className="community-card"
                 style={{
                   background: 'rgba(255, 255, 255, 0.95)',
                   backdropFilter: 'blur(10px)',
@@ -339,16 +338,13 @@ export default function CommunitiesPage() {
                   border: '1px solid rgba(59, 130, 246, 0.2)',
                   padding: '1.25rem',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-                  transition: 'all 0.2s ease-in-out',
                   display: 'flex',
                   gap: '1rem',
                   position: 'relative',
                   overflow: 'hidden',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 12px 32px rgba(59, 130, 246, 0.15)')}
-                onMouseLeave={(e) => (e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.05)')}
               >
-                {/* Gradient background accent */}
+                {/* Gradient accent bar */}
                 <div
                   style={{
                     position: 'absolute',
@@ -360,8 +356,9 @@ export default function CommunitiesPage() {
                   }}
                 />
 
-                {/* Cover Photo - Left-aligned, fixed size */}
+                {/* Cover Photo */}
                 <div
+                  className="cover-photo"
                   style={{
                     width: '6rem',
                     height: '6rem',
@@ -401,19 +398,23 @@ export default function CommunitiesPage() {
                 </div>
 
                 {/* Content Area */}
-                <div style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 1 }}>
-                  {/* Header Section */}
+                <div className="community-content" style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
                     <div style={{ flex: 1, minWidth: 0, marginRight: '1rem' }}>
                       <h2
+                        className="community-title"
                         style={{
                           fontWeight: '700',
                           color: '#1e40af',
                           fontSize: '1.25rem',
-                          wordBreak: 'break-word',
-                          overflowWrap: 'break-word',
                           lineHeight: 1.3,
                           marginBottom: '0.25rem',
+                          WebkitLineClamp: 3,
+                          display: '-webkit-box',
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          wordBreak: 'keep-all',
+                          overflowWrap: 'normal',
                         }}
                       >
                         {community.name}
@@ -426,8 +427,6 @@ export default function CommunitiesPage() {
                           WebkitLineClamp: 2,
                           WebkitBoxOrient: 'vertical',
                           overflow: 'hidden',
-                          wordBreak: 'break-word',
-                          overflowWrap: 'break-word',
                           lineHeight: '1.5',
                         }}
                       >
@@ -435,6 +434,7 @@ export default function CommunitiesPage() {
                       </p>
                     </div>
                     <Button
+                      className="visit-btn"
                       style={{
                         background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
                         color: 'white',
@@ -453,14 +453,6 @@ export default function CommunitiesPage() {
                         transition: 'all 300ms ease-in-out',
                         boxShadow: '0 2px 8px rgba(59, 130, 246, 0.2)',
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateY(-2px)';
-                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.2)';
-                      }}
                     >
                       Visit
                       <ArrowRight size={14} />
@@ -468,7 +460,7 @@ export default function CommunitiesPage() {
                   </div>
 
                   {/* Stats */}
-                  <div style={{ 
+                  <div className="stats-row" style={{ 
                     display: 'flex', 
                     flexWrap: 'wrap', 
                     gap: '1rem', 
@@ -491,7 +483,7 @@ export default function CommunitiesPage() {
                   </div>
 
                   {/* Activity */}
-                  <div style={{ 
+                  <div className="activity-box" style={{ 
                     display: 'flex', 
                     gap: '0.5rem', 
                     fontSize: '0.875rem', 
@@ -564,14 +556,9 @@ export default function CommunitiesPage() {
                 fontSize: '1rem',
                 transition: 'all 300ms ease-in-out',
                 boxShadow: '0 4px 20px rgba(59, 130, 246, 0.3)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 8px 30px rgba(59, 130, 246, 0.4)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.3)';
+                width: '100%',
+                maxWidth: '20rem',
+                margin: '0 auto',
               }}
             >
               <Plus size={18} />
@@ -617,14 +604,9 @@ export default function CommunitiesPage() {
               fontSize: '1rem',
               transition: 'all 300ms ease-in-out',
               boxShadow: '0 4px 20px rgba(59, 130, 246, 0.3)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 8px 30px rgba(59, 130, 246, 0.4)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 4px 20px rgba(59, 130, 246, 0.3)';
+              width: '100%',
+              maxWidth: '20rem',
+              margin: '0 auto',
             }}
           >
             <Plus size={18} />
@@ -652,19 +634,58 @@ export default function CommunitiesPage() {
         </div>
       </div>
 
-      {/* Global styles for animations */}
+      {/* Global styles + responsive overrides */}
       <style jsx>{`
         @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
+          to { transform: rotate(360deg); }
         }
         @keyframes pulse {
-          0%, 100% { 
-            opacity: 1;
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+
+        /* Mobile-first responsive design */
+        @media (max-width: 640px) {
+          .community-card {
+            flex-direction: column !important;
+            align-items: stretch !important;
           }
-          50% { 
-            opacity: 0.5;
+
+          .cover-photo {
+            width: 100% !important;
+            height: 8rem !important;
+            border-radius: 0.75rem 0.75rem 0 0 !important;
+          }
+
+          .community-content {
+            padding-top: 1rem;
+          }
+
+          .community-title {
+            font-size: 1.125rem !important;
+            line-height: 1.4 !important;
+          }
+
+          .visit-btn {
+            width: 100% !important;
+            justify-content: center !important;
+            margin-top: 1rem !important;
+            align-self: stretch !important;
+          }
+
+          .stats-row {
+            gap: 0.5rem !important;
+            font-size: 0.8125rem !important;
+          }
+
+          .activity-box {
+            font-size: 0.8125rem !important;
+            padding: 0.5rem !important;
+          }
+
+          /* Ensure link doesn't shrink button */
+          .community-link {
+            display: block !important;
           }
         }
       `}</style>
