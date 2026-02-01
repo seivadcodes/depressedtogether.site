@@ -64,8 +64,9 @@ const isImageUrl = (url: string) => /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(url);
 const isPdfUrl = (url: string) => /\.pdf$/i.test(url);
 
 export default function CommunityChatPage() {
-    const { communityId } = useParams<{ communityId: string }>();
-    const router = useRouter();
+    const params = useParams(); // ← no generic — let TS infer { [key: string]: string | undefined } | null
+  const communityId = params?.communityId;
+   const router = useRouter();
     const { user } = useAuth();
     const supabase = useMemo(() => createClient(), []);
 
@@ -576,7 +577,7 @@ export default function CommunityChatPage() {
                     community_id: communityId,
                     sender_id: user.id,
                     content: file.name,
-                     file_url: internalUrl,
+                    file_url: internalUrl,
                     file_type: file.type,
                 })
                 .select(`*, sender:sender_id (full_name, avatar_url)`)
@@ -665,7 +666,7 @@ export default function CommunityChatPage() {
                     overflowY: 'auto',
                     display: 'flex',
                     flexDirection: 'column',
-                    
+
                     gap: '12px',
                 }}
             >
@@ -689,398 +690,398 @@ export default function CommunityChatPage() {
                                 {group.dateLabel}
                             </div>
                             {group.messages.map((msg) => {
-  const isOwn = msg.sender_id === user?.id;
-  const repliedMsg = messages.find((m) => m.id === msg.reply_to);
-  const isDeleted = msg.deleted_for_everyone;
-  const reactions = msg.reactions || {};
-  const allReactions = Object.values(reactions).flat();
-  const reactionCounts = allReactions.reduce((acc, emoji) => {
-    acc[emoji] = (acc[emoji] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-  const showUnreadBanner = messages.indexOf(msg) === firstUnreadIndex && firstUnreadIndex >= 0;
-  return (
-    <div key={msg.id}>
-      {showUnreadBanner && (
-        <div
-          id="unread-marker"
-          style={{
-            textAlign: 'center',
-            margin: '12px 0',
-            position: 'sticky',
-            top: '70px',
-            zIndex: 5,
-          }}
-        >
-          <span
-            style={{
-              backgroundColor: '#e0e7ff',
-              color: '#4f46e5',
-              padding: '4px 12px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '600',
-            }}
-          >
-            Unread messages
-          </span>
-        </div>
-      )}
-      <div
-        ref={(el) => {
-          if (el) messageRefs.current.set(msg.id, el);
-          else messageRefs.current.delete(msg.id);
-        }}
-        style={{
-          display: 'flex',
-          justifyContent: isOwn ? 'flex-end' : 'flex-start',
-          position: 'relative',
-          marginBottom: '12px', // ✅ THIS ADDS THE SPACE BETWEEN MESSAGES
-        }}
-      >
-        {!isOwn && (
-          <div style={{ width: '36px', marginRight: '12px', flexShrink: 0, marginTop: repliedMsg ? '24px' : '0' }}>
-            {msg.sender.avatar_url ? (
-              <Image
-                src={msg.sender.avatar_url}
-                alt={msg.sender.full_name || 'User'}
-                width={36}
-                height={36}
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  objectFit: 'cover',
-                }}
-                unoptimized
-              />
-            ) : (
-              <div
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '50%',
-                  backgroundColor: '#e0e7ff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: '600',
-                  fontSize: '14px',
-                  color: '#4f46e5',
-                }}
-              >
-                {getInitials(msg.sender.full_name)}
-              </div>
-            )}
-          </div>
-        )}
-        <div style={{ maxWidth: '80%', position: 'relative' }}>
-          {repliedMsg && !repliedMsg.deleted_for_everyone && (
-            <div
-              style={{
-                backgroundColor: '#f1f5f6',
-                borderRadius: '10px',
-                padding: '6px 10px',
-                marginBottom: '6px',
-                fontSize: '12px',
-                borderLeft: '2px solid #94a3b8',
-                cursor: 'pointer',
-              }}
-              onClick={() => {
-                const el = messageRefs.current.get(repliedMsg.id);
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }}
-            >
-              <div style={{ fontWeight: '500', color: '#334155' }}>{repliedMsg.sender.full_name}</div>
-              <div style={{ color: '#64748b' }}>
-                {repliedMsg.content.substring(0, 40)}
-                {repliedMsg.content.length > 40 ? '...' : ''}
-              </div>
-            </div>
-          )}
-          <div
-            onMouseDown={(e) => !isDeleted && handleLongPressStart(msg.id, isOwn, e)}
-            onMouseUp={handleLongPressEnd}
-            onMouseLeave={handleLongPressEnd}
-            onTouchStart={(e) => !isDeleted && handleLongPressStart(msg.id, isOwn, e)}
-            onTouchEnd={handleLongPressEnd}
-            onTouchCancel={handleLongPressEnd}
-            style={{
-              padding: '10px 14px',
-              borderRadius: isOwn ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-              backgroundColor: isDeleted ? '#f3f4f6' : isOwn ? '#e0e7ff' : '#f1f5f6',
-              color: isDeleted ? '#9ca3af' : isOwn ? '#312e81' : '#1e293b',
-              fontSize: '14px',
-              lineHeight: '1.4',
-              position: 'relative',
-              paddingRight: '30px',
-              overflowWrap: 'break-word',
-              cursor: isDeleted ? 'default' : 'pointer',
-              fontStyle: isDeleted ? 'italic' : 'normal',
-            }}
-          >
-            {!isDeleted && (
-              <div
-                style={{
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  color: '#334155',
-                  marginBottom: '4px',
-                  lineHeight: 1.2,
-                }}
-              >
-                {isOwn ? (
-                  'Me'
-                ) : (
-                  <Link
-                    href={`/profile/${msg.sender_id}`}
-                    passHref
-                    style={{
-                      color: '#334155',
-                      textDecoration: 'none',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {msg.sender.full_name}
-                  </Link>
-                )}
-              </div>
-            )}
-            {isOwn && !isDeleted && (
-              <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowMessageMenu(showMessageMenu === msg.id ? null : msg.id);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#64748b',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    padding: '2px 4px',
-                    borderRadius: '4px',
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
-                    e.currentTarget.parentElement!.style.opacity = '1';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    if (showMessageMenu !== msg.id) {
-                      e.currentTarget.parentElement!.style.opacity = '0';
-                    }
-                  }}
-                >
-                  ⋮
-                </button>
-                {showMessageMenu === msg.id && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      backgroundColor: 'white',
-                      borderRadius: '8px',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                      zIndex: 10,
-                      minWidth: '140px',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setReplyingTo(msg);
-                        setShowMessageMenu(null);
-                        messageInputRef.current?.focus();
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        textAlign: 'left',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: '#334155',
-                        fontSize: '14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        borderBottom: '1px solid #f1f5f6',
-                      }}
-                    >
-                      ↩️ Reply
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteForEveryone(msg.id);
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        textAlign: 'left',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: '#ef4444',
-                        fontSize: '14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                      }}
-                    >
-                      🗑️ Delete for Everyone
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-            {!isOwn && !isDeleted && (
-              <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setReplyingTo(msg);
-                    messageInputRef.current?.focus();
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#64748b',
-                    cursor: 'pointer',
-                    fontSize: '16px',
-                    padding: '2px 4px',
-                    borderRadius: '4px',
-                  }}
-                  onMouseOver={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
-                    e.currentTarget.parentElement!.style.opacity = '1';
-                  }}
-                  onMouseOut={(e) => {
-                    e.currentTarget.style.backgroundColor = 'transparent';
-                    e.currentTarget.parentElement!.style.opacity = '0.4';
-                  }}
-                >
-                  ⋮
-                </button>
-              </div>
-            )}
-            {isDeleted ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '12px' }}>🗑️</span>
-                <span>Message deleted</span>
-              </div>
-            ) : msg.file_url ? (
-              (() => {
-                const url = msg.file_url;
-                if (isImageUrl(url)) {
-                  return (
-                    <div style={{ position: 'relative', width: '300px', height: '300px', borderRadius: '8px', overflow: 'hidden' }}>
-                      <Image
-                        src={url}
-                        alt="Attachment"
-                        fill
-                        style={{ objectFit: 'cover', cursor: 'pointer' }}
-                        onClick={() => window.open(url, '_blank')}
-                      />
-                    </div>
-                  );
-                }
-                if (isPdfUrl(url)) {
-                  return (
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        padding: '8px',
-                        backgroundColor: 'white',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                      }}
-                    >
-                      <div style={{ fontSize: '20px', color: '#ef4444' }}>📄</div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: '500', fontSize: '12px' }}>{msg.content}</div>
-                        <div style={{ fontSize: '10px', color: '#64748b' }}>PDF Document</div>
-                      </div>
-                      <button
-                        onClick={() => window.open(url, '_blank')}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: '#4f46e5',
-                          cursor: 'pointer',
-                          fontSize: '12px',
-                        }}
-                      >
-                        Open
-                      </button>
-                    </div>
-                  );
-                }
-                return (
-                  <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      color: '#4f46e5',
-                      textDecoration: 'underline',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      fontSize: '14px',
-                    }}
-                  >
-                    📎 {msg.content}
-                  </a>
-                );
-              })()
-            ) : (
-              <div>{msg.content}</div>
-            )}
-            {Object.keys(reactionCounts).length > 0 && (
-              <div style={{ display: 'flex', gap: '2px', marginTop: '6px', flexWrap: 'wrap' }}>
-                {Object.entries(reactionCounts).map(([emoji, count]) => (
-                  <div
-                    key={emoji}
-                    style={{
-                      backgroundColor: 'rgba(255,255,255,0.9)',
-                      borderRadius: '10px',
-                      padding: '1px 4px',
-                      fontSize: '10px',
-                      border: '1px solid #e2e8f0',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '1px',
-                    }}
-                  >
-                    <span>{emoji}</span>
-                    <span style={{ color: '#64748b', fontWeight: '500' }}>{count}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div
-              style={{
-                fontSize: '10px',
-                textAlign: 'right',
-                marginTop: '4px',
-                color: isDeleted ? '#9ca3af' : isOwn ? '#4f46e5' : '#94a3b8',
-              }}
-            >
-              {formatTimeOnly(msg.created_at)}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-})}
+                                const isOwn = msg.sender_id === user?.id;
+                                const repliedMsg = messages.find((m) => m.id === msg.reply_to);
+                                const isDeleted = msg.deleted_for_everyone;
+                                const reactions = msg.reactions || {};
+                                const allReactions = Object.values(reactions).flat();
+                                const reactionCounts = allReactions.reduce((acc, emoji) => {
+                                    acc[emoji] = (acc[emoji] || 0) + 1;
+                                    return acc;
+                                }, {} as Record<string, number>);
+                                const showUnreadBanner = messages.indexOf(msg) === firstUnreadIndex && firstUnreadIndex >= 0;
+                                return (
+                                    <div key={msg.id}>
+                                        {showUnreadBanner && (
+                                            <div
+                                                id="unread-marker"
+                                                style={{
+                                                    textAlign: 'center',
+                                                    margin: '12px 0',
+                                                    position: 'sticky',
+                                                    top: '70px',
+                                                    zIndex: 5,
+                                                }}
+                                            >
+                                                <span
+                                                    style={{
+                                                        backgroundColor: '#e0e7ff',
+                                                        color: '#4f46e5',
+                                                        padding: '4px 12px',
+                                                        borderRadius: '20px',
+                                                        fontSize: '12px',
+                                                        fontWeight: '600',
+                                                    }}
+                                                >
+                                                    Unread messages
+                                                </span>
+                                            </div>
+                                        )}
+                                        <div
+                                            ref={(el) => {
+                                                if (el) messageRefs.current.set(msg.id, el);
+                                                else messageRefs.current.delete(msg.id);
+                                            }}
+                                            style={{
+                                                display: 'flex',
+                                                justifyContent: isOwn ? 'flex-end' : 'flex-start',
+                                                position: 'relative',
+                                                marginBottom: '12px', // ✅ THIS ADDS THE SPACE BETWEEN MESSAGES
+                                            }}
+                                        >
+                                            {!isOwn && (
+                                                <div style={{ width: '36px', marginRight: '12px', flexShrink: 0, marginTop: repliedMsg ? '24px' : '0' }}>
+                                                    {msg.sender.avatar_url ? (
+                                                        <Image
+                                                            src={msg.sender.avatar_url}
+                                                            alt={msg.sender.full_name || 'User'}
+                                                            width={36}
+                                                            height={36}
+                                                            style={{
+                                                                width: '36px',
+                                                                height: '36px',
+                                                                borderRadius: '50%',
+                                                                objectFit: 'cover',
+                                                            }}
+                                                            unoptimized
+                                                        />
+                                                    ) : (
+                                                        <div
+                                                            style={{
+                                                                width: '36px',
+                                                                height: '36px',
+                                                                borderRadius: '50%',
+                                                                backgroundColor: '#e0e7ff',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontWeight: '600',
+                                                                fontSize: '14px',
+                                                                color: '#4f46e5',
+                                                            }}
+                                                        >
+                                                            {getInitials(msg.sender.full_name)}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            <div style={{ maxWidth: '80%', position: 'relative' }}>
+                                                {repliedMsg && !repliedMsg.deleted_for_everyone && (
+                                                    <div
+                                                        style={{
+                                                            backgroundColor: '#f1f5f6',
+                                                            borderRadius: '10px',
+                                                            padding: '6px 10px',
+                                                            marginBottom: '6px',
+                                                            fontSize: '12px',
+                                                            borderLeft: '2px solid #94a3b8',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                        onClick={() => {
+                                                            const el = messageRefs.current.get(repliedMsg.id);
+                                                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: '500', color: '#334155' }}>{repliedMsg.sender.full_name}</div>
+                                                        <div style={{ color: '#64748b' }}>
+                                                            {repliedMsg.content.substring(0, 40)}
+                                                            {repliedMsg.content.length > 40 ? '...' : ''}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                <div
+                                                    onMouseDown={(e) => !isDeleted && handleLongPressStart(msg.id, isOwn, e)}
+                                                    onMouseUp={handleLongPressEnd}
+                                                    onMouseLeave={handleLongPressEnd}
+                                                    onTouchStart={(e) => !isDeleted && handleLongPressStart(msg.id, isOwn, e)}
+                                                    onTouchEnd={handleLongPressEnd}
+                                                    onTouchCancel={handleLongPressEnd}
+                                                    style={{
+                                                        padding: '10px 14px',
+                                                        borderRadius: isOwn ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                                                        backgroundColor: isDeleted ? '#f3f4f6' : isOwn ? '#e0e7ff' : '#f1f5f6',
+                                                        color: isDeleted ? '#9ca3af' : isOwn ? '#312e81' : '#1e293b',
+                                                        fontSize: '14px',
+                                                        lineHeight: '1.4',
+                                                        position: 'relative',
+                                                        paddingRight: '30px',
+                                                        overflowWrap: 'break-word',
+                                                        cursor: isDeleted ? 'default' : 'pointer',
+                                                        fontStyle: isDeleted ? 'italic' : 'normal',
+                                                    }}
+                                                >
+                                                    {!isDeleted && (
+                                                        <div
+                                                            style={{
+                                                                fontSize: '12px',
+                                                                fontWeight: '600',
+                                                                color: '#334155',
+                                                                marginBottom: '4px',
+                                                                lineHeight: 1.2,
+                                                            }}
+                                                        >
+                                                            {isOwn ? (
+                                                                'Me'
+                                                            ) : (
+                                                                <Link
+                                                                    href={`/profile/${msg.sender_id}`}
+                                                                    passHref
+                                                                    style={{
+                                                                        color: '#334155',
+                                                                        textDecoration: 'none',
+                                                                        cursor: 'pointer',
+                                                                    }}
+                                                                >
+                                                                    {msg.sender.full_name}
+                                                                </Link>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {isOwn && !isDeleted && (
+                                                        <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setShowMessageMenu(showMessageMenu === msg.id ? null : msg.id);
+                                                                }}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    color: '#64748b',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '16px',
+                                                                    padding: '2px 4px',
+                                                                    borderRadius: '4px',
+                                                                }}
+                                                                onMouseOver={(e) => {
+                                                                    e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
+                                                                    e.currentTarget.parentElement!.style.opacity = '1';
+                                                                }}
+                                                                onMouseOut={(e) => {
+                                                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                                                    if (showMessageMenu !== msg.id) {
+                                                                        e.currentTarget.parentElement!.style.opacity = '0';
+                                                                    }
+                                                                }}
+                                                            >
+                                                                ⋮
+                                                            </button>
+                                                            {showMessageMenu === msg.id && (
+                                                                <div
+                                                                    style={{
+                                                                        position: 'absolute',
+                                                                        top: '100%',
+                                                                        right: 0,
+                                                                        backgroundColor: 'white',
+                                                                        borderRadius: '8px',
+                                                                        boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+                                                                        zIndex: 10,
+                                                                        minWidth: '140px',
+                                                                        overflow: 'hidden',
+                                                                    }}
+                                                                >
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setReplyingTo(msg);
+                                                                            setShowMessageMenu(null);
+                                                                            messageInputRef.current?.focus();
+                                                                        }}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            padding: '10px 14px',
+                                                                            textAlign: 'left',
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            cursor: 'pointer',
+                                                                            color: '#334155',
+                                                                            fontSize: '14px',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '8px',
+                                                                            borderBottom: '1px solid #f1f5f6',
+                                                                        }}
+                                                                    >
+                                                                        ↩️ Reply
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleDeleteForEveryone(msg.id);
+                                                                        }}
+                                                                        style={{
+                                                                            width: '100%',
+                                                                            padding: '10px 14px',
+                                                                            textAlign: 'left',
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            cursor: 'pointer',
+                                                                            color: '#ef4444',
+                                                                            fontSize: '14px',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '8px',
+                                                                        }}
+                                                                    >
+                                                                        🗑️ Delete for Everyone
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    {!isOwn && !isDeleted && (
+                                                        <div className="message-menu-container" style={{ position: 'absolute', top: '6px', right: '6px', opacity: 0.4 }}>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setReplyingTo(msg);
+                                                                    messageInputRef.current?.focus();
+                                                                }}
+                                                                style={{
+                                                                    background: 'none',
+                                                                    border: 'none',
+                                                                    color: '#64748b',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '16px',
+                                                                    padding: '2px 4px',
+                                                                    borderRadius: '4px',
+                                                                }}
+                                                                onMouseOver={(e) => {
+                                                                    e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
+                                                                    e.currentTarget.parentElement!.style.opacity = '1';
+                                                                }}
+                                                                onMouseOut={(e) => {
+                                                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                                                    e.currentTarget.parentElement!.style.opacity = '0.4';
+                                                                }}
+                                                            >
+                                                                ⋮
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    {isDeleted ? (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span style={{ fontSize: '12px' }}>🗑️</span>
+                                                            <span>Message deleted</span>
+                                                        </div>
+                                                    ) : msg.file_url ? (
+                                                        (() => {
+                                                            const url = msg.file_url;
+                                                            if (isImageUrl(url)) {
+                                                                return (
+                                                                    <div style={{ position: 'relative', width: '300px', height: '300px', borderRadius: '8px', overflow: 'hidden' }}>
+                                                                        <Image
+                                                                            src={url}
+                                                                            alt="Attachment"
+                                                                            fill
+                                                                            style={{ objectFit: 'cover', cursor: 'pointer' }}
+                                                                            onClick={() => window.open(url, '_blank')}
+                                                                        />
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            if (isPdfUrl(url)) {
+                                                                return (
+                                                                    <div
+                                                                        style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '8px',
+                                                                            padding: '8px',
+                                                                            backgroundColor: 'white',
+                                                                            border: '1px solid #e2e8f0',
+                                                                            borderRadius: '8px',
+                                                                        }}
+                                                                    >
+                                                                        <div style={{ fontSize: '20px', color: '#ef4444' }}>📄</div>
+                                                                        <div style={{ flex: 1 }}>
+                                                                            <div style={{ fontWeight: '500', fontSize: '12px' }}>{msg.content}</div>
+                                                                            <div style={{ fontSize: '10px', color: '#64748b' }}>PDF Document</div>
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => window.open(url, '_blank')}
+                                                                            style={{
+                                                                                background: 'none',
+                                                                                border: 'none',
+                                                                                color: '#4f46e5',
+                                                                                cursor: 'pointer',
+                                                                                fontSize: '12px',
+                                                                            }}
+                                                                        >
+                                                                            Open
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            }
+                                                            return (
+                                                                <a
+                                                                    href={url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    style={{
+                                                                        color: '#4f46e5',
+                                                                        textDecoration: 'underline',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                        fontSize: '14px',
+                                                                    }}
+                                                                >
+                                                                    📎 {msg.content}
+                                                                </a>
+                                                            );
+                                                        })()
+                                                    ) : (
+                                                        <div>{msg.content}</div>
+                                                    )}
+                                                    {Object.keys(reactionCounts).length > 0 && (
+                                                        <div style={{ display: 'flex', gap: '2px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                                            {Object.entries(reactionCounts).map(([emoji, count]) => (
+                                                                <div
+                                                                    key={emoji}
+                                                                    style={{
+                                                                        backgroundColor: 'rgba(255,255,255,0.9)',
+                                                                        borderRadius: '10px',
+                                                                        padding: '1px 4px',
+                                                                        fontSize: '10px',
+                                                                        border: '1px solid #e2e8f0',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '1px',
+                                                                    }}
+                                                                >
+                                                                    <span>{emoji}</span>
+                                                                    <span style={{ color: '#64748b', fontWeight: '500' }}>{count}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    <div
+                                                        style={{
+                                                            fontSize: '10px',
+                                                            textAlign: 'right',
+                                                            marginTop: '4px',
+                                                            color: isDeleted ? '#9ca3af' : isOwn ? '#4f46e5' : '#94a3b8',
+                                                        }}
+                                                    >
+                                                        {formatTimeOnly(msg.created_at)}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     ))
                 )}
