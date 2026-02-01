@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import withPWA from "next-pwa";
 
 const nextConfig: NextConfig = {
   images: {
@@ -12,51 +11,21 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Add webpack configuration for service worker support
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+      };
+    }
+    return config;
+  },
+  // Optional: Add experimental features if needed
+  experimental: {
+    // Enable if you're using app directory features
+    // webVitalsAttribution: ['CLS', 'LCP'],
+  },
 };
 
-// Apply PWA wrapper
-export default withPWA({
-  ...nextConfig,
-  pwa: {
-    dest: "public",
-    register: true,
-    skipWaiting: true,
-    disable: process.env.NODE_ENV === "development",
-    // Optional: customize caching
-    runtimeCaching: [
-      {
-        urlPattern: /^https:\/\/ydrrvvnpodbchxzynbkk\.supabase\.co\/storage\/v1\/object\/.*$/,
-        handler: "CacheFirst",
-        options: {
-          cacheName: "supabase-images",
-          expiration: {
-            maxEntries: 100,
-            maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
-          },
-        },
-      },
-      {
-        urlPattern: /\/_next\/static\/.*/,
-        handler: "CacheFirst",
-        options: {
-          cacheName: "next-static",
-          expiration: {
-            maxEntries: 100,
-            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
-          },
-        },
-      },
-      {
-        urlPattern: /\.(png|svg|jpg|jpeg|webp|ico)$/,
-        handler: "CacheFirst",
-        options: {
-          cacheName: "assets",
-          expiration: {
-            maxEntries: 50,
-            maxAgeSeconds: 7 * 24 * 60 * 60,
-          },
-        },
-      },
-    ],
-  },
-});
+export default nextConfig;
