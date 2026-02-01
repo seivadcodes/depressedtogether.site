@@ -6,9 +6,40 @@ import ClientLayout from './client-layout';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import PWAInstaller from '@/components/PWAInstaller';
-import ServiceWorkerRegister from '@/components/ServiceWorkerRegister'; // ✅
+import ServiceWorkerRegister from '@/components/ServiceWorkerRegister';
 
 const inter = Inter({ subsets: ['latin'] });
+
+// ✅ Add PWA & SEO metadata here (App Router way)
+export const metadata = {
+  title: 'Healing Shoulder',
+  description: 'A compassionate space for grief support and connection.',
+  manifest: '/manifest.json', // 👈 This links your PWA manifest
+  themeColor: '#4f46e5',      // 👈 Required for PWA address bar color
+  // Optional but recommended for iOS
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Healing Shoulder',
+  },
+  icons: {
+    icon: '/icons/icon-96x96.png',
+    apple: [
+      { url: '/icons/icon-152x152.png', sizes: '152x152' },
+      { url: '/icons/icon-180x180.png', sizes: '180x180' },
+      { url: '/icons/icon-192x192.png', sizes: '192x192' },
+    ],
+  },
+};
+
+// Optional: customize viewport (helps with mobile PWA)
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
+};
 
 export default async function RootLayout({
   children,
@@ -23,7 +54,7 @@ export default async function RootLayout({
         <Analytics />
         <SpeedInsights />
 
-        {/* ✅ Proper client-side service worker registration */}
+        {/* Service worker registration (client-side only) */}
         <ServiceWorkerRegister />
         
         <ClientLayout user={user}>{children}</ClientLayout>
