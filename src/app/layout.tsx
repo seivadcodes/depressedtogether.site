@@ -3,7 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { getCurrentUser } from '@/lib/auth-server';
 import ClientLayout from './client-layout';
-import PWAInstaller from '@/components/PWAInstaller';
+
 import ServiceWorkerRegister from '@/components/ServiceWorkerRegister';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -67,7 +67,7 @@ export default async function RootLayout({
 
         <ServiceWorkerRegister />
         <ClientLayout user={user}>{children}</ClientLayout>
-       
+        {/*<PWAInstaller />*/}
       </body>
     </html>
   );
