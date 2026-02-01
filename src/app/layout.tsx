@@ -6,7 +6,6 @@ import ClientLayout from './client-layout';
 import PWAInstaller from '@/components/PWAInstaller';
 import ServiceWorkerRegister from '@/components/ServiceWorkerRegister';
 
-// Only import Vercel components dynamically or conditionally
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata = {
@@ -47,13 +46,24 @@ export default async function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className={`${inter.className} flex flex-col h-full bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 text-stone-900`}>
-        {/* ✅ Only load Vercel analytics in production */}
-        {process.env.NODE_ENV === 'production' && (
-          <>
-            <Analytics />
-            <SpeedInsights />
-          </>
-        )}
+        {/* ✅ Silently load Vercel scripts in production only */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined' && process.env.NODE_ENV === 'production') {
+                const s1 = document.createElement('script');
+                s1.src = '/_vercel/insights/script.js';
+                s1.onerror = () => {};
+                document.head.appendChild(s1);
+
+                const s2 = document.createElement('script');
+                s2.src = '/_vercel/speed-insights/script.js';
+                s2.onerror = () => {};
+                document.head.appendChild(s2);
+              }
+            `,
+          }}
+        />
 
         <ServiceWorkerRegister />
         <ClientLayout user={user}>{children}</ClientLayout>
@@ -62,7 +72,3 @@ export default async function RootLayout({
     </html>
   );
 }
-
-// Re-import Vercel components only if used
-import { Analytics } from '@vercel/analytics/next';
-import { SpeedInsights } from '@vercel/speed-insights/next';
