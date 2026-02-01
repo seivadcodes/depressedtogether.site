@@ -1,19 +1,23 @@
-import type { NextConfig } from "next";
-import withPWA from "next-pwa";
+import type { NextConfig } from 'next';
+import withPWA from 'next-pwa';
 
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       {
-        protocol: "https",
-        hostname: "ydrrvvnpodbchxzynbkk.supabase.co",
-        port: "",
-        pathname: "/storage/v1/object/**",
+        protocol: 'https',
+        hostname: 'ydrrvvnpodbchxzynbkk.supabase.co',
+        port: '',
+        pathname: '/storage/v1/object/**',
       },
     ],
   },
-  webpack: (config, { isServer }) => {
+
+  // Keep your webpack config — required for PWA
+  webpack(config, { isServer }) {
     if (!isServer) {
+      if (!config.resolve) config.resolve = {};
+      if (!config.resolve.fallback) config.resolve.fallback = {};
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -21,46 +25,45 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-  experimental: {
-    // webVitalsAttribution: ['CLS', 'LCP'],
-  },
+
+  // 👇 Add this to silence the Turbopack warning
+  turbopack: {},
 };
 
-// Wrap with next-pwa for automatic service worker + caching
+// Wrap with PWA (which injects Webpack plugins)
 export default withPWA({
-  dest: "public", // outputs sw.js to /public/sw.js
-  register: true, // auto-injects SW registration script
-  skipWaiting: true, // activate new SW immediately
-  disable: process.env.NODE_ENV === "development", // no SW in dev mode
-  // Optional: cache strategies for better offline support
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+  disable: process.env.NODE_ENV === 'development',
   runtimeCaching: [
     {
       urlPattern: /^https:\/\/depressedtogether\.site\/icons\/.*\.(png|jpg|jpeg|webp)$/i,
-      handler: "CacheFirst",
+      handler: 'CacheFirst',
       options: {
-        cacheName: "app-icons",
+        cacheName: 'app-icons',
         expiration: {
           maxEntries: 20,
-          maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
+          maxAgeSeconds: 7 * 24 * 60 * 60,
         },
       },
     },
     {
       urlPattern: /^https:\/\/depressedtogether\.site\/_next\/static\/.*$/i,
-      handler: "CacheFirst",
+      handler: 'CacheFirst',
       options: {
-        cacheName: "next-static",
+        cacheName: 'next-static',
         expiration: {
           maxEntries: 50,
-          maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+          maxAgeSeconds: 30 * 24 * 60 * 60,
         },
       },
     },
     {
       urlPattern: /^https:\/\/.*\.(js|css)$/i,
-      handler: "StaleWhileRevalidate",
+      handler: 'StaleWhileRevalidate',
       options: {
-        cacheName: "static-assets",
+        cacheName: 'static-assets',
       },
     },
   ],
