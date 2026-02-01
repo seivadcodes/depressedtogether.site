@@ -204,7 +204,7 @@ const pulseAnimation = `
 
 export default function CommunityDetailPage() {
   const params = useParams();
-  const communityId = params.communityId as string;
+ const communityId = params?.communityId ?? '';
   const router = useRouter();
   const searchParams = useSearchParams();
   const targetPostId = searchParams.get('postId');
