@@ -338,8 +338,6 @@ export default function CommunitiesPage() {
                   border: '1px solid rgba(59, 130, 246, 0.2)',
                   padding: '1.25rem',
                   boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
-                  display: 'flex',
-                  gap: '1rem',
                   position: 'relative',
                   overflow: 'hidden',
                 }}
@@ -397,67 +395,32 @@ export default function CommunitiesPage() {
                   )}
                 </div>
 
-                {/* Content Area */}
-                <div className="community-content" style={{ flex: 1, minWidth: 0, position: 'relative', zIndex: 1 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
-                    <div style={{ flex: 1, minWidth: 0, marginRight: '1rem' }}>
-                      <h2
-                        className="community-title"
-                        style={{
-                          fontWeight: '700',
-                          color: '#1e40af',
-                          fontSize: '1.25rem',
-                          lineHeight: 1.3,
-                          marginBottom: '0.25rem',
-                          WebkitLineClamp: 3,
-                          display: '-webkit-box',
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                          wordBreak: 'keep-all',
-                          overflowWrap: 'normal',
-                        }}
-                      >
-                        {community.name}
-                      </h2>
-                      <p
-                        style={{
-                          color: '#6b7280',
-                          fontSize: '0.875rem',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                          lineHeight: '1.5',
-                        }}
-                      >
-                        {community.description}
-                      </p>
-                    </div>
-                    <Button
-                      className="visit-btn"
-                      style={{
-                        background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-                        color: 'white',
-                        border: 'none',
-                        padding: '0.5rem 1rem',
-                        borderRadius: '0.5rem',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        fontSize: '0.875rem',
-                        fontWeight: '600',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0,
-                        alignSelf: 'flex-start',
-                        transition: 'all 300ms ease-in-out',
-                        boxShadow: '0 2px 8px rgba(59, 130, 246, 0.2)',
-                      }}
-                    >
-                      Visit
-                      <ArrowRight size={14} />
-                    </Button>
-                  </div>
+                {/* Content Area — full-width, no right-side button */}
+                <div className="community-content" style={{ marginLeft: '1rem', flex: 1, minWidth: 0 }}>
+                  <h2
+                    className="community-title"
+                    style={{
+                      fontWeight: '700',
+                      color: '#1e40af',
+                      fontSize: '1.25rem',
+                      lineHeight: 1.4,
+                      marginBottom: '0.5rem',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'break-word',
+                    }}
+                  >
+                    {community.name}
+                  </h2>
+                  <p
+                    style={{
+                      color: '#6b7280',
+                      fontSize: '0.875rem',
+                      lineHeight: '1.5',
+                      marginBottom: '0.75rem',
+                    }}
+                  >
+                    {community.description}
+                  </p>
 
                   {/* Stats */}
                   <div className="stats-row" style={{ 
@@ -466,8 +429,8 @@ export default function CommunitiesPage() {
                     gap: '1rem', 
                     fontSize: '0.75rem', 
                     color: '#6b7280', 
-                    marginBottom: '0.75rem',
-                    fontWeight: '500'
+                    fontWeight: '500',
+                    marginBottom: '0.5rem',
                   }}>
                     <span style={{ 
                       display: 'flex', 
@@ -482,7 +445,8 @@ export default function CommunitiesPage() {
                     </span>
                   </div>
 
-                  {/* Activity */}
+                  {/* ❌ COMMENTED OUT: Activity line (as requested) */}
+                  {/* 
                   <div className="activity-box" style={{ 
                     display: 'flex', 
                     gap: '0.5rem', 
@@ -498,6 +462,43 @@ export default function CommunitiesPage() {
                       {formatRecentActivity(community.created_at)}: Someone just shared their experience
                     </p>
                   </div>
+                  */}
+
+                  {/* Visit button — fixed bottom-right */}
+                  <Button
+                    className="visit-btn-bottom-right"
+                    style={{
+                      position: 'absolute',
+                      bottom: '1.25rem',
+                      right: '1.25rem',
+                      background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+                      color: 'white',
+                      border: 'none',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '0.5rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontSize: '0.875rem',
+                      fontWeight: '600',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 300ms ease-in-out',
+                      boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
+                      zIndex: 2,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 6px 16px rgba(59, 130, 246, 0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)';
+                    }}
+                  >
+                    Visit
+                    <ArrowRight size={14} />
+                  </Button>
                 </div>
               </div>
             </Link>
@@ -580,12 +581,12 @@ export default function CommunitiesPage() {
             marginBottom: '2rem',
           }}
         >
-          <p style={{ 
-            color: '#4b5563', 
-            marginBottom: '1rem',
-            fontSize: '1.125rem',
-            fontWeight: '500'
-          }}>
+         <p style={{ 
+  color: '#4b5563',
+  marginBottom: '1rem',
+  fontSize: '1.125rem',
+  fontWeight: '500'
+}}>
             Can&rsquo;t find a community that matches your depression experience?
           </p>
           <Button
@@ -647,45 +648,39 @@ export default function CommunitiesPage() {
         /* Mobile-first responsive design */
         @media (max-width: 640px) {
           .community-card {
-            flex-direction: column !important;
-            align-items: stretch !important;
+            padding: 1.25rem 1rem;
+            position: relative;
           }
 
           .cover-photo {
-            width: 100% !important;
-            height: 8rem !important;
-            border-radius: 0.75rem 0.75rem 0 0 !important;
+            width: 100%;
+            max-width: 6rem;
+            height: 6rem;
+            border-radius: 0.75rem 0.75rem 0 0;
           }
 
           .community-content {
-            padding-top: 1rem;
+            margin-left: 0;
+            padding-top: 0.75rem;
           }
 
           .community-title {
-            font-size: 1.125rem !important;
-            line-height: 1.4 !important;
+            font-size: 1.125rem;
+            line-height: 1.4;
           }
 
-          .visit-btn {
+          .visit-btn-bottom-right {
+            position: static !important;
+            bottom: auto !important;
+            right: auto !important;
+            margin-top: 1rem;
             width: 100% !important;
             justify-content: center !important;
-            margin-top: 1rem !important;
-            align-self: stretch !important;
           }
 
           .stats-row {
-            gap: 0.5rem !important;
-            font-size: 0.8125rem !important;
-          }
-
-          .activity-box {
-            font-size: 0.8125rem !important;
-            padding: 0.5rem !important;
-          }
-
-          /* Ensure link doesn't shrink button */
-          .community-link {
-            display: block !important;
+            gap: 0.5rem;
+            font-size: 0.8125rem;
           }
         }
       `}</style>
