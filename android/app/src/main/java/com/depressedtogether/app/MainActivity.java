@@ -1,34 +1,38 @@
 package com.depressedtogether.app;
 
 import com.getcapacitor.BridgeActivity;
+import android.os.Bundle;
+import android.webkit.WebSettings;
 import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 
 public class MainActivity extends BridgeActivity {
-    @Override
-    protected void init() {
-        super.init();
-        getBridge().getWebView().setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
-            @Override
-            public void onPermissionRequest(final PermissionRequest request) {
-                // Only allow audio and video capture permissions
-                String[] resources = request.getResources();
-                boolean allowed = true;
-                for (String resource : resources) {
-                    if (!(
-                        PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource) ||
-                        PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)
-                    )) {
-                        allowed = false;
-                        break;
-                    }
-                }
-                if (allowed) {
-                    request.grant(resources);
-                } else {
-                    request.deny();
-                }
-            }
-        });
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+
+    // Configure WebView after bridge is ready
+    this.bridge.getWebView().setWebChromeClient(new WebChromeClient() {
+      @Override
+      public void onPermissionRequest(PermissionRequest request) {
+        // Auto-grant mic/camera permissions for your domain
+        if (request.getOrigin().toString().startsWith("https://www.depressedtogether.site")) {
+          request.grant(request.getResources());
+        } else {
+          request.deny();
+        }
+      }
+    });
+
+    // Disable cache + enable media
+    if (bridge != null && bridge.getWebView() != null) {
+      WebView webView = bridge.getWebView();
+      WebSettings webSettings = webView.getSettings();
+      webSettings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+      webSettings.setAppCacheEnabled(false);
+      webSettings.setDomStorageEnabled(true);
+      webSettings.setMediaPlaybackRequiresUserGesture(false);
     }
+  }
 }
