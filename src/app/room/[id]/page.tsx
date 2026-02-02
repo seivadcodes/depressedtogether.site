@@ -184,6 +184,17 @@ const [otherParticipantName, setOtherParticipantName] = useState<string | null>(
       const userId = session.user.id;
       setCurrentUserId(userId);
 
+       // ✅ REQUEST MIC PERMISSION HERE — ONE TIME, FOR BOTH CALL TYPES
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+      console.warn('Mic permission denied:', err);
+      setError('Microphone access is required to join calls. Please allow it in your device settings.');
+      setIsLoading(false);
+      return;
+    }
+
       let roomType: RoomType | null = null;
       let hostId: string | null = null;
       let callStartedAt: Date | null = null;

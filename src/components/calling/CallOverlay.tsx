@@ -364,7 +364,7 @@ export default function CallOverlay() {
             <div style={{ 
               backgroundColor: 'rgba(16, 185, 129, 0.2)', 
               borderRadius: '20px', 
-              padding: '8px 24px', 
+              padding: '12px 24px', 
               display: 'inline-block', 
               marginBottom: '12px'
             }}>
