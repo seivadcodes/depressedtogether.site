@@ -2289,7 +2289,7 @@ avatar_url
             fontWeight: '700',
             color: '#1e293b'
           }}>Your Messages</h1>
-          <button
+          {/*<button
             onClick={() => setIsOpen(true)}
             style={{
               padding: '10px 20px',
@@ -2306,7 +2306,7 @@ avatar_url
             onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4f46e5'}
           >
             New Message
-          </button>
+          </button>*/}
         </div>
       )}
 
@@ -2570,7 +2570,7 @@ avatar_url
                   }}>💬</div>
                   <p style={{ fontSize: '15px' }}>
                     No conversations yet.<br />
-                    Start one with someone who understands.
+                    Click on the name of the person within the community and from their profile, message them.
                   </p>
                 </div>
               ) : (

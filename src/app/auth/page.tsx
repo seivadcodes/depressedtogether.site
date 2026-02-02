@@ -102,7 +102,7 @@ export default function AuthPage() {
   }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '400px', margin: '0 auto' }}>
+    <div style={{ padding: '3rem', maxWidth: '400px', margin: '0 auto' }}>
       <h1 style={{ fontSize: '1.5rem', marginBottom: '1rem' }}>
         {authMode === 'sign-in' ? 'Welcome Back' : 'Create Your Account'}
       </h1>
