@@ -195,9 +195,9 @@ export default function HomePage() {
           <div style={{ textAlign: 'center', padding: '0 2rem', zIndex: 2 }}>
             <Heart size={48} style={{ color: baseColors.primary, marginBottom: '1rem' }} />
             <h2 style={{ fontSize: '1.75rem', fontWeight: '600', color: '#1e40af', marginBottom: '0.5rem' }}>
-              {onlineCount} people understand
-            </h2>
-            <p style={{ color: baseColors.text.secondary, fontSize: '1.125rem' }}>Right now. Right here.</p>
+  2.6M+ people will be available
+</h2>
+<p style={{ color: baseColors.text.secondary, fontSize: '1.125rem' }}>By the end of 2026. </p>
           </div>
         </div>
 
@@ -215,28 +215,28 @@ export default function HomePage() {
             border: '1px solid rgba(59, 130, 246, 0.2)',
           }}
         >
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              fontSize: '0.95rem',
-              fontWeight: '600',
-              color: '#1e40af',
-              gap: '0.5rem',
-            }}
-          >
-            <span
-              style={{
-                width: '0.75rem',
-                height: '0.75rem',
-                backgroundColor: baseColors.accent,
-                borderRadius: '50%',
-                display: 'inline-block',
-                animation: 'pulse 2s infinite',
-              }}
-            ></span>
-            {onlineCount} person{onlineCount !== 1 ? 's' : ''} available to connect
-          </span>
+         <span
+  style={{
+    display: 'inline-flex',
+    alignItems: 'center',
+    fontSize: '0.95rem',
+    fontWeight: '600',
+    color: '#1e40af',
+    gap: '0.5rem',
+  }}
+>
+  <span
+    style={{
+      width: '0.75rem',
+      height: '0.75rem',
+      backgroundColor: baseColors.accent,
+      borderRadius: '50%',
+      display: 'inline-block',
+      animation: 'pulse 2s infinite',
+    }}
+  ></span>
+  {/*Join thousands growing toward 2.6M+ by the end of 2026*/}
+</span>
         </div>
 
         {/* Buttons */}

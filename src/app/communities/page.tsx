@@ -311,7 +311,7 @@ export default function CommunitiesPage() {
               marginRight: '0.5rem',
               animation: 'pulse 2s infinite',
             }}></span>
-            {formattedOnlineText} in communities right now
+            {/*{formattedOnlineText} in communities right now*/}
           </div>
         </div>
 
