@@ -1,4 +1,3 @@
-// app/test/page.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -21,15 +20,9 @@ export default function AviatorDemo() {
 
   // Generate crash point (simplified algorithm - real ones use provably fair systems)
   const generateCrashPoint = (): number => {
-    // This simulates the house edge - most crashes happen early
     const random = Math.random();
-    // 1% chance of instant crash at 1.00
     if (random < 0.01) return 1.00;
-    
-    // Exponential distribution with house edge
     const crashPoint = Math.max(1.00, (0.99 / (1 - random)));
-    
-    // Cap at reasonable maximum for demo
     return Math.min(crashPoint, 100);
   };
 
@@ -45,25 +38,20 @@ export default function AviatorDemo() {
     
     crashPointRef.current = generateCrashPoint();
     
-    // Use callback to ensure this runs after render, avoiding purity rule
     requestAnimationFrame(() => {
       startTimeRef.current = performance.now();
 
-      // Animation loop
       const animate = (timestamp: number) => {
         const elapsed = (timestamp - startTimeRef.current) / 1000;
-        // Exponential growth formula
         const newMultiplier = Math.pow(Math.E, 0.06 * elapsed);
         
         setMultiplier(newMultiplier);
 
-        // Auto cashout check
         if (useAutoCashout && newMultiplier >= autoCashout && currentBet > 0) {
           cashOut();
           return;
         }
 
-        // Check if crashed
         if (newMultiplier >= crashPointRef.current) {
           setMultiplier(crashPointRef.current);
           setCrashed(true);
@@ -103,7 +91,6 @@ export default function AviatorDemo() {
     };
   }, []);
 
-  // Calculate plane position based on multiplier
   const getPlanePosition = () => {
     const progress = Math.min((multiplier - 1) / 10, 1);
     return {
@@ -114,83 +101,277 @@ export default function AviatorDemo() {
 
   const position = getPlanePosition();
 
+  // Inline styles
+  const pageStyle: React.CSSProperties = {
+    minHeight: '100vh',
+    backgroundColor: '#111827', // gray-900
+    color: 'white',
+    padding: '1rem',
+    fontFamily: 'sans-serif'
+  };
+
+  const containerStyle: React.CSSProperties = {
+    maxWidth: '64rem',
+    margin: '0 auto'
+  };
+
+  const headerStyle: React.CSSProperties = {
+    textAlign: 'center',
+    marginBottom: '1.5rem'
+  };
+
+  const titleStyle: React.CSSProperties = {
+    fontSize: '1.875rem',
+    fontWeight: 'bold',
+    color: '#ef4444' // red-500
+  };
+
+  const subtitleStyle: React.CSSProperties = {
+    color: '#9ca3af', // gray-400
+    fontSize: '0.875rem',
+    marginTop: '0.5rem'
+  };
+
+  const cardStyle: React.CSSProperties = {
+    backgroundColor: '#1f2937', // gray-800
+    borderRadius: '0.5rem',
+    padding: '1rem',
+    marginBottom: '1rem'
+  };
+
+  const flexBetweenStyle: React.CSSProperties = {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  };
+
+  const labelStyle: React.CSSProperties = {
+    color: '#9ca3af' // gray-400
+  };
+
+  const balanceTextStyle: React.CSSProperties = {
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    color: '#4ade80' // green-400
+  };
+
+  const betTextStyle: React.CSSProperties = {
+    fontSize: '1.5rem',
+    fontWeight: 'bold',
+    color: '#fbbf24' // yellow-400
+  };
+
+  const gameAreaStyle: React.CSSProperties = {
+    backgroundColor: '#1f2937',
+    borderRadius: '0.5rem',
+    padding: '1.5rem',
+    marginBottom: '1rem',
+    position: 'relative',
+    overflow: 'hidden',
+    height: '300px'
+  };
+
+  const multiplierStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: '1rem',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    textAlign: 'center'
+  };
+
+  const multiplierTextStyle = (crashed: boolean): React.CSSProperties => ({
+    fontSize: '3.75rem',
+    fontWeight: 'bold',
+    color: crashed ? '#ef4444' : 'white',
+    margin: 0
+  });
+
+  const crashedTextStyle: React.CSSProperties = {
+    color: '#ef4444',
+    fontSize: '1.25rem',
+    fontWeight: 'bold',
+    marginTop: '0.5rem'
+  };
+
+  const planeStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: `${position.x}%`,
+    bottom: `${position.y}%`,
+    transition: 'all 0.1s ease',
+    fontSize: '2.25rem' // text-4xl
+  };
+
+  const gridStyle: React.CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    opacity: 0.1,
+    pointerEvents: 'none'
+  };
+
+  const historyContainerStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: '0.5rem',
+    flexWrap: 'wrap'
+  };
+
+  const historyItemStyle = (value: number): React.CSSProperties => {
+    let bgColor = '#dc2626'; // red-600
+    if (value >= 2) bgColor = '#16a34a'; // green-600
+    else if (value >= 1.5) bgColor = '#ca8a04'; // yellow-600
+    return {
+      padding: '0.25rem 0.75rem',
+      borderRadius: '0.25rem',
+      backgroundColor: bgColor,
+      color: 'white'
+    };
+  };
+
+  const gridLineStyle: React.CSSProperties = {
+    position: 'absolute',
+    borderTop: '1px solid white',
+    width: '100%',
+    left: 0
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    backgroundColor: '#374151', // gray-700
+    borderRadius: '0.25rem',
+    padding: '0.5rem 1rem',
+    color: 'white',
+    border: 'none',
+    outline: 'none'
+  };
+
+  const inputDisabledStyle: React.CSSProperties = {
+    opacity: 0.5,
+    cursor: 'not-allowed'
+  };
+
+  const buttonGridStyle: React.CSSProperties = {
+    display: 'flex',
+    gap: '0.5rem',
+    marginTop: '0.5rem'
+  };
+
+  const smallButtonStyle: React.CSSProperties = {
+    flex: 1,
+    backgroundColor: '#374151',
+    borderRadius: '0.25rem',
+    padding: '0.25rem 0.5rem',
+    fontSize: '0.875rem',
+    color: 'white',
+    border: 'none',
+    cursor: 'pointer'
+  };
+
+  const checkboxContainerStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    marginBottom: '0.5rem'
+  };
+
+  const mainButtonStyle = (isFlying: boolean): React.CSSProperties => ({
+    width: '100%',
+    padding: '1rem 0',
+    borderRadius: '0.5rem',
+    fontWeight: 'bold',
+    fontSize: '1.25rem',
+    border: 'none',
+    cursor: 'pointer',
+    backgroundColor: isFlying ? '#16a34a' : '#dc2626',
+    color: 'white',
+    transition: 'background-color 0.2s'
+  });
+
+  const mainButtonDisabledStyle: React.CSSProperties = {
+    opacity: 0.5,
+    cursor: 'not-allowed'
+  };
+
+  const infoListStyle: React.CSSProperties = {
+    color: '#9ca3af',
+    fontSize: '0.875rem',
+    margin: 0,
+    paddingLeft: '1.5rem',
+    lineHeight: 1.8
+  };
+
+  const warningStyle: React.CSSProperties = {
+    color: '#f87171', // red-400
+    fontSize: '0.875rem',
+    marginTop: '1rem',
+    fontWeight: 'bold'
+  };
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
-      <div className="max-w-4xl mx-auto">
+    <div style={pageStyle}>
+      <div style={containerStyle}>
         {/* Header */}
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-red-500">✈️ AVIATOR DEMO</h1>
-          <p className="text-gray-400 text-sm mt-2">
+        <div style={headerStyle}>
+          <h1 style={titleStyle}>✈️ AVIATOR DEMO</h1>
+          <p style={subtitleStyle}>
             Educational Purpose Only - No Real Money
           </p>
         </div>
 
         {/* Balance Display */}
-        <div className="bg-gray-800 rounded-lg p-4 mb-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="text-gray-400">Balance</p>
-              <p className="text-2xl font-bold text-green-400">${balance.toFixed(2)}</p>
-            </div>
-            {currentBet > 0 && (
-              <div>
-                <p className="text-gray-400">Current Bet</p>
-                <p className="text-2xl font-bold text-yellow-400">${currentBet.toFixed(2)}</p>
-              </div>
-            )}
-            {winnings > 0 && (
-              <div>
-                <p className="text-gray-400">Won</p>
-                <p className="text-2xl font-bold text-green-400">+${winnings.toFixed(2)}</p>
-              </div>
-            )}
+        <div style={{ ...cardStyle, ...flexBetweenStyle }}>
+          <div>
+            <div style={labelStyle}>Balance</div>
+            <div style={balanceTextStyle}>${balance.toFixed(2)}</div>
           </div>
+          {currentBet > 0 && (
+            <div>
+              <div style={labelStyle}>Current Bet</div>
+              <div style={betTextStyle}>${currentBet.toFixed(2)}</div>
+            </div>
+          )}
+          {winnings > 0 && (
+            <div>
+              <div style={labelStyle}>Won</div>
+              <div style={balanceTextStyle}>+${winnings.toFixed(2)}</div>
+            </div>
+          )}
         </div>
 
         {/* Game Area */}
-        <div className="bg-gray-800 rounded-lg p-6 mb-4 relative overflow-hidden" style={{ height: '300px' }}>
+        <div style={gameAreaStyle}>
           {/* Multiplier Display */}
-          <div className="absolute top-4 left-1/2 transform -translate-x-1/2">
-            <p className={`text-6xl font-bold ${crashed ? 'text-red-500' : 'text-white'}`}>
+          <div style={multiplierStyle}>
+            <p style={multiplierTextStyle(crashed)}>
               {multiplier.toFixed(2)}x
             </p>
             {crashed && (
-              <p className="text-red-500 text-xl font-bold mt-2">FLEW AWAY!</p>
+              <p style={crashedTextStyle}>FLEW AWAY!</p>
             )}
           </div>
 
           {/* Plane Animation */}
           {isFlying && (
-            <div 
-              className="absolute transition-all duration-100"
-              style={{
-                left: `${position.x}%`,
-                bottom: `${position.y}%`,
-              }}
-            >
-              <span className="text-4xl">✈️</span>
+            <div style={planeStyle}>
+              <span>✈️</span>
             </div>
           )}
 
           {/* Grid Lines */}
-          <div className="absolute inset-0 opacity-10">
+          <div style={gridStyle}>
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="absolute border-t border-white w-full" style={{ bottom: `${(i + 1) * 20}%` }} />
+              <div
+                key={i}
+                style={{ ...gridLineStyle, bottom: `${(i + 1) * 20}%` }}
+              />
             ))}
           </div>
         </div>
 
         {/* History */}
-        <div className="bg-gray-800 rounded-lg p-4 mb-4">
-          <p className="text-gray-400 mb-2">Recent Crashes</p>
-          <div className="flex gap-2 flex-wrap">
+        <div style={cardStyle}>
+          <div style={labelStyle}>Recent Crashes</div>
+          <div style={historyContainerStyle}>
             {history.map((value, index) => (
-              <span 
-                key={index}
-                className={`px-3 py-1 rounded ${
-                  value >= 2 ? 'bg-green-600' : value >= 1.5 ? 'bg-yellow-600' : 'bg-red-600'
-                }`}
-              >
+              <span key={index} style={historyItemStyle(value)}>
                 {value.toFixed(2)}x
               </span>
             ))}
@@ -198,24 +379,25 @@ export default function AviatorDemo() {
         </div>
 
         {/* Controls */}
-        <div className="bg-gray-800 rounded-lg p-4">
-          <div className="grid grid-cols-2 gap-4 mb-4">
+        <div style={cardStyle}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+            {/* Bet Amount */}
             <div>
-              <label className="block text-gray-400 mb-2">Bet Amount</label>
+              <label style={labelStyle}>Bet Amount</label>
               <input
                 type="number"
                 value={betAmount}
                 onChange={(e) => setBetAmount(Math.max(1, Number(e.target.value)))}
                 disabled={isFlying}
-                className="w-full bg-gray-700 rounded px-4 py-2 text-white disabled:opacity-50"
+                style={{ ...inputStyle, ...(isFlying ? inputDisabledStyle : {}) }}
               />
-              <div className="flex gap-2 mt-2">
+              <div style={buttonGridStyle}>
                 {[10, 50, 100, 500].map(amount => (
                   <button
                     key={amount}
                     onClick={() => setBetAmount(amount)}
                     disabled={isFlying}
-                    className="flex-1 bg-gray-700 hover:bg-gray-600 rounded px-2 py-1 text-sm disabled:opacity-50"
+                    style={{ ...smallButtonStyle, ...(isFlying ? inputDisabledStyle : {}) }}
                   >
                     ${amount}
                   </button>
@@ -223,15 +405,16 @@ export default function AviatorDemo() {
               </div>
             </div>
 
+            {/* Auto Cashout */}
             <div>
-              <label className="block text-gray-400 mb-2">Auto Cashout</label>
-              <div className="flex items-center gap-2 mb-2">
+              <label style={labelStyle}>Auto Cashout</label>
+              <div style={checkboxContainerStyle}>
                 <input
                   type="checkbox"
                   checked={useAutoCashout}
                   onChange={(e) => setUseAutoCashout(e.target.checked)}
                   disabled={isFlying}
-                  className="w-4 h-4"
+                  style={{ width: '1rem', height: '1rem' }}
                 />
                 <span>Enable</span>
               </div>
@@ -240,7 +423,7 @@ export default function AviatorDemo() {
                 value={autoCashout}
                 onChange={(e) => setAutoCashout(Math.max(1.01, Number(e.target.value)))}
                 disabled={isFlying || !useAutoCashout}
-                className="w-full bg-gray-700 rounded px-4 py-2 text-white disabled:opacity-50"
+                style={{ ...inputStyle, ...(isFlying || !useAutoCashout ? inputDisabledStyle : {}) }}
                 step="0.1"
                 min="1.01"
               />
@@ -250,20 +433,21 @@ export default function AviatorDemo() {
           <button
             onClick={isFlying ? cashOut : startGame}
             disabled={balance < betAmount && !isFlying}
-            className={`w-full py-4 rounded-lg font-bold text-xl ${
-              isFlying
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-red-600 hover:bg-red-700'
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            style={{
+              ...mainButtonStyle(isFlying),
+              ...((balance < betAmount && !isFlying) ? mainButtonDisabledStyle : {})
+            }}
           >
-            {isFlying ? `CASH OUT (${(currentBet * multiplier).toFixed(2)})` : 'PLACE BET'}
+            {isFlying ? `CASH OUT ($${(currentBet * multiplier).toFixed(2)})` : 'PLACE BET'}
           </button>
         </div>
 
         {/* How It Works */}
-        <div className="bg-gray-800 rounded-lg p-4 mt-4">
-          <h2 className="text-xl font-bold mb-2">📚 How Aviator Works</h2>
-          <ul className="text-gray-400 space-y-2 text-sm">
+        <div style={cardStyle}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+            📚 How Aviator Works
+          </h2>
+          <ul style={infoListStyle}>
             <li>• Place your bet before the round starts</li>
             <li>• Multiplier increases as the plane flies</li>
             <li>• Cash out before the plane crashes to win</li>
@@ -271,7 +455,7 @@ export default function AviatorDemo() {
             <li>• If you don&apos;t cash out in time, you lose your bet</li>
             <li>• House edge built into the algorithm (most crashes early)</li>
           </ul>
-          <p className="text-red-400 text-sm mt-4 font-bold">
+          <p style={warningStyle}>
             ⚠️ Gambling involves risk. This demo is for educational purposes only.
           </p>
         </div>
