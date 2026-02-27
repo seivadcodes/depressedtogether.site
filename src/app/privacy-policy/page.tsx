@@ -1,6 +1,7 @@
 // app/privacy-policy/page.tsx
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { useState } from 'react';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy | Depressed Together',
@@ -9,208 +10,443 @@ export const metadata: Metadata = {
 
 export default function PrivacyPolicyPage() {
   const lastUpdated = 'February 27, 2026';
+  
+  // Hover states for interactive elements
+  const [hoveredBackLink, setHoveredBackLink] = useState(false);
+  const [hoveredTermsBtn, setHoveredTermsBtn] = useState(false);
+  const [hoveredContactBtn, setHoveredContactBtn] = useState(false);
+  const [hoveredEmailLink, setHoveredEmailLink] = useState(false);
+  const [hoveredBefriendersLink, setHoveredBefriendersLink] = useState(false);
+  const [hoveredSiteLink, setHoveredSiteLink] = useState(false);
+
+  // Base styles
+  const styles = {
+    pageContainer: {
+      minHeight: '100vh',
+      backgroundColor: '#f9fafb', // gray-50
+      padding: '48px 16px',
+    },
+    contentCard: {
+      maxWidth: '896px', // max-w-4xl
+      margin: '0 auto',
+      backgroundColor: '#ffffff',
+      borderRadius: '16px', // rounded-2xl
+      boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)', // shadow-sm
+      padding: '24px',
+    },
+    header: {
+      marginBottom: '40px',
+      borderBottom: '1px solid #e5e7eb', // border-b
+      paddingBottom: '24px',
+    },
+    backLink: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      color: hoveredBackLink ? '#4338ca' : '#4f46e5', // indigo-800 / indigo-600
+      fontWeight: 500,
+      marginBottom: '16px',
+      textDecoration: 'none',
+      transition: 'color 0.2s',
+      cursor: 'pointer',
+    },
+    title: {
+      fontSize: '30px',
+      fontWeight: 700,
+      color: '#111827', // gray-900
+      margin: 0,
+    },
+    lastUpdated: {
+      color: '#4b5563', // gray-600
+      marginTop: '8px',
+      fontSize: '16px',
+    },
+    crisisBox: {
+      backgroundColor: '#fff1f2', // rose-50
+      borderLeft: '4px solid #fb7185', // border-rose-400
+      padding: '16px',
+      marginBottom: '32px',
+      borderRadius: '0 8px 8px 0', // rounded-r-lg
+    },
+    crisisText: {
+      fontSize: '14px',
+      color: '#9f1239', // rose-800
+      margin: 0,
+      lineHeight: 1.5,
+    },
+    article: {
+      color: '#374151', // text-gray-700
+      lineHeight: 1.625,
+      fontSize: '16px',
+    },
+    section: {
+      scrollMarginTop: '80px', // scroll-mt-20
+      marginBottom: '24px',
+    },
+    sectionTitle: {
+      fontSize: '20px',
+      fontWeight: 600,
+      color: '#111827',
+      marginBottom: '12px',
+      marginTop: 0,
+    },
+    subSection: {
+      marginTop: '16px',
+    },
+    subSectionTitle: {
+      fontSize: '18px',
+      fontWeight: 500,
+      color: '#1f2937', // gray-800
+      marginBottom: '8px',
+      marginTop: 0,
+    },
+    list: {
+      listStyleType: 'disc',
+      paddingLeft: '20px',
+      margin: '8px 0',
+      lineHeight: 1.5,
+    },
+    listItem: {
+      marginBottom: '4px',
+    },
+    link: {
+      color: '#4f46e5', // indigo-600
+      textDecoration: 'none',
+    },
+    linkHover: {
+      color: '#4338ca', // indigo-800
+      textDecoration: 'underline',
+    },
+    italicNote: {
+      marginTop: '8px',
+      fontSize: '14px',
+      fontStyle: 'italic',
+      color: '#4b5563',
+    },
+    footer: {
+      marginTop: '48px',
+      paddingTop: '24px',
+      borderTop: '1px solid #e5e7eb',
+      textAlign: 'center' as const,
+    },
+    footerText: {
+      color: '#4b5563',
+      marginBottom: '16px',
+    },
+    buttonContainer: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      gap: '12px',
+      justifyContent: 'center',
+    },
+    button: {
+      paddingHorizontal: '20px',
+      paddingVertical: '10px',
+      borderRadius: '8px',
+      fontWeight: 500,
+      fontSize: '16px',
+      cursor: 'pointer',
+      transition: 'all 0.2s',
+      textDecoration: 'none',
+      display: 'inline-block',
+      textAlign: 'center' as const,
+    },
+    buttonSecondary: {
+      border: '1px solid #d1d5db',
+      color: '#374151',
+      backgroundColor: 'transparent',
+    },
+    buttonSecondaryHover: {
+      backgroundColor: '#f9fafb',
+    },
+    buttonPrimary: {
+      backgroundColor: '#4f46e5',
+      color: '#ffffff',
+      border: 'none',
+    },
+    buttonPrimaryHover: {
+      backgroundColor: '#4338ca',
+    },
+    contactList: {
+      listStyle: 'none',
+      paddingLeft: 0,
+      marginTop: '8px',
+      lineHeight: 1.5,
+    },
+    smallText: {
+      fontSize: '14px',
+      color: '#6b7280', // gray-500
+      marginTop: '16px',
+    },
+  };
+
+  // Prose typography styles (injected via style tag since inline styles can't handle nested elements easily)
+  const proseStyles = `
+    .prose-content p { margin: 1em 0; }
+    .prose-content strong { font-weight: 600; color: #111827; }
+    .prose-content em { font-style: italic; }
+    .prose-content ul { margin: 1em 0; padding-left: 20px; }
+    .prose-content li { margin: 4px 0; }
+    .prose-content a { color: #4f46e5; text-decoration: none; }
+    .prose-content a:hover { color: #4338ca; text-decoration: underline; }
+    @media (min-width: 640px) {
+      .content-card { padding: 40px; }
+      .page-container { padding-left: 24px; padding-right: 24px; }
+    }
+    @media (min-width: 1024px) {
+      .page-container { padding-left: 32px; padding-right: 32px; }
+    }
+  `;
 
   return (
-    <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm p-6 sm:p-10">
-        {/* Header */}
-        <header className="mb-10 border-b pb-6">
-          <Link 
-            href="/" 
-            className="inline-flex items-center text-indigo-600 hover:text-indigo-800 font-medium mb-4 transition-colors"
-          >
-            ← Back to Home
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Privacy Policy</h1>
-          <p className="text-gray-600 mt-2">Last updated: {lastUpdated}</p>
-        </header>
+    <>
+      <style>{proseStyles}</style>
+      <main style={styles.pageContainer} className="page-container">
+        <div style={styles.contentCard} className="content-card">
+          {/* Header */}
+          <header style={styles.header}>
+            <Link 
+              href="/" 
+              style={hoveredBackLink ? { ...styles.backLink, ...styles.linkHover } : styles.backLink}
+              onMouseEnter={() => setHoveredBackLink(true)}
+              onMouseLeave={() => setHoveredBackLink(false)}
+            >
+              ← Back to Home
+            </Link>
+            <h1 style={styles.title}>Privacy Policy</h1>
+            <p style={styles.lastUpdated}>Last updated: {lastUpdated}</p>
+          </header>
 
-        {/* Crisis Notice - Prominent */}
-        <div className="bg-rose-50 border-l-4 border-rose-400 p-4 mb-8 rounded-r-lg">
-          <p className="text-sm text-rose-800">
-            <strong>Important:</strong> Depressed Together is a peer support community, <em>not</em> a crisis service. 
-            If you are in immediate danger or experiencing a mental health emergency, please contact emergency services or call/text <strong>988</strong> (US) or visit <a href="https://befrienders.org" target="_blank" rel="noopener noreferrer" className="underline hover:text-rose-900">befrienders.org</a> for global resources.
-          </p>
-        </div>
-
-        {/* Policy Content */}
-        <article className="prose prose-indigo max-w-none space-y-6 text-gray-700">
-          <Section title="1. Introduction">
-            <p>
-              Welcome to Depressed Together (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). We respect your privacy and are committed to protecting your personal data. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our website and community platform at <a href="https://www.depressedtogether.com" className="text-indigo-600">www.depressedtogether.com</a>.
+          {/* Crisis Notice - Prominent */}
+          <div style={styles.crisisBox}>
+            <p style={styles.crisisText}>
+              <strong>Important:</strong> Depressed Together is a peer support community, <em>not</em> a crisis service. 
+              If you are in immediate danger or experiencing a mental health emergency, please contact emergency services or call/text <strong>988</strong> (US) or visit <a 
+                href="https://befrienders.org" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                style={hoveredBefriendersLink ? { ...styles.link, ...styles.linkHover } : styles.link}
+                onMouseEnter={() => setHoveredBefriendersLink(true)}
+                onMouseLeave={() => setHoveredBefriendersLink(false)}
+              >befrienders.org</a> for global resources.
             </p>
-            <p>
-              <strong>Please read this policy carefully.</strong> By accessing or using our platform, you consent to the practices described herein.
-            </p>
-          </Section>
+          </div>
 
-          <Section title="2. Information We Collect">
-            <SubSection title="A. Information You Provide">
-              <ul className="list-disc pl-5 space-y-1">
-                <li><strong>Account Data:</strong> Email address, display name, optional profile details (e.g., age range, location)</li>
-                <li><strong>Community Content:</strong> Messages, posts, reactions, or other content you share in peer support spaces</li>
-                <li><strong>Communications:</strong> Records when you contact us for support or feedback</li>
-                <li><strong>Voluntary Disclosures:</strong> Any personal or health-related information you choose to share in community discussions</li>
-              </ul>
-              <p className="mt-2 text-sm italic text-gray-600">
-                ⚠️ We strongly advise against sharing highly sensitive personal identifiers (e.g., full name, address, phone number, medical records) in public community spaces.
-              </p>
-            </SubSection>
-
-            <SubSection title="B. Information Collected Automatically">
-              <ul className="list-disc pl-5 space-y-1">
-                <li><strong>Usage Data:</strong> Pages visited, time spent, features used, browser</li>
-                <li><strong>Log Data:</strong> IP address, timestamps, referring URLs, crash reports</li>
-                <li><strong>Cookies &amp; Similar Technologies:</strong> We use cookies and similar tracking technologies to enhance your experience and analyze platform usage. You can manage your cookie preferences in your browser settings.</li>
-              </ul>
-            </SubSection>
-
-            <SubSection title="C. Information from Third Parties">
+          {/* Policy Content */}
+          <article style={styles.article} className="prose-content">
+            <Section title="1. Introduction" styles={styles}>
               <p>
-                If you sign in via a third-party service (e.g., Google), we may receive basic profile information per your permissions with that provider.
+                Welcome to Depressed Together (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). We respect your privacy and are committed to protecting your personal data. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our website and community platform at <a 
+                  href="https://www.depressedtogether.com" 
+                  style={hoveredSiteLink ? { ...styles.link, ...styles.linkHover } : styles.link}
+                  onMouseEnter={() => setHoveredSiteLink(true)}
+                  onMouseLeave={() => setHoveredSiteLink(false)}
+                >www.depressedtogether.com</a>.
               </p>
-            </SubSection>
-          </Section>
+              <p>
+                <strong>Please read this policy carefully.</strong> By accessing or using our platform, you consent to the practices described herein.
+              </p>
+            </Section>
 
-          <Section title="3. How We Use Your Information">
-            <ul className="list-disc pl-5 space-y-1">
-              <li>Provide, maintain, and improve our peer support platform</li>
-              <li>Facilitate community connections and moderation</li>
-              <li>Send important account or service notifications (non-marketing)</li>
-              <li>Respond to your inquiries and provide user support</li>
-              <li>Monitor and prevent abuse, fraud, or safety risks</li>
-              <li>Comply with legal obligations and enforce our terms</li>
-              <li>Generate anonymized, aggregated insights to improve community well-being resources</li>
-            </ul>
-            <p className="mt-2">
-              <strong>We do not sell your personal information.</strong> We do not use your community content for advertising targeting.
-            </p>
-          </Section>
+            <Section title="2. Information We Collect" styles={styles}>
+              <SubSection title="A. Information You Provide" styles={styles}>
+                <ul style={styles.list}>
+                  <li style={styles.listItem}><strong>Account Data:</strong> Email address, display name, optional profile details (e.g., age range, location)</li>
+                  <li style={styles.listItem}><strong>Community Content:</strong> Messages, posts, reactions, or other content you share in peer support spaces</li>
+                  <li style={styles.listItem}><strong>Communications:</strong> Records when you contact us for support or feedback</li>
+                  <li style={styles.listItem}><strong>Voluntary Disclosures:</strong> Any personal or health-related information you choose to share in community discussions</li>
+                </ul>
+                <p style={styles.italicNote}>
+                  ⚠️ We strongly advise against sharing highly sensitive personal identifiers (e.g., full name, address, phone number, medical records) in public community spaces.
+                </p>
+              </SubSection>
 
-          <Section title="4. Legal Basis for Processing (GDPR)">
-            <p>
-              If you are in the European Economic Area (EEA), we process your data based on:
-            </p>
-            <ul className="list-disc pl-5 space-y-1 mt-2">
-              <li>Your consent (e.g., for optional profile details)</li>
-              <li>Performance of our Terms of Service</li>
-              <li>Legitimate interests (e.g., platform security, community safety)</li>
-              <li>Compliance with legal obligations</li>
-            </ul>
-          </Section>
+              <SubSection title="B. Information Collected Automatically" styles={styles}>
+                <ul style={styles.list}>
+                  <li style={styles.listItem}><strong>Usage Data:</strong> Pages visited, time spent, features used, browser</li>
+                  <li style={styles.listItem}><strong>Log Data:</strong> IP address, timestamps, referring URLs, crash reports</li>
+                  <li style={styles.listItem}><strong>Cookies &amp; Similar Technologies:</strong> We use cookies and similar tracking technologies to enhance your experience and analyze platform usage. You can manage your cookie preferences in your browser settings.</li>
+                </ul>
+              </SubSection>
 
-          <Section title="5. Data Sharing &amp; Disclosure">
-            <p>We may share your information only in these limited circumstances:</p>
-            <ul className="list-disc pl-5 space-y-1 mt-2">
-              <li><strong>With your consent:</strong> When you explicitly authorize sharing</li>
-              <li><strong>Community visibility:</strong> Content you post in public or group spaces is visible to other community members per your privacy settings</li>
-              <li><strong>Legal requirements:</strong> If required by law, subpoena, or to protect rights, safety, or property of Depressed Together, users, or the public</li>
-              <li><strong>Business transfers:</strong> In connection with a merger, acquisition, or sale of assets (users will be notified of any change in data practices)</li>
-            </ul>
-          </Section>
+              <SubSection title="C. Information from Third Parties" styles={styles}>
+                <p>
+                  If you sign in via a third-party service (e.g., Google), we may receive basic profile information per your permissions with that provider.
+                </p>
+              </SubSection>
+            </Section>
 
-          <Section title="6. Data Security">
-            <p>
-              We implement technical and organizational measures designed to protect your information (e.g., encryption in transit, access controls, regular security assessments). However, no internet transmission is 100% secure. You are responsible for safeguarding your login credentials and being mindful about what you share publicly.
-            </p>
-          </Section>
-
-          <Section title="7. Your Rights &amp; Choices">
-            <SubSection title="Account &amp; Content Controls">
-              <ul className="list-disc pl-5 space-y-1">
-                <li>Update or delete your profile information via Settings</li>
-                <li>Delete your account and associated personal data (subject to legal retention requirements)</li>
-                <li>Adjust notification preferences</li>
-                <li>Control visibility of your profile/posts via community privacy settings</li>
+            <Section title="3. How We Use Your Information" styles={styles}>
+              <ul style={styles.list}>
+                <li style={styles.listItem}>Provide, maintain, and improve our peer support platform</li>
+                <li style={styles.listItem}>Facilitate community connections and moderation</li>
+                <li style={styles.listItem}>Send important account or service notifications (non-marketing)</li>
+                <li style={styles.listItem}>Respond to your inquiries and provide user support</li>
+                <li style={styles.listItem}>Monitor and prevent abuse, fraud, or safety risks</li>
+                <li style={styles.listItem}>Comply with legal obligations and enforce our terms</li>
+                <li style={styles.listItem}>Generate anonymized, aggregated insights to improve community well-being resources</li>
               </ul>
-            </SubSection>
+              <p style={{ marginTop: '8px' }}>
+                <strong>We do not sell your personal information.</strong> We do not use your community content for advertising targeting.
+              </p>
+            </Section>
 
-            <SubSection title="Regional Rights">
-              <ul className="list-disc pl-5 space-y-1 mt-2">
-                <li><strong>California (CCPA/CPRA):</strong> Right to know, delete, correct, and opt-out of &quot;sales&quot; (we don&apos;t sell data). Submit requests via <a href="mailto:privacy@depressedtogether.com" className="text-indigo-600">privacy@depressedtogether.com</a>.</li>
-                <li><strong>EEA/UK (GDPR):</strong> Right to access, rectify, erase, restrict processing, data portability, and withdraw consent. Contact us to exercise these rights.</li>
-                <li><strong>Other regions:</strong> We honor reasonable requests per applicable local laws.</li>
+            <Section title="4. Legal Basis for Processing (GDPR)" styles={styles}>
+              <p>
+                If you are in the European Economic Area (EEA), we process your data based on:
+              </p>
+              <ul style={{ ...styles.list, marginTop: '8px' }}>
+                <li style={styles.listItem}>Your consent (e.g., for optional profile details)</li>
+                <li style={styles.listItem}>Performance of our Terms of Service</li>
+                <li style={styles.listItem}>Legitimate interests (e.g., platform security, community safety)</li>
+                <li style={styles.listItem}>Compliance with legal obligations</li>
               </ul>
-            </SubSection>
-          </Section>
+            </Section>
 
-          <Section title="8. Data Retention">
-            <p>
-              We retain personal information only as long as necessary to fulfill the purposes outlined in this policy, unless a longer retention period is required by law. Account data is typically deleted within 30 days of account deletion request, except where needed for legal compliance, security, or fraud prevention.
-            </p>
-          </Section>
+            <Section title="5. Data Sharing &amp; Disclosure" styles={styles}>
+              <p>We may share your information only in these limited circumstances:</p>
+              <ul style={{ ...styles.list, marginTop: '8px' }}>
+                <li style={styles.listItem}><strong>With your consent:</strong> When you explicitly authorize sharing</li>
+                <li style={styles.listItem}><strong>Community visibility:</strong> Content you post in public or group spaces is visible to other community members per your privacy settings</li>
+                <li style={styles.listItem}><strong>Legal requirements:</strong> If required by law, subpoena, or to protect rights, safety, or property of Depressed Together, users, or the public</li>
+                <li style={styles.listItem}><strong>Business transfers:</strong> In connection with a merger, acquisition, or sale of assets (users will be notified of any change in data practices)</li>
+              </ul>
+            </Section>
 
-          <Section title="9. Children's Privacy">
-            <p>
-              Depressed Together is not intended for individuals under 16. We do not knowingly collect personal information from children. If you believe a minor has provided us with data, please contact us immediately so we can investigate and remove such information.
-            </p>
-          </Section>
+            <Section title="6. Data Security" styles={styles}>
+              <p>
+                We implement technical and organizational measures designed to protect your information (e.g., encryption in transit, access controls, regular security assessments). However, no internet transmission is 100% secure. You are responsible for safeguarding your login credentials and being mindful about what you share publicly.
+              </p>
+            </Section>
 
-          <Section title="10. International Transfers">
-            <p>
-              Your information may be transferred to and processed in countries other than your own (including the United States). We ensure appropriate safeguards are in place per applicable data protection laws for such transfers.
-            </p>
-          </Section>
+            <Section title="7. Your Rights &amp; Choices" styles={styles}>
+              <SubSection title="Account &amp; Content Controls" styles={styles}>
+                <ul style={styles.list}>
+                  <li style={styles.listItem}>Update or delete your profile information via Settings</li>
+                  <li style={styles.listItem}>Delete your account and associated personal data (subject to legal retention requirements)</li>
+                  <li style={styles.listItem}>Adjust notification preferences</li>
+                  <li style={styles.listItem}>Control visibility of your profile/posts via community privacy settings</li>
+                </ul>
+              </SubSection>
 
-          <Section title="11. Changes to This Policy">
-            <p>
-              We may update this Privacy Policy periodically. We will notify users of material changes via email or prominent notice on the platform. Your continued use after changes constitutes acceptance of the updated policy.
-            </p>
-          </Section>
+              <SubSection title="Regional Rights" styles={styles}>
+                <ul style={{ ...styles.list, marginTop: '8px' }}>
+                  <li style={styles.listItem}><strong>California (CCPA/CPRA):</strong> Right to know, delete, correct, and opt-out of &quot;sales&quot; (we don&apos;t sell data). Submit requests via <a href="mailto:privacy@depressedtogether.com" style={hoveredEmailLink ? { ...styles.link, ...styles.linkHover } : styles.link}
+                  onMouseEnter={() => setHoveredEmailLink(true)}
+                  onMouseLeave={() => setHoveredEmailLink(false)}>privacy@depressedtogether.com</a>.</li>
+                  <li style={styles.listItem}><strong>EEA/UK (GDPR):</strong> Right to access, rectify, erase, restrict processing, data portability, and withdraw consent. Contact us to exercise these rights.</li>
+                  <li style={styles.listItem}><strong>Other regions:</strong> We honor reasonable requests per applicable local laws.</li>
+                </ul>
+              </SubSection>
+            </Section>
 
-          <Section title="12. Contact Us">
-            <p>
-              Questions about this Privacy Policy or your data? Reach out:
-            </p>
-            <ul className="list-none pl-0 mt-2 space-y-1">
-              <li>📧 Email: <a href="mailto:privacy@depressedtogether.com" className="text-indigo-600 hover:underline">privacy@depressedtogether.com</a></li>
-              <li>📬 Mail: Depressed Together, Privacy Team<br />[Your Business Address]<br />Texas, USA</li>
-            </ul>
-            <p className="mt-4 text-sm text-gray-500">
-              For urgent safety concerns about a community member, use the in-app reporting tool or contact local emergency services.
-            </p>
-          </Section>
-        </article>
+            <Section title="8. Data Retention" styles={styles}>
+              <p>
+                We retain personal information only as long as necessary to fulfill the purposes outlined in this policy, unless a longer retention period is required by law. Account data is typically deleted within 30 days of account deletion request, except where needed for legal compliance, security, or fraud prevention.
+              </p>
+            </Section>
 
-        {/* Footer CTA */}
-        <div className="mt-12 pt-6 border-t text-center">
-          <p className="text-gray-600 mb-4">
-            Thank you for trusting Depressed Together. Your privacy and safety matter.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link 
-              href="/terms" 
-              className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium"
-            >
-              Terms of Service
-            </Link>
-            <Link 
-              href="/contact" 
-              className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-            >
-              Contact Support
-            </Link>
+            <Section title="9. Children's Privacy" styles={styles}>
+              <p>
+                Depressed Together is not intended for individuals under 16. We do not knowingly collect personal information from children. If you believe a minor has provided us with data, please contact us immediately so we can investigate and remove such information.
+              </p>
+            </Section>
+
+            <Section title="10. International Transfers" styles={styles}>
+              <p>
+                Your information may be transferred to and processed in countries other than your own (including the United States). We ensure appropriate safeguards are in place per applicable data protection laws for such transfers.
+              </p>
+            </Section>
+
+            <Section title="11. Changes to This Policy" styles={styles}>
+              <p>
+                We may update this Privacy Policy periodically. We will notify users of material changes via email or prominent notice on the platform. Your continued use after changes constitutes acceptance of the updated policy.
+              </p>
+            </Section>
+
+            <Section title="12. Contact Us" styles={styles}>
+              <p>
+                Questions about this Privacy Policy or your data? Reach out:
+              </p>
+              <ul style={styles.contactList}>
+                <li>📧 Email: <a href="mailto:privacy@depressedtogether.com" style={hoveredEmailLink ? { ...styles.link, ...styles.linkHover } : styles.link}
+                onMouseEnter={() => setHoveredEmailLink(true)}
+                onMouseLeave={() => setHoveredEmailLink(false)}>privacy@depressedtogether.com</a></li>
+                <li>📬 Mail: Depressed Together, Privacy Team<br />[Your Business Address]<br />Texas, USA</li>
+              </ul>
+              <p style={styles.smallText}>
+                For urgent safety concerns about a community member, use the in-app reporting tool or contact local emergency services.
+              </p>
+            </Section>
+          </article>
+
+          {/* Footer CTA */}
+          <div style={styles.footer}>
+            <p style={styles.footerText}>
+              Thank you for trusting Depressed Together. Your privacy and safety matter.
+            </p>
+            <div style={styles.buttonContainer}>
+              <Link 
+                href="/terms" 
+                style={{ 
+                  ...styles.button, 
+                  ...(hoveredTermsBtn ? styles.buttonSecondaryHover : {}),
+                  ...styles.buttonSecondary 
+                }}
+                onMouseEnter={() => setHoveredTermsBtn(true)}
+                onMouseLeave={() => setHoveredTermsBtn(false)}
+              >
+                Terms of Service
+              </Link>
+              <Link 
+                href="/contact" 
+                style={{ 
+                  ...styles.button, 
+                  ...(hoveredContactBtn ? styles.buttonPrimaryHover : {}),
+                  ...styles.buttonPrimary 
+                }}
+                onMouseEnter={() => setHoveredContactBtn(true)}
+                onMouseLeave={() => setHoveredContactBtn(false)}
+              >
+                Contact Support
+              </Link>
+            </div>
           </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </>
   );
 }
 
-// Reusable subsection components for modularity
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+// Reusable subsection components for modularity// Reusable subsection components for modularity
+function Section({ 
+  title, 
+  children, 
+  styles 
+}: { 
+  title: string; 
+  children: React.ReactNode; 
+  styles: Record<string, React.CSSProperties>;
+}) {
   return (
-    <section className="scroll-mt-20">
-      <h2 className="text-xl font-semibold text-gray-900 mb-3">{title}</h2>
+    <section style={styles.section}>
+      <h2 style={styles.sectionTitle}>{title}</h2>
       <div>{children}</div>
     </section>
   );
 }
 
-function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
+function SubSection({ 
+  title, 
+  children, 
+  styles 
+}: { 
+  title: string; 
+  children: React.ReactNode; 
+  styles: Record<string, React.CSSProperties>;
+}) {
   return (
-    <div className="mt-4">
-      <h3 className="text-lg font-medium text-gray-800 mb-2">{title}</h3>
+    <div style={styles.subSection}>
+      <h3 style={styles.subSectionTitle}>{title}</h3>
       <div>{children}</div>
     </div>
   );
