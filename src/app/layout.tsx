@@ -3,7 +3,7 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { getCurrentUser } from '@/lib/auth-server';
 import ClientLayout from './client-layout';
-import ServiceWorkerRegister from '@/components/ServiceWorkerRegister';
+import CacheCleaner from './cache-cleaner'; // <--- Import the new component
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -45,6 +45,10 @@ export default async function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className={`${inter.className} flex flex-col h-full bg-gradient-to-b from-amber-50 via-stone-50 to-stone-100 text-stone-900`}>
+        
+        {/* ✅ Add the Cache Cleaner here */}
+        <CacheCleaner />
+
         {/* ✅ Silently load Vercel scripts in production only */}
         <script
           dangerouslySetInnerHTML={{
@@ -64,7 +68,6 @@ export default async function RootLayout({
           }}
         />
 
-        <ServiceWorkerRegister />
         <ClientLayout user={user}>{children}</ClientLayout>
         
       </body>

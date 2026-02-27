@@ -1,16 +1,17 @@
-// capacitor.config.ts
-import { CapacitorConfig } from '@capacitor/cli';
+import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'site.depressedtogether.app', // or com.yourname.depressedtogether
-  appName: 'Depressed Together',
-  webDir: 'public',
+  appId: 'com.depressedtogether.app',
+  appName: 'depressedtogether',
+  
+  // 👇 CRITICAL: Point to your LIVE website
   server: {
-    url: 'https://www.depressedtogether.site', // ← no spaces!
-    cleartext: false,
+    url: 'https://www.depressedtogether.com', 
+    cleartext: false, // Keep false for HTTPS
   },
+  
   android: {
-    allowMixedContent: false, // only enable if you load HTTP assets (you shouldn’t)
+    allowMixedContent: true,
   },
 };
 
