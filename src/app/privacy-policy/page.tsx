@@ -1,9 +1,8 @@
-// app/privacy-policy/page.tsx
-"use client";
+// src/app/privacy-policy/page.tsx
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { useState } from 'react';
 
+// 1. Metadata export (Only works in Server Components)
 export const metadata: Metadata = {
   title: 'Privacy Policy | Depressed Together',
   description: 'How we collect, use, and protect your personal information.',
@@ -11,39 +10,31 @@ export const metadata: Metadata = {
 
 export default function PrivacyPolicyPage() {
   const lastUpdated = 'February 27, 2026';
-  
-  // Hover states for interactive elements
-  const [hoveredBackLink, setHoveredBackLink] = useState(false);
-  const [hoveredTermsBtn, setHoveredTermsBtn] = useState(false);
-  const [hoveredContactBtn, setHoveredContactBtn] = useState(false);
-  const [hoveredEmailLink, setHoveredEmailLink] = useState(false);
-  const [hoveredBefriendersLink, setHoveredBefriendersLink] = useState(false);
-  const [hoveredSiteLink, setHoveredSiteLink] = useState(false);
 
-  // Base styles
+  // Styles object (unchanged logic, just removed hover-state dependencies)
   const styles = {
     pageContainer: {
       minHeight: '100vh',
-      backgroundColor: '#f9fafb', // gray-50
+      backgroundColor: '#f9fafb',
       padding: '48px 16px',
     },
     contentCard: {
-      maxWidth: '896px', // max-w-4xl
+      maxWidth: '896px',
       margin: '0 auto',
       backgroundColor: '#ffffff',
-      borderRadius: '16px', // rounded-2xl
-      boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)', // shadow-sm
+      borderRadius: '16px',
+      boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
       padding: '24px',
     },
     header: {
       marginBottom: '40px',
-      borderBottom: '1px solid #e5e7eb', // border-b
+      borderBottom: '1px solid #e5e7eb',
       paddingBottom: '24px',
     },
     backLink: {
       display: 'inline-flex',
       alignItems: 'center',
-      color: hoveredBackLink ? '#4338ca' : '#4f46e5', // indigo-800 / indigo-600
+      color: '#4f46e5', // Base indigo-600
       fontWeight: 500,
       marginBottom: '16px',
       textDecoration: 'none',
@@ -53,34 +44,34 @@ export default function PrivacyPolicyPage() {
     title: {
       fontSize: '30px',
       fontWeight: 700,
-      color: '#111827', // gray-900
+      color: '#111827',
       margin: 0,
     },
     lastUpdated: {
-      color: '#4b5563', // gray-600
+      color: '#4b5563',
       marginTop: '8px',
       fontSize: '16px',
     },
     crisisBox: {
-      backgroundColor: '#fff1f2', // rose-50
-      borderLeft: '4px solid #fb7185', // border-rose-400
+      backgroundColor: '#fff1f2',
+      borderLeft: '4px solid #fb7185',
       padding: '16px',
       marginBottom: '32px',
-      borderRadius: '0 8px 8px 0', // rounded-r-lg
+      borderRadius: '0 8px 8px 0',
     },
     crisisText: {
       fontSize: '14px',
-      color: '#9f1239', // rose-800
+      color: '#9f1239',
       margin: 0,
       lineHeight: 1.5,
     },
     article: {
-      color: '#374151', // text-gray-700
+      color: '#374151',
       lineHeight: 1.625,
       fontSize: '16px',
     },
     section: {
-      scrollMarginTop: '80px', // scroll-mt-20
+      scrollMarginTop: '80px',
       marginBottom: '24px',
     },
     sectionTitle: {
@@ -96,7 +87,7 @@ export default function PrivacyPolicyPage() {
     subSectionTitle: {
       fontSize: '18px',
       fontWeight: 500,
-      color: '#1f2937', // gray-800
+      color: '#1f2937',
       marginBottom: '8px',
       marginTop: 0,
     },
@@ -110,12 +101,9 @@ export default function PrivacyPolicyPage() {
       marginBottom: '4px',
     },
     link: {
-      color: '#4f46e5', // indigo-600
+      color: '#4f46e5',
       textDecoration: 'none',
-    },
-    linkHover: {
-      color: '#4338ca', // indigo-800
-      textDecoration: 'underline',
+      transition: 'color 0.2s',
     },
     italicNote: {
       marginTop: '8px',
@@ -156,16 +144,10 @@ export default function PrivacyPolicyPage() {
       color: '#374151',
       backgroundColor: 'transparent',
     },
-    buttonSecondaryHover: {
-      backgroundColor: '#f9fafb',
-    },
     buttonPrimary: {
       backgroundColor: '#4f46e5',
       color: '#ffffff',
       border: 'none',
-    },
-    buttonPrimaryHover: {
-      backgroundColor: '#4338ca',
     },
     contactList: {
       listStyle: 'none',
@@ -175,20 +157,16 @@ export default function PrivacyPolicyPage() {
     },
     smallText: {
       fontSize: '14px',
-      color: '#6b7280', // gray-500
+      color: '#6b7280',
       marginTop: '16px',
     },
   };
 
-  // Prose typography styles (injected via style tag since inline styles can't handle nested elements easily)
-  const proseStyles = `
-    .prose-content p { margin: 1em 0; }
-    .prose-content strong { font-weight: 600; color: #111827; }
-    .prose-content em { font-style: italic; }
-    .prose-content ul { margin: 1em 0; padding-left: 20px; }
-    .prose-content li { margin: 4px 0; }
-    .prose-content a { color: #4f46e5; text-decoration: none; }
-    .prose-content a:hover { color: #4338ca; text-decoration: underline; }
+  // CSS for hover states (replaces useState logic)
+  const hoverStyles = `
+    .hover-link:hover { color: #4338ca; text-decoration: underline; }
+    .hover-btn-secondary:hover { background-color: #f9fafb; }
+    .hover-btn-primary:hover { background-color: #4338ca; }
     @media (min-width: 640px) {
       .content-card { padding: 40px; }
       .page-container { padding-left: 24px; padding-right: 24px; }
@@ -196,20 +174,26 @@ export default function PrivacyPolicyPage() {
     @media (min-width: 1024px) {
       .page-container { padding-left: 32px; padding-right: 32px; }
     }
+    .prose-content p { margin: 1em 0; }
+    .prose-content strong { font-weight: 600; color: #111827; }
+    .prose-content em { font-style: italic; }
+    .prose-content ul { margin: 1em 0; padding-left: 20px; }
+    .prose-content li { margin: 4px 0; }
+    .prose-content a { color: #4f46e5; text-decoration: none; }
+    .prose-content a:hover { color: #4338ca; text-decoration: underline; }
   `;
 
   return (
     <>
-      <style>{proseStyles}</style>
+      <style>{hoverStyles}</style>
       <main style={styles.pageContainer} className="page-container">
         <div style={styles.contentCard} className="content-card">
           {/* Header */}
           <header style={styles.header}>
             <Link 
               href="/" 
-              style={hoveredBackLink ? { ...styles.backLink, ...styles.linkHover } : styles.backLink}
-              onMouseEnter={() => setHoveredBackLink(true)}
-              onMouseLeave={() => setHoveredBackLink(false)}
+              style={styles.backLink}
+              className="hover-link"
             >
               ← Back to Home
             </Link>
@@ -217,7 +201,7 @@ export default function PrivacyPolicyPage() {
             <p style={styles.lastUpdated}>Last updated: {lastUpdated}</p>
           </header>
 
-          {/* Crisis Notice - Prominent */}
+          {/* Crisis Notice */}
           <div style={styles.crisisBox}>
             <p style={styles.crisisText}>
               <strong>Important:</strong> Depressed Together is a peer support community, <em>not</em> a crisis service. 
@@ -225,9 +209,8 @@ export default function PrivacyPolicyPage() {
                 href="https://befrienders.org" 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                style={hoveredBefriendersLink ? { ...styles.link, ...styles.linkHover } : styles.link}
-                onMouseEnter={() => setHoveredBefriendersLink(true)}
-                onMouseLeave={() => setHoveredBefriendersLink(false)}
+                style={styles.link}
+                className="hover-link"
               >befrienders.org</a> for global resources.
             </p>
           </div>
@@ -238,9 +221,8 @@ export default function PrivacyPolicyPage() {
               <p>
                 Welcome to Depressed Together (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). We respect your privacy and are committed to protecting your personal data. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our website and community platform at <a 
                   href="https://www.depressedtogether.com" 
-                  style={hoveredSiteLink ? { ...styles.link, ...styles.linkHover } : styles.link}
-                  onMouseEnter={() => setHoveredSiteLink(true)}
-                  onMouseLeave={() => setHoveredSiteLink(false)}
+                  style={styles.link}
+                  className="hover-link"
                 >www.depressedtogether.com</a>.
               </p>
               <p>
@@ -331,9 +313,7 @@ export default function PrivacyPolicyPage() {
 
               <SubSection title="Regional Rights" styles={styles}>
                 <ul style={{ ...styles.list, marginTop: '8px' }}>
-                  <li style={styles.listItem}><strong>California (CCPA/CPRA):</strong> Right to know, delete, correct, and opt-out of &quot;sales&quot; (we don&apos;t sell data). Submit requests via <a href="mailto:privacy@depressedtogether.com" style={hoveredEmailLink ? { ...styles.link, ...styles.linkHover } : styles.link}
-                  onMouseEnter={() => setHoveredEmailLink(true)}
-                  onMouseLeave={() => setHoveredEmailLink(false)}>privacy@depressedtogether.com</a>.</li>
+                  <li style={styles.listItem}><strong>California (CCPA/CPRA):</strong> Right to know, delete, correct, and opt-out of &quot;sales&quot; (we don&apos;t sell data). Submit requests via <a href="mailto:privacy@depressedtogether.com" style={styles.link} className="hover-link">privacy@depressedtogether.com</a>.</li>
                   <li style={styles.listItem}><strong>EEA/UK (GDPR):</strong> Right to access, rectify, erase, restrict processing, data portability, and withdraw consent. Contact us to exercise these rights.</li>
                   <li style={styles.listItem}><strong>Other regions:</strong> We honor reasonable requests per applicable local laws.</li>
                 </ul>
@@ -369,9 +349,7 @@ export default function PrivacyPolicyPage() {
                 Questions about this Privacy Policy or your data? Reach out:
               </p>
               <ul style={styles.contactList}>
-                <li>📧 Email: <a href="mailto:privacy@depressedtogether.com" style={hoveredEmailLink ? { ...styles.link, ...styles.linkHover } : styles.link}
-                onMouseEnter={() => setHoveredEmailLink(true)}
-                onMouseLeave={() => setHoveredEmailLink(false)}>privacy@depressedtogether.com</a></li>
+                <li>📧 Email: <a href="mailto:privacy@depressedtogether.com" style={styles.link} className="hover-link">privacy@depressedtogether.com</a></li>
                 <li>📬 Mail: Depressed Together, Privacy Team<br />[Your Business Address]<br />Texas, USA</li>
               </ul>
               <p style={styles.smallText}>
@@ -388,25 +366,15 @@ export default function PrivacyPolicyPage() {
             <div style={styles.buttonContainer}>
               <Link 
                 href="/terms" 
-                style={{ 
-                  ...styles.button, 
-                  ...(hoveredTermsBtn ? styles.buttonSecondaryHover : {}),
-                  ...styles.buttonSecondary 
-                }}
-                onMouseEnter={() => setHoveredTermsBtn(true)}
-                onMouseLeave={() => setHoveredTermsBtn(false)}
+                style={{ ...styles.button, ...styles.buttonSecondary }}
+                className="hover-btn-secondary"
               >
                 Terms of Service
               </Link>
               <Link 
                 href="/contact" 
-                style={{ 
-                  ...styles.button, 
-                  ...(hoveredContactBtn ? styles.buttonPrimaryHover : {}),
-                  ...styles.buttonPrimary 
-                }}
-                onMouseEnter={() => setHoveredContactBtn(true)}
-                onMouseLeave={() => setHoveredContactBtn(false)}
+                style={{ ...styles.button, ...styles.buttonPrimary }}
+                className="hover-btn-primary"
               >
                 Contact Support
               </Link>
@@ -418,7 +386,7 @@ export default function PrivacyPolicyPage() {
   );
 }
 
-// Reusable subsection components for modularity// Reusable subsection components for modularity
+// Reusable subsection components
 function Section({ 
   title, 
   children, 
