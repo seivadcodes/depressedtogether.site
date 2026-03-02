@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Users, MessageCircle, Plus, ArrowRight, Brain, Heart } from 'lucide-react';
+import { Users, MessageCircle, Plus, ArrowRight, Brain } from 'lucide-react'; // Removed Heart
 import { createClient } from '@/lib/supabase';
 import Button from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -45,6 +45,7 @@ export default function CommunitiesPage() {
   const supabase = createClient();
   const { user } = useAuth();
 
+  // We keep the state logic but won't display it in the UI
   const [totalOnline, setTotalOnline] = useState(0);
 
   useEffect(() => {
@@ -244,7 +245,7 @@ export default function CommunitiesPage() {
     margin: '0 auto',
   };
 
-  // Format online count with correct pluralization
+  // Format online count with correct pluralization (Logic kept, UI removed)
   const formattedOnlineText = totalOnline === 1 ? '1 person' : `${totalOnline} people`;
 
   return (
@@ -282,14 +283,17 @@ export default function CommunitiesPage() {
             Find Your Support Circle
           </h1>
           <p style={{ 
-  color: '#4b5563', 
-  maxWidth: '42rem', 
-  margin: '0 auto 1rem',
-  fontSize: '1.125rem',
-  lineHeight: '1.6'
-}}>
-  Join a community where your depression is understood &mdash; not explained away. Share your story, read others&rsquo; stories, or simply be present.
-</p>
+            color: '#4b5563', 
+            maxWidth: '42rem', 
+            margin: '0 auto 1rem',
+            fontSize: '1.125rem',
+            lineHeight: '1.6'
+          }}>
+            Join a community where your depression is understood &mdash; not explained away. Share your story, read others&rsquo; stories, or simply be present.
+          </p>
+          
+          {/* --- COMMENTED OUT: Total Online Badge --- */}
+          {/* 
           <div
             style={{
               display: 'inline-block',
@@ -314,6 +318,7 @@ export default function CommunitiesPage() {
             }}></span>
             {formattedOnlineText} in communities right now
           </div>
+          */}
         </div>
 
         {/* Communities List */}
@@ -490,7 +495,8 @@ export default function CommunitiesPage() {
                     </span>
                   </div>
 
-                  {/* Activity */}
+                  {/* --- COMMENTED OUT: Activity Row --- */}
+                  {/* 
                   <div style={{ 
                     display: 'flex', 
                     gap: '0.5rem', 
@@ -506,6 +512,7 @@ export default function CommunitiesPage() {
                       {formatRecentActivity(community.created_at)}: Someone just shared their experience
                     </p>
                   </div>
+                  */}
                 </div>
               </div>
             </Link>

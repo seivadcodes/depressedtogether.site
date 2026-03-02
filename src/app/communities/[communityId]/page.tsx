@@ -59,7 +59,7 @@ interface Post {
   likes_count: number;
   comments_count: number;
   is_liked: boolean;
-   isAnonymous?: boolean; 
+  isAnonymous?: boolean;
 }
 interface Comment {
   id: string;
@@ -204,10 +204,10 @@ const pulseAnimation = `
 
 export default function CommunityDetailPage() {
   const params = useParams();
- const communityId = params?.communityId ?? '';
+  const communityId = params?.communityId ?? '';
   const router = useRouter();
   const searchParams = useSearchParams();
-const targetPostId = searchParams?.get('postId') ?? null; 
+  const targetPostId = searchParams?.get('postId') ?? null;
   const supabase = createClient();
   const { user } = useAuth();
 
@@ -240,7 +240,7 @@ const targetPostId = searchParams?.get('postId') ?? null;
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [newPostsCount, setNewPostsCount] = useState<number>(0);
   const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
-  
+
   // Inject global styles once
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -261,7 +261,7 @@ const targetPostId = searchParams?.get('postId') ?? null;
     }
     setIsModalSubmitting(true);
     try {
-      const newPost = await createPostWithMedia(text, mediaFiles, user.id, false); 
+      const newPost = await createPostWithMedia(text, mediaFiles, user.id, false);
       setPosts((prev) => [newPost, ...prev]);
       setIsModalOpen(false);
       toast.success('Shared with the community!');
@@ -272,27 +272,38 @@ const targetPostId = searchParams?.get('postId') ?? null;
       setIsModalSubmitting(false);
     }
   };
-
   const formatRecentActivity = (dateString: string): string => {
     const now = new Date();
     const created = new Date(dateString);
     const diffMs = now.getTime() - created.getTime();
     const seconds = Math.floor(diffMs / 1000);
+
     if (seconds < 60) return 'Just now';
+
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
+
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+
     const days = Math.floor(hours / 24);
     if (days < 7) return days === 1 ? '1 day ago' : `${days} days ago`;
+
     const weeks = Math.floor(days / 7);
-    if (weeks < 4) return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+    // Changed condition: If less than 4 weeks (28 days), show weeks. 
+    // But we must also catch the gap between 28 days and 30 days to avoid "0 months".
+    // A safer approach is to only show months if days >= 30.
+
+    if (days < 30) {
+      return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
+    }
+
     const months = Math.floor(days / 30);
     if (months < 12) return months === 1 ? '1 month ago' : `${months} months ago`;
+
     const years = Math.floor(days / 365);
     return years === 1 ? '1 year ago' : `${years} years ago`;
   };
-
   const isUserOnline = useCallback((lastOnline: string | null): boolean => {
     if (!lastOnline) return false;
     const lastOnlineDate = new Date(lastOnline);
@@ -387,21 +398,27 @@ const targetPostId = searchParams?.get('postId') ?? null;
         };
         setCommunity(communityWithPhoto);
 
-        const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
-  const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-  // ✅ NEVER anonymize in members list
-  const avatarUrl = profile?.avatar_url || null;
-  return {
-    user_id: member.user_id,
-    username: profile?.full_name || 'Anonymous',
-    avatar_url: avatarUrl,
-    last_online: profile?.last_online || null,
-    is_online: isUserOnline(profile?.last_online || null),
-    role: member.role,
-    joined_at: member.joined_at,
-  };
-});
-        setMembers(formattedMembers);
+               const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
+          const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+          // ✅ NEVER anonymize in members list
+          const avatarUrl = profile?.avatar_url || null;
+          return {
+            user_id: member.user_id,
+            username: profile?.full_name || 'Anonymous',
+            avatar_url: avatarUrl,
+            last_online: profile?.last_online || null,
+            is_online: isUserOnline(profile?.last_online || null),
+            role: member.role,
+            joined_at: member.joined_at,
+          };
+        });
+
+        // ✅ ADD THIS SORT: Stabilizes the list by Join Date
+        const sortedMembers = formattedMembers.sort((a, b) => {
+          return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+        });
+
+        setMembers(sortedMembers); // Use sortedMembers instead of formattedMembers
 
         // 5. Check membership
         let isCurrentUserMember = false;
@@ -424,8 +441,8 @@ const targetPostId = searchParams?.get('postId') ?? null;
 
         // 6. Fetch posts
         const { data: postData, error: postError } = await supabase
-  .from('community_posts')
-  .select(`
+          .from('community_posts')
+          .select(`
     id,
     content,
     created_at,
@@ -437,8 +454,8 @@ const targetPostId = searchParams?.get('postId') ?? null;
     user_id,
     is_anonymous
   `)
-  .eq('community_id', communityId)
-  .order('created_at', { ascending: false });
+          .eq('community_id', communityId)
+          .order('created_at', { ascending: false });
         if (postError) throw postError;
 
         const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
@@ -454,75 +471,92 @@ const targetPostId = searchParams?.get('postId') ?? null;
         const postsWithLikes = postData.map((post: CommunityPost) => {
           const userProfile = profilesMap.get(post.user_id) || {};
           // Use the post's own is_anonymous field!
-const isAnonymous = post.is_anonymous === true; // ← critical fix
+          const isAnonymous = post.is_anonymous === true; // ← critical fix
 
-return {
-  id: post.id,
-  content: post.content,
-  media_url: post.media_url,
-  media_urls: post.media_urls,
-  created_at: post.created_at,
-  user_id: post.user_id,
-  username: isAnonymous ? 'Anonymous' : userProfile?.full_name || 'Anonymous',
-  avatar_url: isAnonymous ? null : userProfile?.avatar_url || null,
-  community_id: post.community_id,
-  likes_count: post.likes_count || 0,
-  comments_count: post.comments_count || 0,
-  is_liked: false,
-  isAnonymous: isAnonymous, // explicit
-};
+          return {
+            id: post.id,
+            content: post.content,
+            media_url: post.media_url,
+            media_urls: post.media_urls,
+            created_at: post.created_at,
+            user_id: post.user_id,
+            username: isAnonymous ? 'Anonymous' : userProfile?.full_name || 'Anonymous',
+            avatar_url: isAnonymous ? null : userProfile?.avatar_url || null,
+            community_id: post.community_id,
+            likes_count: post.likes_count || 0,
+            comments_count: post.comments_count || 0,
+            is_liked: false,
+            isAnonymous: isAnonymous, // explicit
+          };
         });
         setPosts(postsWithLikes);
 
-        // 7. Track new activity
+               // 7. Track new activity
         let lastFeedView: string | null = null;
         let lastChatView: string | null = null;
         let newPostsCount = 0;
         let newMessagesCount = 0;
+
         if (user) {
-          const { data: viewData } = await supabase
+          const { data: viewData, error: viewError } = await supabase
             .from('community_user_views')
             .select('last_feed_view, last_chat_view')
             .eq('user_id', user.id)
             .eq('community_id', communityId)
             .single();
+          
+          // PGRST116 is the "not found" error code, which is fine for new users
+          if (viewError && viewError.code !== 'PGRST116') { 
+            console.error('Error fetching views:', viewError);
+          }
+
           if (viewData) {
+            // --- EXISTING USER ---
             lastFeedView = viewData.last_feed_view;
             lastChatView = viewData.last_chat_view;
+
+            const { count: postCount } = await supabase
+              .from('community_posts')
+              .select('*', { count: 'exact', head: true })
+              .eq('community_id', communityId)
+              .gt('created_at', lastFeedView || '1970-01-01');
+            
+            newPostsCount = postCount || 0;
+
+            const { count: msgCount } = await supabase
+              .from('community_messages')
+              .select('*', { count: 'exact', head: true })
+              .eq('community_id', communityId)
+              .gt('created_at', lastChatView || '1970-01-01');
+            
+            newMessagesCount = msgCount || 0;
+            
+            // Update their last view time to NOW so the counter resets after this load
+            await supabase
+              .from('community_user_views')
+              .upsert(
+                {
+                  user_id: user.id,
+                  community_id: communityId,
+                  last_feed_view: new Date().toISOString(),
+                  last_chat_view: new Date().toISOString(),
+                },
+                { onConflict: 'user_id,community_id' }
+              );
           } else {
+            // --- NEW USER ---
+            // No random numbers. Just initialize their view time to NOW.
+            // Since they have no history, and we set "now" as their start point, 
+            // newPostsCount remains 0 until someone actually posts.
             await supabase.from('community_user_views').insert({
               user_id: user.id,
               community_id: communityId,
               last_feed_view: new Date().toISOString(),
               last_chat_view: new Date().toISOString(),
             });
-            lastFeedView = lastChatView = new Date().toISOString();
+            // newPostsCount stays 0
           }
 
-          const { count: postCount } = await supabase
-            .from('community_posts')
-            .select('*', { count: 'exact', head: true })
-            .eq('community_id', communityId)
-            .gt('created_at', lastFeedView || '1970-01-01');
-          newPostsCount = postCount || 0;
-
-          const { count: msgCount } = await supabase
-            .from('community_messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('community_id', communityId)
-            .gt('created_at', lastChatView || '1970-01-01');
-          newMessagesCount = msgCount || 0;
-
-          await supabase
-            .from('community_user_views')
-            .upsert(
-              {
-                user_id: user.id,
-                community_id: communityId,
-                last_feed_view: new Date().toISOString(),
-              },
-              { onConflict: 'user_id,community_id' }
-            );
           setNewPostsCount(newPostsCount);
           setNewMessagesCount(newMessagesCount);
         }
@@ -559,49 +593,60 @@ return {
   }, [targetPostId, posts, router]);
 
   // Refresh members & online count every 30s
-  useEffect(() => {
-    if (!communityId) return;
-    const fetchMembersAndOnlineCount = async () => {
-      const { data: membersData, error } = await supabase
-        .from('community_members')
-        .select(`
-          role,
-          joined_at,
-          user_id,
-          user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
-        `)
-        .eq('community_id', communityId);
-      if (error) {
-        console.error('Failed to refresh members:', error);
-        return;
-      }
-      const formattedMembers = membersData.map((member) => {
-        const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-        const isAnonymous = profile?.is_anonymous || false;
-        return {
-          user_id: member.user_id,
-          username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-          avatar_url: isAnonymous ? null : profile?.avatar_url || null,
-          last_online: profile?.last_online || null,
-          is_online: isUserOnline(profile?.last_online || null),
-          role: member.role,
-          joined_at: member.joined_at,
-        };
-      });
-      setMembers(formattedMembers);
+  // Refresh members & online count every 30s
+useEffect(() => {
+  if (!communityId) return;
+  const fetchMembersAndOnlineCount = async () => {
+    const { data: membersData, error } = await supabase
+      .from('community_members')
+      .select(`
+        role,
+        joined_at,
+        user_id,
+        user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
+      `)
+      .eq('community_id', communityId);
+    
+    if (error) {
+      console.error('Failed to refresh members:', error);
+      return;
+    }
 
-      const { data: countData } = await supabase
-        .from('community_online_counts')
-        .select('online_count')
-        .eq('community_id', communityId)
-        .single();
-      const newOnlineCount = countData?.online_count ?? 0;
-      setCommunity((prev) => (prev ? { ...prev, online_count: newOnlineCount } : null));
-    };
-    fetchMembersAndOnlineCount();
-    const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
-    return () => clearInterval(interval);
-  }, [communityId, supabase, isUserOnline]);
+    const formattedMembers = membersData.map((member) => {
+      const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+      const isAnonymous = profile?.is_anonymous || false;
+      return {
+        user_id: member.user_id,
+        username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+        avatar_url: isAnonymous ? null : profile?.avatar_url || null,
+        last_online: profile?.last_online || null,
+        is_online: isUserOnline(profile?.last_online || null),
+        role: member.role,
+        joined_at: member.joined_at,
+      };
+    });
+
+    // ✅ ADD THIS SORT HERE TOO: Prevents jitter on refresh
+    const sortedMembers = formattedMembers.sort((a, b) => {
+      return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+    });
+
+    setMembers(sortedMembers); // Use sortedMembers
+
+    const { data: countData } = await supabase
+      .from('community_online_counts')
+      .select('online_count')
+      .eq('community_id', communityId)
+      .single();
+    
+    const newOnlineCount = countData?.online_count ?? 0;
+    setCommunity((prev) => (prev ? { ...prev, online_count: newOnlineCount } : null));
+  };
+
+  fetchMembersAndOnlineCount();
+  const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
+  return () => clearInterval(interval);
+}, [communityId, supabase, isUserOnline]);
 
   // Update last_online every 45s
   useEffect(() => {
@@ -691,7 +736,7 @@ return {
           content: content.trim(),
           created_at: new Date().toISOString(),
           media_urls: [],
-           is_anonymous: isAnonymous, 
+          is_anonymous: isAnonymous,
         })
         .select(`
           id,
@@ -736,26 +781,26 @@ return {
       }
 
       const { data: userData } = await supabase
-  .from('profiles')
-  .select('full_name, avatar_url') // ← no need for is_anonymous
-  .eq('id', userId)
-  .single();
+        .from('profiles')
+        .select('full_name, avatar_url') // ← no need for is_anonymous
+        .eq('id', userId)
+        .single();
 
-return {
-  id: postData.id,
-  content: postData.content,
-  media_url: mediaUrls.length > 0 ? mediaUrls[0] : null,
-  media_urls: mediaUrls,
-  created_at: postData.created_at,
-  user_id: postData.user_id,
-  username: postData.is_anonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
-  avatar_url: postData.is_anonymous ? null : userData?.avatar_url || null,
-  isAnonymous: postData.is_anonymous, // ← source of truth
-  community_id: postData.community_id,
-  likes_count: 0,
-  comments_count: 0,
-  is_liked: false,
-};
+      return {
+        id: postData.id,
+        content: postData.content,
+        media_url: mediaUrls.length > 0 ? mediaUrls[0] : null,
+        media_urls: mediaUrls,
+        created_at: postData.created_at,
+        user_id: postData.user_id,
+        username: postData.is_anonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
+        avatar_url: postData.is_anonymous ? null : userData?.avatar_url || null,
+        isAnonymous: postData.is_anonymous, // ← source of truth
+        community_id: postData.community_id,
+        likes_count: 0,
+        comments_count: 0,
+        is_liked: false,
+      };
     } catch (error) {
       console.error('Post creation failed:', error);
       if (insertedPostId) {
@@ -765,7 +810,7 @@ return {
     }
   };
 
-  
+
   const updateBanner = async (file: File) => {
     if (!community) return;
     setBannerUploading(true);
@@ -980,38 +1025,38 @@ return {
   const authUsername = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Anonymous';
 
   const transformPostForCard = (post: Post) => {
-  // Since this is a depression support platform, we don't use grief types.
-  // But PostCard requires a valid GriefType[], so we use 'other' as a neutral placeholder.
-  const griefTypes: GriefType[] = ['other'];
+    // Since this is a depression support platform, we don't use grief types.
+    // But PostCard requires a valid GriefType[], so we use 'other' as a neutral placeholder.
+    const griefTypes: GriefType[] = ['other'];
 
-  const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
-    ? post.media_urls
+    const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
+      ? post.media_urls
         .filter(Boolean)
         .map(path => `/api/media/communities/${path}`)
-    : post.media_url
-      ? [`/api/media/communities/${post.media_url}`]
-      : [];
+      : post.media_url
+        ? [`/api/media/communities/${post.media_url}`]
+        : [];
 
-  return {
-    id: post.id,
-    userId: post.user_id,
-    text: post.content,
-    mediaUrl: mediaUrls[0] || undefined,
-    mediaUrls,
-    griefTypes, // ✅ Now correctly typed as GriefType[]
-    createdAt: new Date(post.created_at),
-    likes: post.likes_count,
-    isLiked: post.is_liked,
-    commentsCount: post.comments_count,
-    isAnonymous: post.isAnonymous === true,
-   user: {
-  id: post.user_id,
-  fullName: post.isAnonymous ? null : post.username,
-  avatarUrl: post.isAnonymous ? null : post.avatar_url,
-  isAnonymous: post.isAnonymous === true,
-},
+    return {
+      id: post.id,
+      userId: post.user_id,
+      text: post.content,
+      mediaUrl: mediaUrls[0] || undefined,
+      mediaUrls,
+      griefTypes, // ✅ Now correctly typed as GriefType[]
+      createdAt: new Date(post.created_at),
+      likes: post.likes_count,
+      isLiked: post.is_liked,
+      commentsCount: post.comments_count,
+      isAnonymous: post.isAnonymous === true,
+      user: {
+        id: post.user_id,
+        fullName: post.isAnonymous ? null : post.username,
+        avatarUrl: post.isAnonymous ? null : post.avatar_url,
+        isAnonymous: post.isAnonymous === true,
+      },
+    };
   };
-};
 
   const mediaGalleryRoute = `/communities/${communityId}/media`;
 
@@ -1023,7 +1068,7 @@ return {
           <div
             style={{
               position: 'relative',
-              height: isMobile ? '15rem' : '38rem',
+              height: isMobile ? '25rem' : '58rem',
               overflow: 'hidden',
               marginBottom: spacing['2xl'],
               borderRadius: borderRadius.md,
@@ -1290,15 +1335,27 @@ return {
                     color: baseColors.text.muted,
                   }}
                 >
+                  {/* Members Count */}
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <Users size={16} style={{ color: baseColors.primary }} /> {community.member_count} members
                   </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <MessageCircle size={16} style={{ color: baseColors.accent }} /> {community.online_count} online
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
-                    <MessageCircle size={16} style={{ color: '#3b82f6' }} /> {posts.length} posts
-                    {newPostsCount > 0 && (
+
+                  {/* Online Count (Ensure this is commented out if you still want it hidden) */}
+                  {/* 
+  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+    <MessageCircle size={16} style={{ color: baseColors.accent }} /> {community.online_count} online
+  </span>
+  */}
+
+                  {/* Posts Count - ONLY shows if newPostsCount > 0 */}
+                  {newPostsCount > 0 && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
+                      <MessageCircle size={16} style={{ color: '#3b82f6' }} />
+                      <span style={{ color: baseColors.primary, fontWeight: 600 }}>
+                        {newPostsCount} new {newPostsCount === 1 ? 'post' : 'posts'}
+                      </span>
+
+                      {/* Red Badge */}
                       <span
                         style={{
                           background: '#ef4444',
@@ -1308,14 +1365,14 @@ return {
                           borderRadius: '10px',
                           padding: '0 4px',
                           marginLeft: '4px',
+                          lineHeight: '1.2',
                         }}
                       >
                         +{newPostsCount}
                       </span>
-                    )}
-                  </span>
+                    </span>
+                  )}
                 </div>
-
                 {isMember && (
                   <Link
                     href={`/communities/${communityId}/chat`}
@@ -1386,22 +1443,22 @@ return {
             </div>
           </div>
 
-         {/* Create Post */}
-{isMember && (
-  <div ref={composerRef} style={{ marginBottom: spacing.lg }}>
-    <PostComposer
-  onSubmit={async (text, mediaFiles, isAnonymous) => {
-    if (!user) return;
-    const newPost = await createPostWithMedia(text, mediaFiles, user.id, isAnonymous); // ✅ 4 args
-    setPosts(prev => [newPost, ...prev]);
-    toast.success('Shared with the community!');
-  }}
-  isSubmitting={uploadingMedia}
-  placeholder={`What’s on your mind, ${authUsername}? You’re not alone...`}
-  maxFiles={4}
-/>
-  </div>
-)}
+          {/* Create Post */}
+          {isMember && (
+            <div ref={composerRef} style={{ marginBottom: spacing.lg }}>
+              <PostComposer
+                onSubmit={async (text, mediaFiles, isAnonymous) => {
+                  if (!user) return;
+                  const newPost = await createPostWithMedia(text, mediaFiles, user.id, isAnonymous); // ✅ 4 args
+                  setPosts(prev => [newPost, ...prev]);
+                  toast.success('Shared with the community!');
+                }}
+                isSubmitting={uploadingMedia}
+                placeholder={`What’s on your mind, ${authUsername}? You’re not alone...`}
+                maxFiles={4}
+              />
+            </div>
+          )}
           {/* Posts */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
             {posts.length === 0 ? (
@@ -1630,7 +1687,7 @@ return {
             <ul style={{ listStyle: 'none', padding: 0, color: baseColors.text.secondary, fontSize: '0.875rem', lineHeight: 1.5 }}>
               <li>• Speak from your own experience</li>
               <li>• Listen without judgment</li>
-              <li>• No advice unless asked</li>
+              <li>• No unsolicited advice</li>
               <li>• Respect privacy and anonymity</li>
               <li>• Report harmful content</li>
             </ul>
