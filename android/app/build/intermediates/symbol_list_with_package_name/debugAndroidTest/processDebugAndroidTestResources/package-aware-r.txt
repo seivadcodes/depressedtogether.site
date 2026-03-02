@@ -1,0 +1,3 @@
+com.depressedtogether.app.test
+style WhiteBackgroundDialogTheme
+style WhiteBackgroundTheme

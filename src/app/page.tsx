@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase'; // Make sure this matches your setup
-import { useAuth } from '@/hooks/useAuth'; // Reuse your auth hook
-import { Brain, Heart, Users, MessageCircle } from 'lucide-react';
+import { createClient } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
+import { Brain, Heart, Users, MessageCircle, ShieldCheck, Mic, HandHeart, LogIn, MessageSquare, PhoneCall, Lock } from 'lucide-react';
 
 const createSession = async () => {
   await new Promise(resolve => setTimeout(resolve, 800));
@@ -16,8 +16,6 @@ export default function HomePage() {
   const supabase = createClient();
 
   const [isConnecting, setIsConnecting] = useState(false);
-  const [onlineCount, setOnlineCount] = useState(0); // Start at 0, will update
-  const heartbeatRef = useRef<HTMLDivElement>(null);
 
   // 🔁 Update user's last_online every 45s (if logged in)
   useEffect(() => {
@@ -34,35 +32,10 @@ export default function HomePage() {
       }
     };
 
-    updateLastOnline(); // Run immediately
+    updateLastOnline();
     const interval = setInterval(updateLastOnline, 45_000);
     return () => clearInterval(interval);
   }, [user, supabase]);
-
-  // 📊 Fetch global online count every 30s
-  useEffect(() => {
-    const fetchGlobalOnlineCount = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('global_online_count')
-          .select('online_count')
-          .single();
-
-        if (error) {
-          console.error('Error fetching global online count:', error);
-          return;
-        }
-
-        setOnlineCount(data?.online_count || 0);
-      } catch (err) {
-        console.error('Unexpected error:', err);
-      }
-    };
-
-    fetchGlobalOnlineCount(); // Initial fetch
-    const interval = setInterval(fetchGlobalOnlineCount, 30_000);
-    return () => clearInterval(interval);
-  }, [supabase]);
 
   // === UI Handlers ===
   const handleQuickConnect = async () => {
@@ -83,7 +56,7 @@ export default function HomePage() {
     router.push('/communities');
   };
 
-  // === Shared Styles (same as your original) ===
+  // === Shared Styles ===
   const baseColors = {
     primary: '#3b82f6',
     accent: '#10b981',
@@ -93,8 +66,54 @@ export default function HomePage() {
     text: { primary: '#1e293b', secondary: '#6b7280' },
   };
 
-  const spacing = { sm: '0.5rem', md: '0.75rem', lg: '1rem', xl: '1.25rem', '2xl': '1.5rem' };
   const borderRadius = { md: '0.5rem', lg: '0.75rem', xl: '1rem', full: '9999px' };
+
+  // Feature Data
+  const features = [
+    {
+      icon: <ShieldCheck size={32} style={{ color: baseColors.accent }} />,
+      title: "Rigorous Verification",
+      description: "We strictly verify all users to eliminate scammers and bad actors, ensuring a safe space for vulnerable individuals."
+    },
+    {
+      icon: <Mic size={32} style={{ color: baseColors.primary }} />,
+      title: "Expert Insights",
+      description: "Regular talks and sessions led by therapists, doctors, authors, and mental health professionals."
+    },
+    {
+      icon: <HandHeart size={32} style={{ color: '#f59e0b' }} />,
+      title: "Genuine Peer Support",
+      description: "Connect instantly with others walking a similar path. Find comfort in shared experiences and mutual understanding."
+    }
+  ];
+
+  // How It Works Data
+  const steps = [
+    {
+      icon: <LogIn size={40} style={{ color: baseColors.primary }} />,
+      step: "01",
+      title: "Sign In",
+      description: "Just like Facebook or X, simply sign in to get started. Your secure profile is your gateway to support."
+    },
+    {
+      icon: <MessageSquare size={40} style={{ color: baseColors.accent }} />,
+      step: "02",
+      title: "Join & Share",
+      description: "Enter communities to share what's going on. Post questions publicly or chat within groups to find immediate empathy."
+    },
+    {
+      icon: <PhoneCall size={40} style={{ color: '#ef4444' }} />,
+      step: "03",
+      title: "Broadcast & Talk",
+      description: "Need to talk now? Unlike complicated platforms, simply broadcast a request. Anyone available can pick up instantly. No searching, no waiting."
+    },
+    {
+      icon: <Lock size={40} style={{ color: '#8b5cf6' }} />,
+      step: "04",
+      title: "Private & Secure",
+      description: "Yes, you can inbox others and even call them privately and securely. Build deeper one-on-one connections in a safe environment."
+    }
+  ];
 
   return (
     <div
@@ -158,7 +177,6 @@ export default function HomePage() {
 
         {/* Main Heartbeat Circle */}
         <div
-          ref={heartbeatRef}
           style={{
             position: 'relative',
             display: 'flex',
@@ -195,9 +213,9 @@ export default function HomePage() {
           <div style={{ textAlign: 'center', padding: '0 2rem', zIndex: 2 }}>
             <Heart size={48} style={{ color: baseColors.primary, marginBottom: '1rem' }} />
             <h2 style={{ fontSize: '1.75rem', fontWeight: '600', color: '#1e40af', marginBottom: '0.5rem' }}>
-              {onlineCount} people understand
+              2.6M+ people will be available
             </h2>
-            <p style={{ color: baseColors.text.secondary, fontSize: '1.125rem' }}>Right now. Right here.</p>
+            <p style={{ color: baseColors.text.secondary, fontSize: '1.125rem' }}>By the end of 2026.</p>
           </div>
         </div>
 
@@ -235,18 +253,18 @@ export default function HomePage() {
                 animation: 'pulse 2s infinite',
               }}
             ></span>
-            {onlineCount} person{onlineCount !== 1 ? 's' : ''} available to connect
+            Join thousands growing toward 2.6M+ by the end of 2026
           </span>
         </div>
 
-        {/* Buttons */}
+        {/* Action Buttons */}
         <div
           style={{
             width: '100%',
             display: 'flex',
             flexDirection: 'column',
             gap: '1rem',
-            marginBottom: '3rem',
+            marginBottom: '4rem',
             maxWidth: '32rem',
             margin: '0 auto',
           }}
@@ -313,18 +331,204 @@ export default function HomePage() {
           </button>
         </div>
 
-        {/* Footer Note */}
-        <div
-          style={{
-            textAlign: 'center',
-            marginTop: '3rem',
-            paddingTop: '2rem',
-            borderTop: '1px solid rgba(59, 130, 246, 0.1)',
-          }}
-        >
-          <p style={{ color: baseColors.text.secondary, fontSize: '0.95rem', lineHeight: '1.6' }}>
-            <strong>Important:</strong> This platform connects people for peer support. It&apos;s not a replacement for professional mental health care. If you&apos;re in crisis, please contact emergency services.
+        {/* Why Choose This Platform Section */}
+        <div style={{ marginTop: '2rem', marginBottom: '4rem' }}>
+          <h3
+            style={{
+              textAlign: 'center',
+              fontSize: '1.75rem',
+              fontWeight: '700',
+              color: '#1e40af',
+              marginBottom: '2rem',
+            }}
+          >
+            Why Choose This Platform
+          </h3>
+          
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+              gap: '1.5rem',
+            }}
+          >
+            {features.map((feature, index) => (
+              <div
+                key={index}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.7)',
+                  backdropFilter: 'blur(10px)',
+                  borderRadius: borderRadius.xl,
+                  padding: '1.5rem',
+                  border: '1px solid rgba(255, 255, 255, 0.5)',
+                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.05)',
+                  textAlign: 'center',
+                  transition: 'transform 0.2s ease',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  {feature.icon}
+                </div>
+                <h4
+                  style={{
+                    fontSize: '1.25rem',
+                    fontWeight: '600',
+                    color: '#1e293b',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  {feature.title}
+                </h4>
+                <p
+                  style={{
+                    fontSize: '0.95rem',
+                    color: baseColors.text.secondary,
+                    lineHeight: '1.6',
+                  }}
+                >
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* How It Works Section */}
+        <div style={{ marginTop: '2rem', marginBottom: '5rem' }}>
+          <h3
+            style={{
+              textAlign: 'center',
+              fontSize: '1.75rem',
+              fontWeight: '700',
+              color: '#1e40af',
+              marginBottom: '0.5rem',
+            }}
+          >
+            How It Works
+          </h3>
+          <p
+            style={{
+              textAlign: 'center',
+              color: baseColors.text.secondary,
+              marginBottom: '2.5rem',
+              fontSize: '1.05rem',
+            }}
+          >
+            Simple, intuitive, and designed for immediate connection.
           </p>
+          
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+              gap: '2rem',
+              position: 'relative',
+            }}
+          >
+            {steps.map((step, index) => (
+              <div
+                key={index}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.6)',
+                  backdropFilter: 'blur(12px)',
+                  borderRadius: borderRadius.xl,
+                  padding: '2rem 1.5rem',
+                  border: '1px solid rgba(255, 255, 255, 0.6)',
+                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)',
+                  textAlign: 'center',
+                  position: 'relative',
+                  zIndex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                }}
+              >
+                <div
+                  style={{
+                    background: '#ffffff',
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '1.5rem',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
+                    border: '2px solid #f0f7ff',
+                  }}
+                >
+                  {step.icon}
+                </div>
+                
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: '1rem',
+                    right: '1.5rem',
+                    fontSize: '3rem',
+                    fontWeight: '900',
+                    color: 'rgba(59, 130, 246, 0.1)',
+                    lineHeight: 1,
+                  }}
+                >
+                  {step.step}
+                </span>
+
+                <h4
+                  style={{
+                    fontSize: '1.35rem',
+                    fontWeight: '700',
+                    color: '#1e293b',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  {step.title}
+                </h4>
+                <p
+                  style={{
+                    fontSize: '0.95rem',
+                    color: baseColors.text.secondary,
+                    lineHeight: '1.7',
+                  }}
+                >
+                  {step.description}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* Closing Tagline */}
+          <div style={{ textAlign: 'center', marginTop: '4rem', paddingTop: '2rem', borderTop: '1px solid rgba(59, 130, 246, 0.1)' }}>
+            <p
+              style={{
+                fontSize: '1.35rem',
+                fontWeight: '600',
+                color: '#1e40af',
+                fontStyle: 'italic',
+                marginBottom: '0.5rem',
+              }}
+            >
+              In other words, you will never be alone again.
+            </p>
+            <p
+              style={{
+                fontSize: '1.5rem',
+                fontWeight: '800',
+                background: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                marginTop: '1rem',
+              }}
+            >
+              This is our home. We are the family we have been searching for.
+            </p>
+          </div>
         </div>
       </div>
 

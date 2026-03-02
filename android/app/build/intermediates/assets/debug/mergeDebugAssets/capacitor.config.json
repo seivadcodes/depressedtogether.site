@@ -1,0 +1,11 @@
+{
+	"appId": "com.depressedtogether.app",
+	"appName": "depressedtogether",
+	"server": {
+		"url": "https://www.depressedtogether.com",
+		"cleartext": false
+	},
+	"android": {
+		"allowMixedContent": true
+	}
+}
