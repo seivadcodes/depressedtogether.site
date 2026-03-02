@@ -7,7 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 const EMAIL_STORAGE_KEY = 'auth.email';
 
 type CountryInfo = {
-  country: string; // e.g., "KE", "US", "GB"
+  country: string;
 };
 
 export default function AuthPage() {
@@ -16,7 +16,7 @@ export default function AuthPage() {
 
   const [authMode, setAuthMode] = useState<'sign-in' | 'sign-up'>('sign-up');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [password, setPassword] = useState(''); // Keep state for submission, but let browser handle initial fill
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -29,7 +29,7 @@ export default function AuthPage() {
     }
   }, [user, loading, router]);
 
-  // Detect returning user via saved email
+  // Detect returning user via saved email ONLY
   useEffect(() => {
     if (loading) return;
     if (typeof window !== 'undefined') {
@@ -37,11 +37,14 @@ export default function AuthPage() {
       if (savedEmail && savedEmail.includes('@')) {
         setEmail(savedEmail);
         setAuthMode('sign-in');
+        // We do NOT set the password here. 
+        // The browser's native password manager will fill the password field 
+        // automatically if it recognizes this email/URL combination.
       }
     }
   }, [loading]);
 
-  // Fetch user's country on mount (non-blocking)
+  // Fetch user's country on mount
   useEffect(() => {
     const fetchCountry = async () => {
       try {
@@ -50,18 +53,20 @@ export default function AuthPage() {
         const data: CountryInfo = await res.json();
         setUserCountry(data.country);
       } catch {
-  console.warn('Could not detect country, proceeding without it');
-}
+        console.warn('Could not detect country, proceeding without it');
+      }
     };
-
     fetchCountry();
   }, []);
 
   const handleEmailChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setEmail(value);
+    // Only save email if it looks valid
     if (typeof window !== 'undefined' && value.includes('@')) {
       localStorage.setItem(EMAIL_STORAGE_KEY, value);
+    } else if (value === '') {
+      localStorage.removeItem(EMAIL_STORAGE_KEY);
     }
   }, []);
 
@@ -86,6 +91,8 @@ export default function AuthPage() {
         setError('Authentication failed. Please try again.');
       }
       setSubmitting(false);
+      // Note: On successful login, the browser will automatically trigger 
+      // its "Save Password?" dialog. Do not interfere with this.
     }
   };
 
@@ -131,6 +138,7 @@ export default function AuthPage() {
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Full Name"
               required
+              autoComplete="name" // Helps browser identify the field
               style={{
                 width: '100%',
                 padding: '0.75rem',
@@ -149,6 +157,7 @@ export default function AuthPage() {
             onChange={handleEmailChange}
             placeholder="Email"
             required
+            autoComplete="email" // Critical for browser recognition
             style={{
               width: '100%',
               padding: '0.75rem',
@@ -166,6 +175,7 @@ export default function AuthPage() {
             placeholder="Password (6+ characters)"
             required
             minLength={6}
+            autoComplete={authMode === 'sign-in' ? 'current-password' : 'new-password'} // Critical for browser recognition
             style={{
               width: '100%',
               padding: '0.75rem',
@@ -227,7 +237,7 @@ export default function AuthPage() {
           color: '#666',
           fontStyle: 'italic'
         }}>
-          We detect your country to personalize your experience 
+        
         </p>
       )}
     </div>
