@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { PostCard } from '@/components/PostCard';
 import { useAuth } from '@/hooks/useAuth';
 import { useCall } from '@/context/CallContext';
 import SendMessageOverlay from '@/components/modals/SendMessageOverlay';
-import { PostComposer } from '@/components/PostComposer'; // Import the PostComposer
+import { PostComposer } from '@/components/PostComposer';
 
 interface Profile {
   id: string;
@@ -39,6 +39,7 @@ interface DisplayPost {
 
 export default function PublicProfile() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
   const { startCall } = useCall();
 
@@ -98,7 +99,6 @@ export default function PublicProfile() {
           .from('posts')
           .select('*')
           .eq('user_id', id)
-          //.eq('is_anonymous', false)
           .order('created_at', { ascending: false });
 
         if (postError) {
@@ -144,8 +144,22 @@ export default function PublicProfile() {
     fetchProfileAndPosts();
   }, [id]);
 
+  // ✅ Redirect to auth if not logged in
+  const requireAuth = (returnPath?: string) => {
+    if (!user) {
+      const redirectUrl = returnPath || window.location.pathname;
+      router.push(`/login?returnTo=${encodeURIComponent(redirectUrl)}`);
+      return false;
+    }
+    return true;
+  };
+
   const handleCall = async () => {
     if (!profile?.id || !profile.full_name) return;
+    
+    // ✅ Check auth first, redirect if needed
+    if (!requireAuth()) return;
+    
     await startCall(
       profile.id,
       profile.full_name || 'Anonymous',
@@ -157,17 +171,19 @@ export default function PublicProfile() {
 
   const handleMessage = () => {
     if (!profile?.id) return;
+    
+    // ✅ Check auth first, redirect if needed
+    if (!requireAuth()) return;
+    
     setShowMessageOverlay(true);
   };
 
-  // Handle post submission using PostComposer
   const handlePostSubmit = async (text: string, mediaFiles: File[], isAnonymous: boolean) => {
     if (!user) return;
     
     try {
       const mediaPaths: string[] = [];
       
-      // Upload media files if any
       if (mediaFiles.length > 0) {
         const supabase = createClient();
         for (const file of mediaFiles) {
@@ -181,7 +197,6 @@ export default function PublicProfile() {
         }
       }
 
-      // Create post in database
       const supabase = createClient();
       const { error: postError } = await supabase
         .from('posts')
@@ -195,7 +210,6 @@ export default function PublicProfile() {
 
       if (postError) throw postError;
 
-      // Optimistically add to feed
       const newPost: DisplayPost = {
         id: crypto.randomUUID(),
         userId: user.id,
@@ -328,6 +342,7 @@ export default function PublicProfile() {
             </div>
           )}
 
+          {/* Call/Message buttons - visible to all, but action requires auth */}
           {!isOwner && (
             <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
               <button
@@ -386,7 +401,7 @@ export default function PublicProfile() {
           </h2>
           {posts.length === 0 ? (
             <p style={{ textAlign: 'center', color: colors.textSecondary }}>
-              {isOwner ? 'Start sharing your thoughts — you’re not alone.' : 'No public posts yet.'}
+              {isOwner ? 'Start sharing your thoughts — you\'re not alone.' : 'No public posts yet.'}
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>

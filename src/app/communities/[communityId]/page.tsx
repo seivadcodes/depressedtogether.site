@@ -1655,7 +1655,7 @@ useEffect(() => {
                 }}
                 onClick={() => toast('Full member list coming soon!')}
               >
-                View all members ({members.length})
+                {/*View all members ({members.length})*/}
               </button>
             )}
           </div>

@@ -3,6 +3,7 @@ import { createContext, useContext, useState, ReactNode, useEffect, useCallback,
 import { createClient } from '@/lib/supabase/client';
 import { Room, RemoteAudioTrack, LocalAudioTrack, Participant } from 'livekit-client';
 import toast from 'react-hot-toast';
+import { useRouter } from 'next/navigation'; // Added for redirect
 
 type CallState = 'idle' | 'calling' | 'ringing' | 'connecting' | 'connected' | 'ended';
 type CallType = 'audio' | 'video';
@@ -42,6 +43,40 @@ type CallContextType = {
 };
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
+
+// ✅ NEW: Helper to create a "Safe" dummy context for logged-out users
+// This prevents the app from crashing when CallProvider is missing
+const createSafeContext = (router: ReturnType<typeof useRouter>): CallContextType => ({
+  callState: 'idle',
+  callType: 'audio',
+  calleeName: null,
+  calleeAvatar: null,
+  incomingCall: null,
+  callRoom: null,
+  remoteAudioTrack: null,
+  localAudioTrack: null,
+  isMuted: false,
+  isCameraOff: true,
+  participantName: '',
+  participantAvatar: null,
+  callDuration: 0,
+  currentConversationId: null,
+  // Dummy functions that redirect to login instead of crashing
+  acceptCall: async () => {
+    toast.error('Please sign in to answer calls');
+    router.push('/login');
+  },
+  rejectCall: () => {},
+  hangUp: () => {},
+  startCall: async () => {
+    toast.error('Please sign in to make calls');
+    router.push('/login');
+  },
+  setIsMuted: () => {},
+  setIsCameraOff: () => {},
+  setParticipantName: () => {},
+  setParticipantAvatar: () => {},
+});
 
 export function CallProvider({
   children,
@@ -443,10 +478,17 @@ export function CallProvider({
   );
 }
 
+// ✅ UPDATED HOOK: This is the only part that changed significantly
 export const useCall = () => {
+  const router = useRouter(); // Initialize router here
   const context = useContext(CallContext);
+  
   if (!context) {
-    throw new Error('useCall must be used within CallProvider');
+    // ❌ OLD: throw new Error('useCall must be used within CallProvider');
+    // ✅ NEW: Return a safe dummy object that redirects to login instead of crashing
+    console.warn('useCall used outside CallProvider. Returning safe context.');
+    return createSafeContext(router);
   }
+  
   return context;
 };
