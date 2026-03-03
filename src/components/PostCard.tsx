@@ -1,12 +1,10 @@
+// src/components/PostCard.tsx
 'use client';
 
 import { useState, useMemo } from 'react';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import {
-  Trash2,
-  Loader2,
-} from 'lucide-react';
+import { Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -38,12 +36,12 @@ export interface Post {
   text: string;
   mediaUrl?: string | null;
   mediaUrls?: string[];
- 
   createdAt: Date;
   likes: number;
   isLiked: boolean;
   commentsCount: number;
   isAnonymous: boolean;
+  bgStyle?: string; // 👈 Background style
   user?: {
     id: string;
     fullName: string | null;
@@ -99,21 +97,6 @@ const borderRadius = {
   full: '9999px',
 } as const;
 
-const griefGradients = {
-  parent: 'linear-gradient(135deg, #fcd34d, #f97316)',
-  child: 'linear-gradient(135deg, #d8b4fe, #8b5cf6)',
-  spouse: 'linear-gradient(135deg, #fda4af, #ec4899)',
-  sibling: 'linear-gradient(135deg, #5eead4, #06b6d4)',
-  friend: 'linear-gradient(135deg, #93c5fd, #6366f1)',
-  pet: 'linear-gradient(135deg, #fef08a, #f59e0b)',
-  miscarriage: 'linear-gradient(135deg, #fbcfe8, #e11d48)',
-  caregiver: 'linear-gradient(135deg, #e5e7eb, #f59e0b)',
-  suicide: 'linear-gradient(135deg, #ddd6fe, #a78bfa)',
-  other: 'linear-gradient(135deg, #e5e7eb, #9ca3af)',
-} as const;
-
-const defaultGradient = griefGradients.parent;
-
 const cardStyle: React.CSSProperties = {
   background: baseColors.surface,
   borderRadius: borderRadius.lg,
@@ -148,13 +131,11 @@ export function PostCard({
   const supabase = useMemo(() => createClient(), []);
   const { user: currentUser } = useAuth();
 
-  // Resolve current user's avatar to public URL
   const resolvedAvatarUrl = useMemo(() => {
-  const path = currentUser?.user_metadata?.avatar_url;
-  if (!path) return undefined;
-  // Route through your secure proxy
-  return `/api/media/avatars/${path}`;
-}, [currentUser?.user_metadata?.avatar_url]);
+    const path = currentUser?.user_metadata?.avatar_url;
+    if (!path) return undefined;
+    return `/api/media/avatars/${path}`;
+  }, [currentUser?.user_metadata?.avatar_url]);
 
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
@@ -171,34 +152,29 @@ export function PostCard({
 
   const hasMedia = mediaUrls.length > 0;
 
- const gradient = 'linear-gradient(135deg, #dbeafe, #bfdbfe)'; // calm blue
-// or just a solid color:
-// const gradient = '#f0f9ff';
-
   const displayAuthor = useMemo(() => {
-  if (post.isAnonymous) {
-    return { name: 'Anonymous', avatar: null };
-  }
-  if (post.user) {
-    // Convert raw DB path (e.g., "abc123/photo.jpg") → proxied URL
-    const avatarUrl = post.user.avatarUrl
-      ? `/api/media/avatars/${post.user.avatarUrl}`
-      : null;
+    if (post.isAnonymous) {
+      return { name: 'Anonymous', avatar: null };
+    }
+    if (post.user) {
+      const avatarUrl = post.user.avatarUrl
+        ? `/api/media/avatars/${post.user.avatarUrl}`
+        : null;
+      return {
+        name: post.user.fullName || 'Someone',
+        avatar: avatarUrl,
+      };
+    }
+    return { name: 'Someone', avatar: null };
+  }, [post]);
 
-    return {
-      name: post.user.fullName || 'Someone',
-      avatar: avatarUrl,
-    };
-  }
-  return { name: 'Someone', avatar: null };
-}, [post]);
   const handleDelete = async () => {
     if (!canDelete || !onPostDeleted) return;
     if (!confirm('Are you sure you want to delete this post?')) return;
     setDeleteLoading(true);
     try {
-      const { error } = await supabase.from('posts').delete().eq('id', post.id);
-      if (error) throw error;
+      await supabase.from('posts').delete().eq('id', post.id);
+      await supabase.from('community_posts').delete().eq('id', post.id);
       onPostDeleted();
       toast.success('Post deleted');
     } catch (err) {
@@ -209,8 +185,21 @@ export function PostCard({
     }
   };
 
+  // 👇 APPLY BACKGROUND IF SELECTED
+  const cardBackground = post.bgStyle
+    ? { background: post.bgStyle }
+    : { background: '#ffffff' };
+
+  const textColor = '#1c1917';
+
   return (
-    <div style={cardStyle}>
+    <div
+      style={{
+        ...cardStyle,
+        ...cardBackground,
+        transition: 'background 0.3s ease',
+      }}
+    >
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.lg }}>
         {showAuthor && (
@@ -220,7 +209,7 @@ export function PostCard({
                 width: '2.5rem',
                 height: '2.5rem',
                 borderRadius: borderRadius.full,
-                background: gradient,
+                background: 'linear-gradient(135deg, #dbeafe, #bfdbfe)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -298,10 +287,12 @@ export function PostCard({
       {/* Content */}
       <p
         style={{
-          color: baseColors.text.primary,
+          color: textColor,
           whiteSpace: 'pre-line',
           marginBottom: spacing.lg,
           lineHeight: 1.5,
+          fontSize: post.bgStyle ? '1.125rem' : '1rem',
+          fontWeight: post.bgStyle ? 500 : 400,
         }}
       >
         {post.text}
@@ -318,7 +309,6 @@ export function PostCard({
               position: 'relative',
             }}
           >
-            {/* Navigation & counter */}
             {mediaUrls.length > 1 && (
               <>
                 <button
@@ -379,7 +369,6 @@ export function PostCard({
               </>
             )}
 
-            {/* Main media */}
             {/\.(mp4|webm|mov)$/i.test(mediaUrls[currentMediaIndex]) ? (
               <video
                 src={mediaUrls[currentMediaIndex]}
@@ -401,7 +390,6 @@ export function PostCard({
             )}
           </div>
 
-          {/* Thumbnails */}
           {mediaUrls.length > 1 && (
             <div
               style={{

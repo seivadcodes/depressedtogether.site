@@ -2,18 +2,30 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Camera, X, Send } from 'lucide-react';
+import { Camera, X, Send, Smile, Palette } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/hooks/useAuth';
 import { createClient } from '@/lib/supabase/client';
+import Picker, { Theme } from 'emoji-picker-react';
 
 interface PostComposerProps {
-  onSubmit: (text: string, mediaFiles: File[], isAnonymous: boolean) => Promise<void>;
+  onSubmit: (text: string, mediaFiles: File[], isAnonymous: boolean, bgStyle?: string) => Promise<void>;
   isSubmitting?: boolean;
   placeholder?: string;
   maxFiles?: number;
-  defaultIsAnonymous?: boolean; // Optional: e.g., preferences.isAnonymous
+  defaultIsAnonymous?: boolean;
 }
+
+const BG_OPTIONS = [
+  { id: 'none', label: 'Default', value: '' },
+  { id: 'calm-blue', label: 'Calm', value: 'linear-gradient(135deg, #dbeafe, #bfdbfe)' },
+  { id: 'warm-amber', label: 'Warm', value: 'linear-gradient(135deg, #fef3c7, #fde68a)' },
+  { id: 'soft-purple', label: 'Peace', value: 'linear-gradient(135deg, #e9d5ff, #d8b4fe)' },
+  { id: 'gentle-green', label: 'Hope', value: 'linear-gradient(135deg, #d1fae5, #a7f3d0)' },
+  { id: 'rose-pink', label: 'Love', value: 'linear-gradient(135deg, #fce7f3, #fbcfe8)' },
+  { id: 'slate-gray', label: 'Quiet', value: 'linear-gradient(135deg, #e2e8f0, #cbd5e1)' },
+  { id: 'sunset', label: 'Sunset', value: 'linear-gradient(135deg, #fed7aa, #fdba74)' },
+];
 
 export function PostComposer({
   onSubmit,
@@ -31,11 +43,14 @@ export function PostComposer({
   const [isExpanded, setIsExpanded] = useState(false);
   const [profile, setProfile] = useState<{ full_name?: string; avatar_url?: string } | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
-  const [isAnonymous, setIsAnonymous] = useState(defaultIsAnonymous); // 👈 per-post anonymity
+  const [isAnonymous, setIsAnonymous] = useState(defaultIsAnonymous);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showBgPicker, setShowBgPicker] = useState(false);
+  const [selectedBg, setSelectedBg] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 🔁 Fetch user profile on mount or when user changes
   useEffect(() => {
     const fetchProfile = async () => {
       if (!user) {
@@ -43,13 +58,11 @@ export function PostComposer({
         setProfileLoading(false);
         return;
       }
-
       const { data, error } = await supabase
         .from('profiles')
         .select('full_name, avatar_url')
         .eq('id', user.id)
         .maybeSingle();
-
       if (error) {
         console.error('Failed to load profile in PostComposer:', error);
         setProfile(null);
@@ -57,26 +70,19 @@ export function PostComposer({
         const avatarUrl = data?.avatar_url
           ? `/api/media/avatars/${data.avatar_url}`
           : undefined;
-
-        setProfile({
-          full_name: data?.full_name,
-          avatar_url: avatarUrl,
-        });
+        setProfile({ full_name: data?.full_name, avatar_url: avatarUrl });
       }
       setProfileLoading(false);
     };
-
     fetchProfile();
   }, [user, supabase]);
 
-  // 🔁 Clean up object URLs
   useEffect(() => {
     return () => {
       mediaPreviews.forEach(url => URL.revokeObjectURL(url));
     };
   }, [mediaPreviews]);
 
-  // 🧠 Compute display name and initials (only shown if not anonymous)
   const displayName = useMemo(() => {
     if (!user) return 'You';
     return profile?.full_name || user.email?.split('@')[0] || 'You';
@@ -87,7 +93,6 @@ export function PostComposer({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
     const validFiles = Array.from(files).slice(0, maxFiles - mediaFiles.length);
     setMediaFiles(prev => [...prev, ...validFiles]);
     const newPreviews = validFiles.map(file => URL.createObjectURL(file));
@@ -103,20 +108,31 @@ export function PostComposer({
     });
   };
 
+  const insertEmoji = (emojiData: { emoji: string }) => {
+    const cursorPosition = textareaRef.current?.selectionStart || 0;
+    const textBefore = text.slice(0, cursorPosition);
+    const textAfter = text.slice(cursorPosition);
+    setText(textBefore + emojiData.emoji + textAfter);
+    setShowEmojiPicker(false);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
   const handleSubmit = async () => {
     if (!text.trim() && mediaFiles.length === 0) return;
-    await onSubmit(text.trim(), mediaFiles, isAnonymous);
+    await onSubmit(text.trim(), mediaFiles, isAnonymous, selectedBg);
     setText('');
     setMediaFiles([]);
     setMediaPreviews([]);
     setIsExpanded(false);
-    setIsAnonymous(defaultIsAnonymous); // reset to default after submit
+    setIsAnonymous(defaultIsAnonymous);
+    setShowEmojiPicker(false);
+    setShowBgPicker(false);
+    setSelectedBg('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const hasContent = text.trim().length > 0 || mediaFiles.length > 0;
 
-  // Show loading state briefly (optional)
   if (profileLoading && user) {
     return (
       <div style={{
@@ -148,7 +164,6 @@ export function PostComposer({
           gap: '0.75rem',
         }}
       >
-        {/* Avatar — hidden if anonymous */}
         <div style={{
           width: '2rem',
           height: '2rem',
@@ -162,50 +177,17 @@ export function PostComposer({
           border: (avatarUrl && !isAnonymous) ? 'none' : '1px solid #fde68a',
         }}>
           {avatarUrl && !isAnonymous ? (
-            <Image
-              src={avatarUrl}
-              alt={displayName}
-              width={32}
-              height={32}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
+            <Image src={avatarUrl} alt={displayName} width={32} height={32} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
             <span style={{ color: '#92400e', fontWeight: 500, fontSize: '0.875rem' }}>
               {!isAnonymous ? displayName.charAt(0).toUpperCase() : '?'}
             </span>
           )}
         </div>
-
-        <div style={{
-          color: '#a8a29e',
-          fontSize: '0.875rem',
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          position: 'relative',
-        }}>
+        <div style={{ color: '#a8a29e', fontSize: '0.875rem', flex: 1, display: 'flex', alignItems: 'center' }}>
           {placeholder}
-          <span
-            style={{
-              marginLeft: '4px',
-              width: '1px',
-              height: '1em',
-              backgroundColor: '#a8a29e',
-              animation: 'blink 1s step-end infinite',
-              display: 'inline-block',
-              verticalAlign: 'middle',
-            }}
-          />
         </div>
-
         <Send size={16} color="#a8a29e" style={{ flexShrink: 0 }} />
-
-        <style jsx>{`
-          @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
-          }
-        `}</style>
       </div>
     );
   }
@@ -220,7 +202,7 @@ export function PostComposer({
       boxShadow: '0 1px 2px 0 rgba(0,0,0,0.05)',
     }}>
       <div style={{ display: 'flex', gap: '0.75rem' }}>
-        {/* Avatar — hidden if anonymous */}
+        {/* Avatar */}
         <div style={{
           width: '2.5rem',
           height: '2.5rem',
@@ -234,13 +216,7 @@ export function PostComposer({
           overflow: 'hidden',
         }}>
           {avatarUrl && !isAnonymous ? (
-            <Image
-              src={avatarUrl}
-              alt={displayName}
-              width={40}
-              height={40}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
+            <Image src={avatarUrl} alt={displayName} width={40} height={40} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
             <span style={{ color: '#92400e', fontWeight: 500, fontSize: '0.875rem' }}>
               {!isAnonymous ? displayName.charAt(0).toUpperCase() : '?'}
@@ -249,27 +225,168 @@ export function PostComposer({
         </div>
 
         <div style={{ flex: 1 }}>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={placeholder}
-            autoFocus
-            style={{
-              width: '100%',
-              padding: '0.5rem',
-              color: '#1c1917',
-              backgroundColor: 'transparent',
-              border: '1px solid #e7e5e4',
-              borderRadius: '0.5rem',
-              resize: 'vertical',
-              fontFamily: 'inherit',
-              fontSize: '1rem',
-              minHeight: '4rem',
-              outline: 'none',
-            }}
-            disabled={isSubmitting}
-            rows={3}
-          />
+          <div style={{ position: 'relative' }}>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                setShowEmojiPicker(false);
+                e.target.style.height = 'auto';
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+              }}
+              placeholder={placeholder}
+              autoFocus
+              style={{
+                width: '100%',
+                padding: '0.5rem 5rem 0.5rem 0.5rem',
+                color: '#1c1917',
+                backgroundColor: selectedBg ? 'rgba(255,255,255,0.5)' : 'transparent',
+                border: '1px solid #e7e5e4',
+                borderRadius: '0.5rem',
+                resize: 'vertical',
+                fontFamily: 'inherit',
+                fontSize: '1rem',
+                minHeight: '4rem',
+                outline: 'none',
+              }}
+              disabled={isSubmitting}
+              rows={3}
+            />
+            
+            {/* Background Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowBgPicker(!showBgPicker);
+                setShowEmojiPicker(false);
+              }}
+              style={{
+                position: 'absolute',
+                right: '5rem',
+                bottom: '0.5rem',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: selectedBg ? '#f59e0b' : '#78716c',
+                padding: '4px',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-label="Select background"
+            >
+              <Palette size={18} />
+            </button>
+
+            {/* Emoji Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowEmojiPicker(!showEmojiPicker);
+                setShowBgPicker(false);
+              }}
+              style={{
+                position: 'absolute',
+                right: '2.5rem',
+                bottom: '0.5rem',
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#78716c',
+                padding: '4px',
+                borderRadius: '4px',
+              }}
+              aria-label="Open emoji picker"
+            >
+              <Smile size={18} />
+            </button>
+
+            {/* Send Button */}
+            <button
+              onClick={handleSubmit}
+              disabled={!hasContent || isSubmitting}
+              style={{
+                position: 'absolute',
+                right: '0.5rem',
+                bottom: '0.5rem',
+                width: '2rem',
+                height: '2rem',
+                borderRadius: '0.5rem',
+                backgroundColor: hasContent && !isSubmitting ? '#f59e0b' : '#d6d3d1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: 'none',
+                cursor: !hasContent || isSubmitting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isSubmitting ? (
+                <div style={{
+                  width: '1rem',
+                  height: '1rem',
+                  borderRadius: '50%',
+                  border: '2px solid white',
+                  borderTopColor: 'transparent',
+                  animation: 'spin 1s linear infinite',
+                }}></div>
+              ) : (
+                <Send size={16} color={hasContent ? '#fff' : '#a8a29e'} />
+              )}
+            </button>
+          </div>
+
+          {/* Emoji Picker */}
+          {showEmojiPicker && (
+            <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+              <Picker
+                onEmojiClick={insertEmoji}
+                theme={Theme.LIGHT}
+                skinTonesDisabled
+                searchDisabled
+                previewConfig={{ showPreview: false }}
+                style={{ width: '100%', maxWidth: '350px' }}
+              />
+            </div>
+          )}
+
+          {/* Background Picker */}
+          {showBgPicker && (
+            <div style={{
+              marginTop: '0.5rem',
+              marginBottom: '0.5rem',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: '0.5rem',
+            }}>
+              {BG_OPTIONS.map((bg) => (
+                <button
+                  key={bg.id}
+                  onClick={() => {
+                    setSelectedBg(bg.value);
+                    setShowBgPicker(false);
+                  }}
+                  style={{
+                    height: '2.5rem',
+                    borderRadius: '0.5rem',
+                    background: bg.value || '#f5f5f4',
+                    border: selectedBg === bg.value ? '2px solid #f59e0b' : '1px solid #e7e5e4',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.75rem',
+                    color: bg.id === 'none' ? '#6b7280' : 'white',
+                    textShadow: bg.id !== 'none' ? '0 1px 2px rgba(0,0,0,0.3)' : 'none',
+                    fontWeight: 500,
+                  }}
+                >
+                  {bg.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {mediaPreviews.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.75rem' }}>
@@ -282,13 +399,7 @@ export function PostComposer({
                   overflow: 'hidden',
                   border: '1px solid #e7e5e4',
                 }}>
-                  <Image
-                    src={url}
-                    alt={`Preview ${i + 1}`}
-                    fill
-                    style={{ objectFit: 'cover' }}
-                    unoptimized
-                  />
+                  <Image src={url} alt={`Preview ${i + 1}`} fill style={{ objectFit: 'cover' }} unoptimized />
                   <button
                     onClick={() => removeMedia(i)}
                     style={{
@@ -303,11 +414,9 @@ export function PostComposer({
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                       border: 'none',
                       cursor: 'pointer',
                     }}
-                    aria-label="Remove attachment"
                   >
                     <X size={10} />
                   </button>
@@ -324,15 +433,8 @@ export function PostComposer({
             paddingTop: '0.75rem',
             borderTop: '1px solid #f5f5f4',
           }}>
-            {/* Anonymity Toggle */}
             {user && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                fontSize: '0.875rem',
-                color: '#4b5563',
-              }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#4b5563' }}>
                 <input
                   type="checkbox"
                   id="post-anon"
@@ -340,9 +442,7 @@ export function PostComposer({
                   onChange={(e) => setIsAnonymous(e.target.checked)}
                   style={{ cursor: 'pointer' }}
                 />
-                <label htmlFor="post-anon" style={{ cursor: 'pointer' }}>
-                  Post anonymously
-                </label>
+                <label htmlFor="post-anon" style={{ cursor: 'pointer' }}>Post anonymously</label>
               </div>
             )}
 
@@ -364,19 +464,10 @@ export function PostComposer({
               disabled={isSubmitting || mediaFiles.length >= maxFiles}
             >
               <Camera size={16} />
-              {mediaFiles.length > 0
-                ? `Add more (${maxFiles - mediaFiles.length} left)`
-                : 'Add photo/video'}
+              {mediaFiles.length > 0 ? `Add more (${maxFiles - mediaFiles.length} left)` : 'Add photo/video'}
             </button>
 
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept="image/*,video/*"
-              multiple
-              style={{ display: 'none' }}
-            />
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*,video/*" multiple style={{ display: 'none' }} />
 
             <div style={{ display: 'flex', gap: '0.75rem' }}>
               <button
@@ -387,6 +478,9 @@ export function PostComposer({
                   setMediaFiles([]);
                   setMediaPreviews([]);
                   setIsAnonymous(defaultIsAnonymous);
+                  setShowEmojiPicker(false);
+                  setShowBgPicker(false);
+                  setSelectedBg('');
                   if (fileInputRef.current) fileInputRef.current.value = '';
                 }}
                 style={{
@@ -420,26 +514,12 @@ export function PostComposer({
                   backgroundColor: hasContent && !isSubmitting ? '#f59e0b' : '#d6d3d1',
                   color: hasContent && !isSubmitting ? '#fff' : '#a8a29e',
                   cursor: !hasContent || isSubmitting ? 'not-allowed' : 'pointer',
-                  boxShadow: hasContent && !isSubmitting ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none',
                 }}
               >
                 {isSubmitting ? (
-                  <>
-                    <div style={{
-                      width: '1rem',
-                      height: '1rem',
-                      borderRadius: '50%',
-                      border: '2px solid white',
-                      borderTopColor: 'transparent',
-                      animation: 'spin 1s linear infinite',
-                    }}></div>
-                    Sharing...
-                  </>
+                  <><div style={{ width: '1rem', height: '1rem', borderRadius: '50%', border: '2px solid white', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }}></div>Sharing...</>
                 ) : (
-                  <>
-                    Share
-                    <Send size={16} />
-                  </>
+                  <>Share<Send size={16} /></>
                 )}
               </button>
             </div>
@@ -448,13 +528,7 @@ export function PostComposer({
       </div>
 
       <style jsx>{`
-        @keyframes blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
-        }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );

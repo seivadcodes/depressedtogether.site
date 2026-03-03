@@ -724,91 +724,103 @@ useEffect(() => {
     }
   };
 
-  const createPostWithMedia = async (content: string, files: File[], userId: string, isAnonymous: boolean) => {
-    if (!community) throw new Error('Community not loaded');
-    let insertedPostId: string | null = null;
-    try {
-      const { data: postData, error: postError } = await supabase
-        .from('community_posts')
-        .insert({
-          community_id: communityId,
-          user_id: userId,
-          content: content.trim(),
-          created_at: new Date().toISOString(),
-          media_urls: [],
-          is_anonymous: isAnonymous,
-        })
-        .select(`
-          id,
-          content,
-          created_at,
-          community_id,
-          media_urls,
-          user_id,
-          is_anonymous 
-        `)
-        .single();
-      if (postError) throw postError;
-      insertedPostId = postData.id;
+  const createPostWithMedia = async (
+  content: string,
+  files: File[],
+  userId: string,
+  isAnonymous: boolean,
+  bgStyle?: string // 👈 ADD THIS PARAMETER
+) => {
+  if (!community) throw new Error('Community not loaded');
+  let insertedPostId: string | null = null;
+  
+  try {
+  // ✅ CORRECT: Destructure 'data' and rename it to 'postData'
+const {  data: postData, error: postError } = await supabase
+  .from('community_posts')
+  .insert({
+    community_id: communityId,
+    user_id: userId,
+    content: content.trim(),
+    created_at: new Date().toISOString(),
+    media_urls: [],
+    is_anonymous: isAnonymous,
+    bg_style: bgStyle || '', // 👈 Make sure this line is here too
+  })
+  .select(`
+    id,
+    content,
+    created_at,
+    community_id,
+    media_urls,
+    user_id,
+    is_anonymous,
+    bg_style
+  `)
+  .single();
+      
+    if (postError) throw postError;
+    insertedPostId = postData.id;
 
-      let mediaUrls: string[] = [];
-      if (files.length > 0) {
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
-        for (const file of files) {
-          if (!allowedTypes.includes(file.type)) {
-            throw new Error('Unsupported file type');
-          }
-          const maxSize = file.type.startsWith('video/') ? 15 : 5;
-          if (file.size > maxSize * 1024 * 1024) {
-            throw new Error(`File must be less than ${maxSize}MB`);
-          }
+    let mediaUrls: string[] = [];
+    if (files.length > 0) {
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'video/mp4', 'video/quicktime'];
+      for (const file of files) {
+        if (!allowedTypes.includes(file.type)) {
+          throw new Error('Unsupported file type');
         }
-        const uploadPromises = files.map(async (file, idx) => {
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
-          const { error: uploadError } = await supabase.storage
-            .from('communities')
-            .upload(fileName, file, { upsert: true, contentType: file.type });
-          if (uploadError) throw uploadError;
-          return fileName;
-        });
-        mediaUrls = await Promise.all(uploadPromises);
-        const { error: updateError } = await supabase
-          .from('community_posts')
-          .update({ media_urls: mediaUrls })
-          .eq('id', postData.id);
-        if (updateError) throw updateError;
+        const maxSize = file.type.startsWith('video/') ? 15 : 5;
+        if (file.size > maxSize * 1024 * 1024) {
+          throw new Error(`File must be less than ${maxSize}MB`);
+        }
       }
-
-      const { data: userData } = await supabase
-        .from('profiles')
-        .select('full_name, avatar_url') // ← no need for is_anonymous
-        .eq('id', userId)
-        .single();
-
-      return {
-        id: postData.id,
-        content: postData.content,
-        media_url: mediaUrls.length > 0 ? mediaUrls[0] : null,
-        media_urls: mediaUrls,
-        created_at: postData.created_at,
-        user_id: postData.user_id,
-        username: postData.is_anonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
-        avatar_url: postData.is_anonymous ? null : userData?.avatar_url || null,
-        isAnonymous: postData.is_anonymous, // ← source of truth
-        community_id: postData.community_id,
-        likes_count: 0,
-        comments_count: 0,
-        is_liked: false,
-      };
-    } catch (error) {
-      console.error('Post creation failed:', error);
-      if (insertedPostId) {
-        await supabase.from('community_posts').delete().eq('id', insertedPostId);
-      }
-      throw error;
+      const uploadPromises = files.map(async (file, idx) => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${communityId}/posts/${postData.id}_${idx}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('communities')
+          .upload(fileName, file, { upsert: true, contentType: file.type });
+        if (uploadError) throw uploadError;
+        return fileName;
+      });
+      mediaUrls = await Promise.all(uploadPromises);
+      const { error: updateError } = await supabase
+        .from('community_posts')
+        .update({ media_urls: mediaUrls })
+        .eq('id', postData.id);
+      if (updateError) throw updateError;
     }
-  };
+
+    const { data: userData } = await supabase
+      .from('profiles')
+      .select('full_name, avatar_url')
+      .eq('id', userId)
+      .single();
+
+    return {
+      id: postData.id,
+      content: postData.content,
+      media_url: mediaUrls.length > 0 ? mediaUrls[0] : null,
+      media_urls: mediaUrls,
+      created_at: postData.created_at,
+      user_id: postData.user_id,
+      username: postData.is_anonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
+      avatar_url: postData.is_anonymous ? null : userData?.avatar_url || null,
+      isAnonymous: postData.is_anonymous,
+      bgStyle: postData.bg_style, // 👈 RETURN IT
+      community_id: postData.community_id,
+      likes_count: 0,
+      comments_count: 0,
+      is_liked: false,
+    };
+  } catch (error) {
+    console.error('Post creation failed:', error);
+    if (insertedPostId) {
+      await supabase.from('community_posts').delete().eq('id', insertedPostId);
+    }
+    throw error;
+  }
+};
 
 
   const updateBanner = async (file: File) => {
