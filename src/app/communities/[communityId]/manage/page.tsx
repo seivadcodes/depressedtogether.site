@@ -72,7 +72,7 @@ export default function CommunityManagePage() {
   const [bannerUploading, setBannerUploading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Helper: get fallback banner URL
+  // Helper: get fallback banner URL (Direct Supabase Public URL for fallback only)
   const getBannerUrl = (id: string) => {
     return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/communities/${id}/banner.jpg?t=${Date.now()}`;
   };
@@ -110,15 +110,16 @@ export default function CommunityManagePage() {
 
         if (commErr) throw commErr;
 
-        // Always treat cover_photo_url as a STORAGE PATH
-const storagePath = commData.cover_photo_url; // e.g., "communities/abc123/banner.jpg"
+        // ✅ FIX: Construct the display URL correctly based on relative path
+        // DB now stores: "community-id/banner.jpg"
+        // We need to prepend "/api/media/communities/" for the image tag
+        const storagePath = commData.cover_photo_url; 
+        const coverPhotoUrl = storagePath
+          ? `/api/media/communities/${storagePath}?t=${Date.now()}` // Add cache buster
+          : getBannerUrl(communityId);
 
-// Convert to proxied URL if path exists, else use fallback
-const coverPhotoUrl = storagePath
-  ? `/api/media/communities/${storagePath}`
-  : getBannerUrl(communityId); // fallback to direct Supabase URL (for legacy/default)
+        setCommunity({ ...commData, cover_photo_url: coverPhotoUrl });
 
-setCommunity({ ...commData, cover_photo_url: coverPhotoUrl });
         // Fetch members
         const { data: membersData, error: memErr } = await supabase
           .from('community_members')
@@ -199,45 +200,46 @@ setCommunity({ ...commData, cover_photo_url: coverPhotoUrl });
     setBannerPreview(URL.createObjectURL(file));
   };
 
-// src/app/communities/[communityId]/manage/page.tsx
-
-const uploadBanner = async () => {
-  if (!bannerFile || !communityId || !isAdmin) return;
-  setBannerUploading(true);
-  try {
-    const ext = bannerFile.name.split('.').pop() || 'jpg';
-    // Path inside the bucket: "abc-123/banner.jpg"
-    const path = `${communityId}/banner.${ext}`; 
-    
-    const { error: uploadErr } = await supabase.storage
-      .from('communities')
-      .upload(path, bannerFile, { upsert: true });
-
-    if (uploadErr) throw uploadErr;
-
-    // ✅ FIX: Save ONLY the relative path, NOT "communities/..."
-    const storagePath = path; 
-
-    const { error: updateErr } = await supabase
-      .from('communities')
-      .update({ cover_photo_url: storagePath })
-      .eq('id', communityId);
+  const uploadBanner = async () => {
+    if (!bannerFile || !communityId || !isAdmin) return;
+    setBannerUploading(true);
+    try {
+      const ext = bannerFile.name.split('.').pop() || 'jpg';
       
-    if (updateErr) throw updateErr;
+      // ✅ PATH INSIDE BUCKET ONLY: "community-id/banner.jpg"
+      // Do NOT include "communities/" here.
+      const path = `${communityId}/banner.${ext}`;
 
-    // Update local state with the new path + cache bust
-    setCommunity((prev) => (prev ? { ...prev, cover_photo_url: `${storagePath}?t=${Date.now()}` } : null));
-    
-    setBannerFile(null);
-    setBannerPreview(null);
-    toast.success('Banner updated!');
-  } catch (err) {
-    console.error('Banner upload failed:', err);
-    toast.error('Failed to update banner.');
-  } finally {
-    setBannerUploading(false);
-  }
-};
+      const { error: uploadErr } = await supabase.storage
+        .from('communities')
+        .upload(path, bannerFile, { upsert: true });
+
+      if (uploadErr) throw uploadErr;
+
+      // ✅ SAVE RELATIVE PATH TO DB
+      // This matches what the main page expects to append to "/api/media/communities/"
+      const storagePath = path; 
+
+      const { error: updateErr } = await supabase
+        .from('communities')
+        .update({ cover_photo_url: storagePath })
+        .eq('id', communityId);
+        
+      if (updateErr) throw updateErr;
+
+      // Update local state with cache buster to show immediate preview
+      setCommunity((prev) => (prev ? { ...prev, cover_photo_url: `/api/media/communities/${storagePath}?t=${Date.now()}` } : null));
+      
+      setBannerFile(null);
+      setBannerPreview(null);
+      toast.success('Banner updated!');
+    } catch (err) {
+      console.error('Banner upload failed:', err);
+      toast.error('Failed to update banner.');
+    } finally {
+      setBannerUploading(false);
+    }
+  };
 
   const updateMemberRole = async (userId: string, newRole: 'member' | 'moderator' | 'admin') => {
     if (!isAdmin) return;
@@ -323,22 +325,22 @@ const uploadBanner = async () => {
             />
           ) : community.cover_photo_url ? (
             <Image
-    src={community.cover_photo_url}
-    alt="Current banner"
-    fill
-    style={{ objectFit: 'cover' }}
-    unoptimized // 👈 Important: bypasses Next.js image optimization for dynamic/external URLs
-    onError={(e) => {
-      // Fallback to default generated banner URL (cache-busted)
-      const fallbackUrl = getBannerUrl(communityId);
-      (e.currentTarget as HTMLImageElement).src = fallbackUrl;
-    }}
-  />
-) : (
-  <div style={{ width: '100%', height: '100%', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
-    No banner set
-  </div>
-)}
+              src={community.cover_photo_url}
+              alt="Current banner"
+              fill
+              style={{ objectFit: 'cover' }}
+              unoptimized
+              onError={(e) => {
+                // Fallback to direct URL if API fails
+                const fallbackUrl = getBannerUrl(communityId);
+                (e.currentTarget as HTMLImageElement).src = fallbackUrl;
+              }}
+            />
+          ) : (
+            <div style={{ width: '100%', height: '100%', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+              No banner set
+            </div>
+          )}
         </div>
         {isAdmin && (
           <>
@@ -468,33 +470,33 @@ const uploadBanner = async () => {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   {member.avatar_url && !member.is_anonymous ? (
-  <Image
-    src={`/api/media/avatars/${member.avatar_url}`}
-    alt={displayName}
-    width={36}
-    height={36}
-    style={{ borderRadius: '9999px', objectFit: 'cover' }}
-    unoptimized
-    onError={(e) => {
-      (e.target as HTMLImageElement).parentElement!.style.display = 'none';
-    }}
-  />
-) : (
-  <div
-    style={{
-      width: '36px',
-      height: '36px',
-      borderRadius: '9999px',
-      background: '#334155',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: '#94a3b8',
-    }}
-  >
-    {displayName[0]?.toUpperCase() || '?'}
-  </div>
-)}
+                    <Image
+                      src={`/api/media/avatars/${member.avatar_url}`}
+                      alt={displayName}
+                      width={36}
+                      height={36}
+                      style={{ borderRadius: '9999px', objectFit: 'cover' }}
+                      unoptimized
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).parentElement!.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '9999px',
+                        background: '#334155',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#94a3b8',
+                      }}
+                    >
+                      {displayName[0]?.toUpperCase() || '?'}
+                    </div>
+                  )}
                   <div>
                     <div style={{ fontWeight: 600 }}>{displayName}</div>
                     <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
