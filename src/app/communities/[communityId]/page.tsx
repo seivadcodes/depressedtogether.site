@@ -1078,7 +1078,7 @@ useEffect(() => {
             <Image
               src={
                 community.cover_photo_url
-                  ? `/api/media/${community.cover_photo_url}`
+                  ? `/api/media/communities${community.cover_photo_url}`
                   : `https://via.placeholder.com/1200x300/dbeafe-bfdbfe?text=${encodeURIComponent(community.name)}`
               }
               alt={community.name}
