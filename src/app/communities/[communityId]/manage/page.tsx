@@ -199,38 +199,45 @@ setCommunity({ ...commData, cover_photo_url: coverPhotoUrl });
     setBannerPreview(URL.createObjectURL(file));
   };
 
-  const uploadBanner = async () => {
-    if (!bannerFile || !communityId || !isAdmin) return;
-    setBannerUploading(true);
-    try {
-      const ext = bannerFile.name.split('.').pop() || 'jpg';
-      const path = `${communityId}/banner.${ext}`;
-      const { error: uploadErr } = await supabase.storage
-        .from('communities')
-        .upload(path, bannerFile, { upsert: true });
+// src/app/communities/[communityId]/manage/page.tsx
 
-      if (uploadErr) throw uploadErr;
+const uploadBanner = async () => {
+  if (!bannerFile || !communityId || !isAdmin) return;
+  setBannerUploading(true);
+  try {
+    const ext = bannerFile.name.split('.').pop() || 'jpg';
+    // Path inside the bucket: "abc-123/banner.jpg"
+    const path = `${communityId}/banner.${ext}`; 
+    
+    const { error: uploadErr } = await supabase.storage
+      .from('communities')
+      .upload(path, bannerFile, { upsert: true });
 
-      // ✅ Save only the storage path — consistent with create flow
-const storagePath = `communities/${path}`; // e.g., "communities/loss-of-parent/banner.jpg"
+    if (uploadErr) throw uploadErr;
 
-const { error: updateErr } = await supabase
-  .from('communities')
-  .update({ cover_photo_url: storagePath })
-  .eq('id', communityId);
-      if (updateErr) throw updateErr;
+    // ✅ FIX: Save ONLY the relative path, NOT "communities/..."
+    const storagePath = path; 
 
-      setCommunity((prev) => (prev ? { ...prev, cover_photo_url: storagePath } : null));
-      setBannerFile(null);
-      setBannerPreview(null);
-      toast.success('Banner updated!');
-    } catch (err) {
-      console.error('Banner upload failed:', err);
-      toast.error('Failed to update banner.');
-    } finally {
-      setBannerUploading(false);
-    }
-  };
+    const { error: updateErr } = await supabase
+      .from('communities')
+      .update({ cover_photo_url: storagePath })
+      .eq('id', communityId);
+      
+    if (updateErr) throw updateErr;
+
+    // Update local state with the new path + cache bust
+    setCommunity((prev) => (prev ? { ...prev, cover_photo_url: `${storagePath}?t=${Date.now()}` } : null));
+    
+    setBannerFile(null);
+    setBannerPreview(null);
+    toast.success('Banner updated!');
+  } catch (err) {
+    console.error('Banner upload failed:', err);
+    toast.error('Failed to update banner.');
+  } finally {
+    setBannerUploading(false);
+  }
+};
 
   const updateMemberRole = async (userId: string, newRole: 'member' | 'moderator' | 'admin') => {
     if (!isAdmin) return;
