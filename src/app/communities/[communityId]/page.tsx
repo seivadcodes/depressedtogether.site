@@ -33,7 +33,7 @@ interface Community {
   description: string;
   member_count: number;
   online_count: number;
-  grief_type: string; // still used internally, but UI won't show it
+  grief_type: string;
   created_at: string;
   cover_photo_url?: string | null;
 }
@@ -96,10 +96,8 @@ interface CommunityPost {
   likes_count: number;
   comments_count: number;
   user_id: string;
-  is_anonymous: boolean; // ← Add this line
+  is_anonymous: boolean;
 }
-
-// Even though we're not using grief types, PostCard expects this union
 type GriefType =
   | 'parent'
   | 'child'
@@ -112,24 +110,20 @@ type GriefType =
   | 'suicide'
   | 'other';
 
-// --- Shared Styles (Updated for Depression Theme) ---
+// --- Shared Styles ---
 const baseColors = {
-  primary: '#3b82f6', // blue-500
+  primary: '#3b82f6',
   secondary: '#1e293b',
-  accent: '#10b981', // emerald-500 (calm, hopeful)
+  accent: '#10b981',
   background: '#f0f7ff',
   surface: '#ffffff',
   border: '#e2e8f0',
   text: { primary: '#1e293b', secondary: '#64748b', muted: '#94a3b8' },
   status: { online: '#10b981', offline: '#cbd5e1' },
 };
-
 const spacing = { xs: '0.25rem', sm: '0.5rem', md: '0.75rem', lg: '1rem', xl: '1.25rem', '2xl': '1.5rem' };
 const borderRadius = { sm: '0.25rem', md: '0.5rem', lg: '0.75rem', xl: '1rem', full: '9999px' };
-
-// New: Depression-themed fallback gradient (no grief types shown)
 const defaultGradient = 'linear-gradient(135deg, #dbeafe, #bfdbfe)';
-
 const buttonStyle = (bg: string, color = 'white') => ({
   background: bg,
   color,
@@ -143,7 +137,6 @@ const buttonStyle = (bg: string, color = 'white') => ({
   fontWeight: 600,
   transition: 'background 0.2s',
 });
-
 const outlineButtonStyle = {
   background: 'transparent',
   color: baseColors.text.primary,
@@ -155,7 +148,6 @@ const outlineButtonStyle = {
   alignItems: 'center',
   gap: spacing.sm,
 };
-
 const cardStyle: React.CSSProperties = {
   background: baseColors.surface,
   borderRadius: borderRadius.lg,
@@ -164,7 +156,6 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 2px 6px rgba(0,0,0,0.04)',
   marginBottom: spacing.xs,
 };
-
 const pageContainer: React.CSSProperties = {
   minHeight: '100vh',
   background: `linear-gradient(to bottom, ${baseColors.background}, #e6f0ff, #dde9ff)`,
@@ -173,7 +164,6 @@ const pageContainer: React.CSSProperties = {
   paddingLeft: spacing.lg,
   paddingRight: spacing.lg,
 };
-
 const centerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column' as const,
@@ -182,7 +172,6 @@ const centerStyle: React.CSSProperties = {
   minHeight: '100vh',
   padding: spacing.lg,
 };
-
 const skeletonStyle: React.CSSProperties = {
   background: '#f1f5f9',
   borderRadius: borderRadius.lg,
@@ -193,12 +182,11 @@ const skeletonStyle: React.CSSProperties = {
   position: 'relative',
   overflow: 'hidden',
 };
-
 const pulseAnimation = `
 @keyframes pulse {
-0% { opacity: 1; }
-50% { opacity: 0.6; }
-100% { opacity: 1; }
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
 }
 `;
 
@@ -241,7 +229,6 @@ export default function CommunityDetailPage() {
   const [newPostsCount, setNewPostsCount] = useState<number>(0);
   const [newMessagesCount, setNewMessagesCount] = useState<number>(0);
 
-  // Inject global styles once
   useEffect(() => {
     if (typeof document !== 'undefined') {
       const existing = document.getElementById('global-pulse-styles');
@@ -272,38 +259,29 @@ export default function CommunityDetailPage() {
       setIsModalSubmitting(false);
     }
   };
+
   const formatRecentActivity = (dateString: string): string => {
     const now = new Date();
     const created = new Date(dateString);
     const diffMs = now.getTime() - created.getTime();
     const seconds = Math.floor(diffMs / 1000);
-
     if (seconds < 60) return 'Just now';
-
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
-
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
-
     const days = Math.floor(hours / 24);
     if (days < 7) return days === 1 ? '1 day ago' : `${days} days ago`;
-
     const weeks = Math.floor(days / 7);
-    // Changed condition: If less than 4 weeks (28 days), show weeks. 
-    // But we must also catch the gap between 28 days and 30 days to avoid "0 months".
-    // A safer approach is to only show months if days >= 30.
-
     if (days < 30) {
       return weeks === 1 ? '1 week ago' : `${weeks} weeks ago`;
     }
-
     const months = Math.floor(days / 30);
     if (months < 12) return months === 1 ? '1 month ago' : `${months} months ago`;
-
     const years = Math.floor(days / 365);
     return years === 1 ? '1 year ago' : `${years} years ago`;
   };
+
   const isUserOnline = useCallback((lastOnline: string | null): boolean => {
     if (!lastOnline) return false;
     const lastOnlineDate = new Date(lastOnline);
@@ -311,7 +289,6 @@ export default function CommunityDetailPage() {
     return now.getTime() - lastOnlineDate.getTime() < 5 * 60 * 1000;
   }, []);
 
-  // Close kebab menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (kebabMenuRef.current && !kebabMenuRef.current.contains(event.target as Node)) {
@@ -339,19 +316,22 @@ export default function CommunityDetailPage() {
           .select('*')
           .eq('id', communityId)
           .single();
+
         if (communityError) throw new Error(`Failed to fetch community: ${communityError.message}`);
         if (!communityData) throw new Error('Community not found');
 
-        let coverPhotoUrl = communityData.cover_photo_url;
-        if (!coverPhotoUrl) {
-          coverPhotoUrl = `communities/${communityId}/banner.jpg`;
-        }
+        // ✅ FIX: Construct full API URL from relative path stored in DB
+        // DB now stores: "community-id/banner.jpg" (without "communities/" prefix)
+        let coverPhotoUrl = communityData.cover_photo_url
+          ? `/api/media/communities/${communityData.cover_photo_url}`
+          : null;
 
         // 2. Count members
         const { count: memberCount, error: memberCountError } = await supabase
           .from('community_members')
           .select('*', { count: 'exact', head: true })
           .eq('community_id', communityId);
+
         if (memberCountError) throw new Error(`Failed to count members: ${memberCountError.message}`);
 
         // 3. Fetch members
@@ -371,6 +351,7 @@ export default function CommunityDetailPage() {
           `)
           .eq('community_id', communityId)
           .order('joined_at', { ascending: true });
+
         if (membersError) throw membersError;
 
         // 4. Online count
@@ -380,6 +361,7 @@ export default function CommunityDetailPage() {
           .select('online_count')
           .eq('community_id', communityId)
           .single();
+
         if (viewError) {
           console.warn('Falling back to client-side online count:', viewError);
           onlineCount = membersData.filter((member: CommunityMemberWithProfile) => {
@@ -392,15 +374,15 @@ export default function CommunityDetailPage() {
 
         const communityWithPhoto: Community = {
           ...communityData,
-          cover_photo_url: coverPhotoUrl,
+          cover_photo_url: coverPhotoUrl, // Now contains full ready-to-use URL
           member_count: memberCount || 0,
           online_count: onlineCount,
         };
+
         setCommunity(communityWithPhoto);
 
-               const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
+        const formattedMembers = membersData.map((member: CommunityMemberWithProfile) => {
           const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-          // ✅ NEVER anonymize in members list
           const avatarUrl = profile?.avatar_url || null;
           return {
             user_id: member.user_id,
@@ -413,12 +395,10 @@ export default function CommunityDetailPage() {
           };
         });
 
-        // ✅ ADD THIS SORT: Stabilizes the list by Join Date
         const sortedMembers = formattedMembers.sort((a, b) => {
           return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
         });
-
-        setMembers(sortedMembers); // Use sortedMembers instead of formattedMembers
+        setMembers(sortedMembers);
 
         // 5. Check membership
         let isCurrentUserMember = false;
@@ -443,19 +423,20 @@ export default function CommunityDetailPage() {
         const { data: postData, error: postError } = await supabase
           .from('community_posts')
           .select(`
-    id,
-    content,
-    created_at,
-    community_id,
-    media_url,
-    media_urls,
-    likes_count,
-    comments_count,
-    user_id,
-    is_anonymous
-  `)
+            id,
+            content,
+            created_at,
+            community_id,
+            media_url,
+            media_urls,
+            likes_count,
+            comments_count,
+            user_id,
+            is_anonymous
+          `)
           .eq('community_id', communityId)
           .order('created_at', { ascending: false });
+
         if (postError) throw postError;
 
         const userIds = [...new Set(postData.map((post: CommunityPost) => post.user_id))];
@@ -463,6 +444,7 @@ export default function CommunityDetailPage() {
           .from('profiles')
           .select('id, full_name, avatar_url, is_anonymous')
           .in('id', userIds);
+
         const profilesMap = new Map();
         profilesData?.forEach((profile: Profile) => {
           profilesMap.set(profile.id, profile);
@@ -470,9 +452,7 @@ export default function CommunityDetailPage() {
 
         const postsWithLikes = postData.map((post: CommunityPost) => {
           const userProfile = profilesMap.get(post.user_id) || {};
-          // Use the post's own is_anonymous field!
-          const isAnonymous = post.is_anonymous === true; // ← critical fix
-
+          const isAnonymous = post.is_anonymous === true;
           return {
             id: post.id,
             content: post.content,
@@ -486,12 +466,12 @@ export default function CommunityDetailPage() {
             likes_count: post.likes_count || 0,
             comments_count: post.comments_count || 0,
             is_liked: false,
-            isAnonymous: isAnonymous, // explicit
+            isAnonymous: isAnonymous,
           };
         });
         setPosts(postsWithLikes);
 
-               // 7. Track new activity
+        // 7. Track new activity
         let lastFeedView: string | null = null;
         let lastChatView: string | null = null;
         let newPostsCount = 0;
@@ -504,14 +484,12 @@ export default function CommunityDetailPage() {
             .eq('user_id', user.id)
             .eq('community_id', communityId)
             .single();
-          
-          // PGRST116 is the "not found" error code, which is fine for new users
-          if (viewError && viewError.code !== 'PGRST116') { 
+
+          if (viewError && viewError.code !== 'PGRST116') {
             console.error('Error fetching views:', viewError);
           }
 
           if (viewData) {
-            // --- EXISTING USER ---
             lastFeedView = viewData.last_feed_view;
             lastChatView = viewData.last_chat_view;
 
@@ -520,7 +498,6 @@ export default function CommunityDetailPage() {
               .select('*', { count: 'exact', head: true })
               .eq('community_id', communityId)
               .gt('created_at', lastFeedView || '1970-01-01');
-            
             newPostsCount = postCount || 0;
 
             const { count: msgCount } = await supabase
@@ -528,10 +505,8 @@ export default function CommunityDetailPage() {
               .select('*', { count: 'exact', head: true })
               .eq('community_id', communityId)
               .gt('created_at', lastChatView || '1970-01-01');
-            
             newMessagesCount = msgCount || 0;
-            
-            // Update their last view time to NOW so the counter resets after this load
+
             await supabase
               .from('community_user_views')
               .upsert(
@@ -544,19 +519,13 @@ export default function CommunityDetailPage() {
                 { onConflict: 'user_id,community_id' }
               );
           } else {
-            // --- NEW USER ---
-            // No random numbers. Just initialize their view time to NOW.
-            // Since they have no history, and we set "now" as their start point, 
-            // newPostsCount remains 0 until someone actually posts.
             await supabase.from('community_user_views').insert({
               user_id: user.id,
               community_id: communityId,
               last_feed_view: new Date().toISOString(),
               last_chat_view: new Date().toISOString(),
             });
-            // newPostsCount stays 0
           }
-
           setNewPostsCount(newPostsCount);
           setNewMessagesCount(newMessagesCount);
         }
@@ -568,7 +537,6 @@ export default function CommunityDetailPage() {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [communityId, user, supabase, isUserOnline]);
 
@@ -592,63 +560,56 @@ export default function CommunityDetailPage() {
     }
   }, [targetPostId, posts, router]);
 
-  // Refresh members & online count every 30s
-  // Refresh members & online count every 30s
-useEffect(() => {
-  if (!communityId) return;
-  const fetchMembersAndOnlineCount = async () => {
-    const { data: membersData, error } = await supabase
-      .from('community_members')
-      .select(`
-        role,
-        joined_at,
-        user_id,
-        user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
-      `)
-      .eq('community_id', communityId);
-    
-    if (error) {
-      console.error('Failed to refresh members:', error);
-      return;
-    }
+  useEffect(() => {
+    if (!communityId) return;
+    const fetchMembersAndOnlineCount = async () => {
+      const { data: membersData, error } = await supabase
+        .from('community_members')
+        .select(`
+          role,
+          joined_at,
+          user_id,
+          user:profiles!left (id, full_name, avatar_url, last_online, is_anonymous)
+        `)
+        .eq('community_id', communityId);
 
-    const formattedMembers = membersData.map((member) => {
-      const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
-      const isAnonymous = profile?.is_anonymous || false;
-      return {
-        user_id: member.user_id,
-        username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
-        avatar_url: isAnonymous ? null : profile?.avatar_url || null,
-        last_online: profile?.last_online || null,
-        is_online: isUserOnline(profile?.last_online || null),
-        role: member.role,
-        joined_at: member.joined_at,
-      };
-    });
+      if (error) {
+        console.error('Failed to refresh members:', error);
+        return;
+      }
 
-    // ✅ ADD THIS SORT HERE TOO: Prevents jitter on refresh
-    const sortedMembers = formattedMembers.sort((a, b) => {
-      return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
-    });
+      const formattedMembers = membersData.map((member) => {
+        const profile = Array.isArray(member.user) ? member.user[0] ?? null : member.user;
+        const isAnonymous = profile?.is_anonymous || false;
+        return {
+          user_id: member.user_id,
+          username: isAnonymous ? 'Anonymous' : profile?.full_name || 'Anonymous',
+          avatar_url: isAnonymous ? null : profile?.avatar_url || null,
+          last_online: profile?.last_online || null,
+          is_online: isUserOnline(profile?.last_online || null),
+          role: member.role,
+          joined_at: member.joined_at,
+        };
+      });
 
-    setMembers(sortedMembers); // Use sortedMembers
+      const sortedMembers = formattedMembers.sort((a, b) => {
+        return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+      });
+      setMembers(sortedMembers);
 
-    const { data: countData } = await supabase
-      .from('community_online_counts')
-      .select('online_count')
-      .eq('community_id', communityId)
-      .single();
-    
-    const newOnlineCount = countData?.online_count ?? 0;
-    setCommunity((prev) => (prev ? { ...prev, online_count: newOnlineCount } : null));
-  };
+      const { data: countData } = await supabase
+        .from('community_online_counts')
+        .select('online_count')
+        .eq('community_id', communityId)
+        .single();
+      const newOnlineCount = countData?.online_count ?? 0;
+      setCommunity((prev) => (prev ? { ...prev, online_count: newOnlineCount } : null));
+    };
+    fetchMembersAndOnlineCount();
+    const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
+    return () => clearInterval(interval);
+  }, [communityId, supabase, isUserOnline]);
 
-  fetchMembersAndOnlineCount();
-  const interval = setInterval(fetchMembersAndOnlineCount, 30_000);
-  return () => clearInterval(interval);
-}, [communityId, supabase, isUserOnline]);
-
-  // Update last_online every 45s
   useEffect(() => {
     if (!user) return;
     const updateLastOnline = async () => {
@@ -745,9 +706,10 @@ useEffect(() => {
           community_id,
           media_urls,
           user_id,
-          is_anonymous 
+          is_anonymous
         `)
         .single();
+
       if (postError) throw postError;
       insertedPostId = postData.id;
 
@@ -773,6 +735,7 @@ useEffect(() => {
           return fileName;
         });
         mediaUrls = await Promise.all(uploadPromises);
+
         const { error: updateError } = await supabase
           .from('community_posts')
           .update({ media_urls: mediaUrls })
@@ -782,7 +745,7 @@ useEffect(() => {
 
       const { data: userData } = await supabase
         .from('profiles')
-        .select('full_name, avatar_url') // ← no need for is_anonymous
+        .select('full_name, avatar_url')
         .eq('id', userId)
         .single();
 
@@ -795,7 +758,7 @@ useEffect(() => {
         user_id: postData.user_id,
         username: postData.is_anonymous ? 'Anonymous' : userData?.full_name || 'Anonymous',
         avatar_url: postData.is_anonymous ? null : userData?.avatar_url || null,
-        isAnonymous: postData.is_anonymous, // ← source of truth
+        isAnonymous: postData.is_anonymous,
         community_id: postData.community_id,
         likes_count: 0,
         comments_count: 0,
@@ -810,7 +773,6 @@ useEffect(() => {
     }
   };
 
-
   const updateBanner = async (file: File) => {
     if (!community) return;
     setBannerUploading(true);
@@ -823,7 +785,11 @@ useEffect(() => {
         .from('communities')
         .upload(fileName, file, { upsert: true });
       if (uploadError) throw uploadError;
-      setCommunity((prev) => (prev ? { ...prev, cover_photo_url: fileName } : null));
+
+      // ✅ Update local state with full API URL + cache buster
+      setCommunity((prev) =>
+        prev ? { ...prev, cover_photo_url: `/api/media/communities/${fileName}?t=${Date.now()}` } : null
+      );
       toast.success('Banner updated!');
       setBannerModalOpen(false);
       setBannerPreview(null);
@@ -947,7 +913,11 @@ useEffect(() => {
             <meta property="og:type" content="website" />
             <meta
               property="og:url"
-              content={`https://healingshoulder.site/community/${communityId}/${community.name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/[\s-]+/g, '-').replace(/^-+|-+$/g, '')}`}
+              content={`https://healingshoulder.site/community/${communityId}/${community.name
+                .toLowerCase()
+                .replace(/[^a-z0-9\s-]/g, '')
+                .replace(/[\s-]+/g, '-')
+                .replace(/^-+|-+$/g, '')}`}
             />
             <meta
               property="og:image"
@@ -1025,14 +995,12 @@ useEffect(() => {
   const authUsername = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Anonymous';
 
   const transformPostForCard = (post: Post) => {
-    // Since this is a depression support platform, we don't use grief types.
-    // But PostCard requires a valid GriefType[], so we use 'other' as a neutral placeholder.
     const griefTypes: GriefType[] = ['other'];
-
+    // ✅ FIX: Construct media URLs with full path
     const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
       ? post.media_urls
         .filter(Boolean)
-        .map(path => `/api/media/communities/${path}`)
+        .map((path) => `/api/media/communities/${path}`)
       : post.media_url
         ? [`/api/media/communities/${post.media_url}`]
         : [];
@@ -1043,7 +1011,7 @@ useEffect(() => {
       text: post.content,
       mediaUrl: mediaUrls[0] || undefined,
       mediaUrls,
-      griefTypes, // ✅ Now correctly typed as GriefType[]
+      griefTypes,
       createdAt: new Date(post.created_at),
       likes: post.likes_count,
       isLiked: post.is_liked,
@@ -1078,7 +1046,7 @@ useEffect(() => {
             <Image
               src={
                 community.cover_photo_url
-                  ? `/api/media/${community.cover_photo_url}`
+                  ? community.cover_photo_url // ✅ Already has full path from fetchData
                   : `https://via.placeholder.com/1200x300/dbeafe-bfdbfe?text=${encodeURIComponent(community.name)}`
               }
               alt={community.name}
@@ -1229,7 +1197,7 @@ useEffect(() => {
                   >
                     {community.cover_photo_url ? (
                       <Image
-                        src={`/api/media/${community.cover_photo_url}`}
+                        src={community.cover_photo_url} // ✅ Already has full path
                         alt={community.name}
                         fill
                         sizes="100vw"
@@ -1253,7 +1221,6 @@ useEffect(() => {
                     )}
                   </div>
                 </Link>
-
                 <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: baseColors.text.primary, margin: 0 }}>
                     {community.name}
@@ -1262,13 +1229,15 @@ useEffect(() => {
                     {(() => {
                       const paragraphs = community.description
                         ?.split('\n')
-                        .filter(p => p.trim() !== '') || [];
+                        .filter((p) => p.trim() !== '') || [];
                       const flatText = paragraphs.join(' ').trim();
                       if (showFullDescription) {
                         return (
                           <>
                             {paragraphs.map((p, i) => (
-                              <p key={i} style={{ margin: '0 0 0.75em 0' }}>{p}</p>
+                              <p key={i} style={{ margin: '0 0 0.75em 0' }}>
+                                {p}
+                              </p>
                             ))}
                             <button
                               onClick={(e) => {
@@ -1295,7 +1264,14 @@ useEffect(() => {
                       const preview = shouldTruncate ? flatText.substring(0, maxChars) + '…' : flatText;
                       return (
                         <>
-                          <p style={{ margin: '0 0 0.75em 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: isMobile ? 'nowrap' : 'normal' }}>
+                          <p
+                            style={{
+                              margin: '0 0 0.75em 0',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: isMobile ? 'nowrap' : 'normal',
+                            }}
+                          >
                             {preview}
                           </p>
                           {shouldTruncate && (
@@ -1339,14 +1315,12 @@ useEffect(() => {
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                     <Users size={16} style={{ color: baseColors.primary }} /> {community.member_count} members
                   </span>
-
-                  {/* Online Count (Ensure this is commented out if you still want it hidden) */}
-                  {/* 
-  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-    <MessageCircle size={16} style={{ color: baseColors.accent }} /> {community.online_count} online
-  </span>
-  */}
-
+                  {/* Online Count */}
+                  {/*
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <MessageCircle size={16} style={{ color: baseColors.accent }} /> {community.online_count} online
+                  </span>
+                  */}
                   {/* Posts Count - ONLY shows if newPostsCount > 0 */}
                   {newPostsCount > 0 && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', position: 'relative' }}>
@@ -1354,7 +1328,6 @@ useEffect(() => {
                       <span style={{ color: baseColors.primary, fontWeight: 600 }}>
                         {newPostsCount} new {newPostsCount === 1 ? 'post' : 'posts'}
                       </span>
-
                       {/* Red Badge */}
                       <span
                         style={{
@@ -1407,7 +1380,6 @@ useEffect(() => {
                     )}
                   </Link>
                 )}
-
                 <div style={{ display: 'flex', flexDirection: 'column', gap: spacing.sm }}>
                   {!isMember ? (
                     user ? (
@@ -1449,16 +1421,17 @@ useEffect(() => {
               <PostComposer
                 onSubmit={async (text, mediaFiles, isAnonymous) => {
                   if (!user) return;
-                  const newPost = await createPostWithMedia(text, mediaFiles, user.id, isAnonymous); // ✅ 4 args
-                  setPosts(prev => [newPost, ...prev]);
+                  const newPost = await createPostWithMedia(text, mediaFiles, user.id, isAnonymous);
+                  setPosts((prev) => [newPost, ...prev]);
                   toast.success('Shared with the community!');
                 }}
                 isSubmitting={uploadingMedia}
-                placeholder={`What’s on your mind, ${authUsername}? You’re not alone...`}
+                placeholder={`What's on your mind, ${authUsername}? You're not alone...`}
                 maxFiles={4}
               />
             </div>
           )}
+
           {/* Posts */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
             {posts.length === 0 ? (
@@ -1469,7 +1442,7 @@ useEffect(() => {
                 </h3>
                 <p style={{ color: baseColors.text.secondary, marginBottom: spacing.lg }}>
                   {isMember
-                    ? "Be the first to share what’s on your mind."
+                    ? "Be the first to share what's on your mind."
                     : "Join this community to see and share posts."}
                 </p>
                 {!isMember && user && (
