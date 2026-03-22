@@ -32,4 +32,3 @@ com.depressedtogether.app-debug-30 C:\Users\Admin\Projects\depressedtogether.sit
 com.depressedtogether.app-main-31 C:\Users\Admin\Projects\depressedtogether.site\android\app\src\main\res
 com.depressedtogether.app-debug-32 C:\Users\Admin\Projects\depressedtogether.site\android\capacitor-cordova-android-plugins\build\intermediates\packaged_res\debug\packageDebugResources
 com.depressedtogether.app-debug-33 C:\Users\Admin\Projects\depressedtogether.site\node_modules\@capacitor\android\capacitor\build\intermediates\packaged_res\debug\packageDebugResources
-com.depressedtogether.app-debug-34 C:\Users\Admin\Projects\depressedtogether.site\node_modules\@capacitor\preferences\android\build\intermediates\packaged_res\debug\packageDebugResources

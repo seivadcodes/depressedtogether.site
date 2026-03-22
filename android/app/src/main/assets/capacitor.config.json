@@ -1,9 +1,10 @@
 {
 	"appId": "com.depressedtogether.app",
-	"appName": "depressedtogether",
+	"appName": "Depressed Together",
+	"webDir": "out",
 	"server": {
 		"url": "https://www.depressedtogether.com",
-		"cleartext": false
+		"cleartext": true
 	},
 	"android": {
 		"allowMixedContent": true

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FFFFFF</color>
-    <string name="app_name">depressedtogether</string>
+    <string name="app_name">Depressed Together</string>
     <string name="custom_url_scheme">com.depressedtogether.app</string>
     <string name="package_name">com.depressedtogether.app</string>
-    <string name="title_activity_main">depressedtogether</string>
+    <string name="title_activity_main">Depressed Together</string>
     <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
         
         <item name="colorPrimary">@color/colorPrimary</item>
