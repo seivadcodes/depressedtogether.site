@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { ArrowLeft, Shield, Trash2, Mail } from 'lucide-react';
 
 export default function AccountDeletionInfo() {
   return (
@@ -63,7 +63,7 @@ export default function AccountDeletionInfo() {
               Click the <strong>⋮ (menu)</strong> icon in the top-right corner of your profile card.
             </li>
             <li style={{ marginBottom: '0.5rem' }}>
-              Select <strong>"Delete Account"</strong>.
+              Select <strong>&quot;Delete Account&quot;</strong>.
             </li>
             <li>
               Confirm your email address to finalize the permanent deletion.
@@ -118,6 +118,32 @@ export default function AccountDeletionInfo() {
           Log In to Delete Account
         </Link>
 
+        {/* Support Contact */}
+        <div style={{
+          borderTop: '1px solid #e7e5e4',
+          paddingTop: '1.5rem',
+          textAlign: 'center',
+        }}>
+          {/*<p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
+            Having trouble? Contact our support team.
+          </p>
+          <a
+            href="mailto:seivadyoung@gmail.com"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              color: '#3b82f6',
+              textDecoration: 'none',
+              fontWeight: 500,
+              fontSize: '0.9rem',
+            }}
+          >
+            <Mail size={16} />
+            seivadyoung@gmail.com
+          </a>*/}
+        </div>
+        
         <div style={{ marginTop: '2rem', textAlign: 'center' }}>
           <Link
             href="/"
