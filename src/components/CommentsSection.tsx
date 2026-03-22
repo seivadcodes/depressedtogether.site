@@ -760,12 +760,33 @@ export function CommentsSection({
     }
   };
 
-  const toggleReply = (commentId: string) => {
-    setActiveReplyId(activeReplyId === commentId ? null : commentId);
-    if (activeReplyId !== commentId) {
-      setReplyTexts(prev => ({ ...prev, [commentId]: '' }));
+  const toggleReply = (commentId: string, authorName?: string) => {
+  setActiveReplyId(activeReplyId === commentId ? null : commentId);
+  if (activeReplyId !== commentId) {
+    const mention = authorName ? `@${authorName} ` : '';
+    setReplyTexts(prev => ({ ...prev, [commentId]: mention }));
+  }
+};
+
+// Helper to render content with @mentions styled in pink
+const renderContentWithMentions = (content: string) => {
+  // Split by @mentions pattern: @word or @word-with-dashes
+  const parts = content.split(/(@[\w-]+)/g);
+  
+  return parts.map((part, index) => {
+    if (part.startsWith('@')) {
+      return (
+        <span 
+          key={index} 
+          style={{ color: '#EC4899', fontWeight: 500 }} // 💗 Pink-500
+        >
+          {part}
+        </span>
+      );
     }
-  };
+    return <span key={index}>{part}</span>;
+  });
+};
 
   const toggleReplies = (commentId: string) => {
     setExpandedReplies(prev => ({ ...prev, [commentId]: !prev[commentId] }));
@@ -1097,14 +1118,14 @@ export function CommentsSection({
                 </div>
               ) : (
                 <p style={{
-                  color: '#374151',
-                  lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap',
-                  overflowWrap: 'anywhere',
-                  fontSize: '0.875rem'
-                }}>
-                  {comment.content}
-                </p>
+  color: '#374151',
+  lineHeight: 1.5,
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+  fontSize: '0.875rem'
+}}>
+  {renderContentWithMentions(comment.content)}
+</p>
               )}
             </div>
             {!editingCommentId && (
@@ -1140,8 +1161,7 @@ export function CommentsSection({
                   />
                   <span>{comment.likes_count || 0}</span>
                 </button>
-                <button
-                  onClick={() => toggleReply(comment.id)}
+                <button onClick={() => toggleReply(comment.id, comment.author_name)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
