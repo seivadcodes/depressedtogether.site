@@ -1,9 +1,9 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Users, MessageCircle, Plus, ArrowRight, Brain } from 'lucide-react'; // Removed Heart
+import { Users, MessageCircle, Plus, ArrowRight, Brain } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import Button from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -84,12 +84,19 @@ export default function CommunitiesPage() {
         if (error) throw error;
 
         if (data) {
-          const communitiesWithPhotos = data.map((community) => ({
-            ...community,
-            cover_photo_url: community.cover_photo_url
-              ? `/api/media/${community.cover_photo_url}`
-              : null,
-          }));
+          const communitiesWithPhotos = data.map((community) => {
+            // ✅ FIX: Construct the URL assuming DB stores RELATIVE path only
+            // e.g., DB: "depression-group/banner.jpg"
+            // Result: "/api/media/communities/depression-group/banner.jpg"
+            const coverPhotoUrl = community.cover_photo_url
+              ? `/api/media/communities/${community.cover_photo_url}`
+              : null;
+
+            return {
+              ...community,
+              cover_photo_url: coverPhotoUrl,
+            };
+          });
 
           setCommunities(communitiesWithPhotos);
           const total = communitiesWithPhotos.reduce((sum, c) => sum + c.online_count, 0);
@@ -245,7 +252,6 @@ export default function CommunitiesPage() {
     margin: '0 auto',
   };
 
-  // Format online count with correct pluralization (Logic kept, UI removed)
   const formattedOnlineText = totalOnline === 1 ? '1 person' : `${totalOnline} people`;
 
   return (
@@ -291,34 +297,6 @@ export default function CommunitiesPage() {
           }}>
             Join a community where your depression is understood &mdash; not explained away. Share your story, read others&rsquo; stories, or simply be present.
           </p>
-          
-          {/* --- COMMENTED OUT: Total Online Badge --- */}
-          {/* 
-          <div
-            style={{
-              display: 'inline-block',
-              padding: '0.5rem 1.25rem',
-              borderRadius: '9999px',
-              background: 'rgba(34, 197, 94, 0.15)',
-              color: '#166534',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(34, 197, 94, 0.2)',
-            }}
-          >
-            <span style={{ 
-              width: '0.75rem', 
-              height: '0.75rem', 
-              backgroundColor: '#10b981', 
-              borderRadius: '50%',
-              display: 'inline-block',
-              marginRight: '0.5rem',
-              animation: 'pulse 2s infinite',
-            }}></span>
-            {formattedOnlineText} in communities right now
-          </div>
-          */}
         </div>
 
         {/* Communities List */}
@@ -494,25 +472,6 @@ export default function CommunitiesPage() {
                       {community.member_count === 1 ? '1 member' : `${community.member_count.toLocaleString()} members`}
                     </span>
                   </div>
-
-                  {/* --- COMMENTED OUT: Activity Row --- */}
-                  {/* 
-                  <div style={{ 
-                    display: 'flex', 
-                    gap: '0.5rem', 
-                    fontSize: '0.875rem', 
-                    color: '#4b5563',
-                    padding: '0.5rem 0.75rem',
-                    backgroundColor: 'rgba(249, 250, 251, 0.8)',
-                    borderRadius: '0.5rem',
-                    border: '1px solid rgba(229, 231, 235, 0.5)',
-                  }}>
-                    <MessageCircle size={16} style={{ color: '#3b82f6', marginTop: '0.125rem' }} />
-                    <p style={{ margin: 0 }}>
-                      {formatRecentActivity(community.created_at)}: Someone just shared their experience
-                    </p>
-                  </div>
-                  */}
                 </div>
               </div>
             </Link>

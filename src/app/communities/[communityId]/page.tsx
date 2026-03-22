@@ -1089,7 +1089,7 @@ const {  data: postData, error: postError } = await supabase
             <Image
               src={
                 community.cover_photo_url
-                  ? `/api/media/${community.cover_photo_url}`
+                  ? `/api/media/communities/${community.cover_photo_url}`
                   : `https://via.placeholder.com/1200x300/dbeafe-bfdbfe?text=${encodeURIComponent(community.name)}`
               }
               alt={community.name}
@@ -1240,7 +1240,7 @@ const {  data: postData, error: postError } = await supabase
                   >
                     {community.cover_photo_url ? (
                       <Image
-                        src={`/api/media/${community.cover_photo_url}`}
+                       src={`/api/media/communities/${community.cover_photo_url}`}
                         alt={community.name}
                         fill
                         sizes="100vw"
