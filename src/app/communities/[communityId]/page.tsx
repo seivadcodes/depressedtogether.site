@@ -60,6 +60,7 @@ interface Post {
   comments_count: number;
   is_liked: boolean;
   isAnonymous?: boolean;
+   bg_style?: string; 
 }
 interface Comment {
   id: string;
@@ -1036,39 +1037,37 @@ const {  data: postData, error: postError } = await supabase
   const isModerator = userRole === 'moderator' || isAdmin;
   const authUsername = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Anonymous';
 
-  const transformPostForCard = (post: Post) => {
-    // Since this is a depression support platform, we don't use grief types.
-    // But PostCard requires a valid GriefType[], so we use 'other' as a neutral placeholder.
-    const griefTypes: GriefType[] = ['other'];
-
-    const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
-      ? post.media_urls
+ const transformPostForCard = (post: Post) => {
+  const griefTypes: GriefType[] = ['other'];
+  const mediaUrls = Array.isArray(post.media_urls) && post.media_urls.length > 0
+    ? post.media_urls
         .filter(Boolean)
         .map(path => `/api/media/communities/${path}`)
-      : post.media_url
-        ? [`/api/media/communities/${post.media_url}`]
-        : [];
+    : post.media_url
+    ? [`/api/media/communities/${post.media_url}`]
+    : [];
 
-    return {
-      id: post.id,
-      userId: post.user_id,
-      text: post.content,
-      mediaUrl: mediaUrls[0] || undefined,
-      mediaUrls,
-      griefTypes, // ✅ Now correctly typed as GriefType[]
-      createdAt: new Date(post.created_at),
-      likes: post.likes_count,
-      isLiked: post.is_liked,
-      commentsCount: post.comments_count,
+  return {
+    id: post.id,
+    userId: post.user_id,
+    text: post.content,
+    mediaUrl: mediaUrls[0] || undefined,
+    mediaUrls,
+    griefTypes,
+    createdAt: new Date(post.created_at),
+    likes: post.likes_count,
+    isLiked: post.is_liked,
+    commentsCount: post.comments_count,
+    isAnonymous: post.isAnonymous === true,
+    bgStyle: post.bg_style, // 👈 ADD THIS LINE
+    user: {
+      id: post.user_id,
+      fullName: post.isAnonymous ? null : post.username,
+      avatarUrl: post.isAnonymous ? null : post.avatar_url,
       isAnonymous: post.isAnonymous === true,
-      user: {
-        id: post.user_id,
-        fullName: post.isAnonymous ? null : post.username,
-        avatarUrl: post.isAnonymous ? null : post.avatar_url,
-        isAnonymous: post.isAnonymous === true,
-      },
-    };
+    },
   };
+};
 
   const mediaGalleryRoute = `/communities/${communityId}/media`;
 
@@ -1455,22 +1454,23 @@ const {  data: postData, error: postError } = await supabase
             </div>
           </div>
 
-          {/* Create Post */}
-          {isMember && (
-            <div ref={composerRef} style={{ marginBottom: spacing.lg }}>
-              <PostComposer
-                onSubmit={async (text, mediaFiles, isAnonymous) => {
-                  if (!user) return;
-                  const newPost = await createPostWithMedia(text, mediaFiles, user.id, isAnonymous); // ✅ 4 args
-                  setPosts(prev => [newPost, ...prev]);
-                  toast.success('Shared with the community!');
-                }}
-                isSubmitting={uploadingMedia}
-                placeholder={`What’s on your mind, ${authUsername}? You’re not alone...`}
-                maxFiles={4}
-              />
-            </div>
-          )}
+         {/* Create Post */}
+{isMember && (
+  <div ref={composerRef} style={{ marginBottom: spacing.lg }}>
+    <PostComposer
+      onSubmit={async (text, mediaFiles, isAnonymous, bgStyle) => { // 👈 1. Accept bgStyle here
+        if (!user) return;
+        // 👇 2. Pass bgStyle as the 5th argument
+        const newPost = await createPostWithMedia(text, mediaFiles, user.id, isAnonymous, bgStyle); 
+        setPosts(prev => [newPost, ...prev]);
+        toast.success('Shared with the community!');
+      }}
+      isSubmitting={uploadingMedia}
+      placeholder={`What's on your mind, ${authUsername}? You're not alone...`}
+      maxFiles={4}
+    />
+  </div>
+)}
           {/* Posts */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: spacing['2xl'] }}>
             {posts.length === 0 ? (

@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCall } from '@/context/CallContext';
 import SendMessageOverlay from '@/components/modals/SendMessageOverlay';
 import { PostComposer } from '@/components/PostComposer';
+import { MoreVertical, Trash2 } from 'lucide-react'; // ✅ Add these imports
 
 interface Profile {
   id: string;
@@ -49,6 +50,7 @@ export default function PublicProfile() {
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [showMessageOverlay, setShowMessageOverlay] = useState(false);
+  const [showMenu, setShowMenu] = useState(false); // ✅ Menu toggle state
 
   const checkScreenSize = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -61,6 +63,19 @@ export default function PublicProfile() {
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, [checkScreenSize]);
+
+  // ✅ Close menu when clicking outside
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-profile-menu]')) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMenu]);
 
   useEffect(() => {
     if (!id) return;
@@ -144,7 +159,6 @@ export default function PublicProfile() {
     fetchProfileAndPosts();
   }, [id]);
 
-  // ✅ Redirect to auth if not logged in
   const requireAuth = (returnPath?: string) => {
     if (!user) {
       const redirectUrl = returnPath || window.location.pathname;
@@ -156,10 +170,7 @@ export default function PublicProfile() {
 
   const handleCall = async () => {
     if (!profile?.id || !profile.full_name) return;
-    
-    // ✅ Check auth first, redirect if needed
     if (!requireAuth()) return;
-    
     await startCall(
       profile.id,
       profile.full_name || 'Anonymous',
@@ -171,10 +182,7 @@ export default function PublicProfile() {
 
   const handleMessage = () => {
     if (!profile?.id) return;
-    
-    // ✅ Check auth first, redirect if needed
     if (!requireAuth()) return;
-    
     setShowMessageOverlay(true);
   };
 
@@ -236,6 +244,13 @@ export default function PublicProfile() {
     }
   };
 
+  // ✅ Navigate to delete account page
+  const handleDeleteAccount = () => {
+    if (profile?.id) {
+      router.push(`/profile/${profile.id}/delete`);
+    }
+  };
+
   const isOwner = user?.id === profile?.id;
 
   const colors = {
@@ -292,8 +307,87 @@ export default function PublicProfile() {
             boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
             marginBottom: '2rem',
             border: `1px solid ${colors.border}`,
+            position: 'relative',
           }}
         >
+          {/* ✅ Kebab Menu - Only for owner */}
+          {isOwner && (
+            <div 
+              style={{ position: 'absolute', top: '1rem', right: '1rem' }}
+              data-profile-menu
+            >
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMenu(!showMenu);
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  borderRadius: '8px',
+                  color: colors.textSecondary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'background-color 0.2s',
+                }}
+                aria-label="Profile options"
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f1f5f9')}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+              >
+                <MoreVertical size={20} />
+              </button>
+
+              {/* Dropdown Menu */}
+              {showMenu && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '0.5rem',
+                    backgroundColor: colors.surface,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    zIndex: 10,
+                    minWidth: '180px',
+                    overflow: 'hidden',
+                  }}
+                  data-profile-menu
+                >
+                  <button
+                    onClick={() => {
+                      setShowMenu(false);
+                      handleDeleteAccount();
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      color: '#ef4444',
+                      textAlign: 'left',
+                      transition: 'background-color 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fef2f2')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <Trash2 size={16} />
+                    Delete Account
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <div
             style={{
               width: '72px',
@@ -342,7 +436,7 @@ export default function PublicProfile() {
             </div>
           )}
 
-          {/* Call/Message buttons - visible to all, but action requires auth */}
+          {/* Call/Message buttons */}
           {!isOwner && (
             <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
               <button
@@ -382,7 +476,7 @@ export default function PublicProfile() {
           )}
         </div>
 
-        {/* Use PostComposer for owner */}
+        {/* PostComposer for owner */}
         {isOwner && (
           <div style={{ marginBottom: '2rem' }}>
             <PostComposer 

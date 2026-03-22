@@ -5,11 +5,50 @@ import { useRouter } from 'next/navigation';
 import { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase';
 
+// Helper: Check if profile is marked as deleted
+async function isProfileDeleted(userId: string): Promise<boolean> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from('profiles')
+    .select('deleted_at')
+    .eq('id', userId)
+    .single();
+  
+  return !!data?.deleted_at;
+}
+
+// Helper: Check if email is blacklisted
+async function isEmailBanned(email: string): Promise<boolean> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from('banned_emails')
+    .select('email')
+    .ilike('email', email.trim().toLowerCase())
+    .maybeSingle();
+  
+  return !!data;
+}
+
 // Helper to ensure profile exists and has full_name + last_seen + country
 async function ensureProfileExists(user: User) {
   if (!user?.id) return;
 
   const supabase = createClient();
+
+  // ✅ Block if profile was deleted
+  const { data: profileCheck } = await supabase
+    .from('profiles')
+    .select('deleted_at')
+    .eq('id', user.id)
+    .single();
+
+  if (profileCheck?.deleted_at) {
+    await supabase.auth.signOut();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth?deleted=1';
+    }
+    return;
+  }
 
   const { data: existingProfile, error: fetchError } = await supabase
     .from('profiles')
@@ -25,18 +64,16 @@ async function ensureProfileExists(user: User) {
     user.email?.split('@')[0] ||
     'Friend';
 
-  // ✅ Extract country from auth metadata (set during signUp)
   const country = typeof metadata?.country === 'string' ? metadata.country : null;
 
   if (fetchError?.code === 'PGRST116') {
-    // Profile doesn't exist → create it with country and last_seen
     const { error: insertError } = await supabase
       .from('profiles')
       .insert({
         id: user.id,
         email: user.email,
         full_name: fullName,
-        country, // ✅ Preserve detected country
+        country,
         last_seen: now,
         created_at: now,
         grief_types: [],
@@ -52,7 +89,6 @@ async function ensureProfileExists(user: User) {
       console.error('Failed to create profile:', insertError);
     }
   } else if (existingProfile) {
-    // Profile exists → only update last_seen (do NOT overwrite country or name)
     const { error: updateError } = await supabase
       .from('profiles')
       .update({ last_seen: now })
@@ -72,15 +108,32 @@ export function useAuth() {
 
   const signIn = useCallback(async (email: string, password: string) => {
     const supabase = createClient();
+    
+    // ✅ Check blacklist BEFORE attempting sign-in
+    const banned = await isEmailBanned(email);
+    if (banned) {
+      throw new Error('This email address has been permanently disabled.');
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+    
     if (error) throw error;
+    
+    // ✅ Check if profile was deleted AFTER successful sign-in
+    if (data.user) {
+      const deleted = await isProfileDeleted(data.user.id);
+      if (deleted) {
+        await supabase.auth.signOut();
+        throw new Error('This account has been permanently deleted.');
+      }
+    }
+    
     return data;
   }, []);
 
-  // ✅ Updated: Accepts optional country parameter
   const signUp = useCallback(
     async (
       email: string,
@@ -89,13 +142,20 @@ export function useAuth() {
       country?: string | null
     ) => {
       const supabase = createClient();
+      
+      // ✅ Check blacklist BEFORE allowing signup
+      const banned = await isEmailBanned(email);
+      if (banned) {
+        throw new Error('This email address has been permanently disabled.');
+      }
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             full_name: fullName,
-            country: country || null, // ✅ Pass detected country
+            country: country || null,
           },
           emailRedirectTo: typeof window !== 'undefined'
             ? `${window.location.origin}/auth/callback`
@@ -149,8 +209,18 @@ export function useAuth() {
       }
 
       if (isSubscribed && session?.user) {
-        ensureProfileExists(session.user);
-        setUser(session.user);
+        // ✅ Check if user was deleted before loading profile
+        isProfileDeleted(session.user.id).then((deleted) => {
+          if (deleted) {
+            supabase.auth.signOut();
+            if (typeof window !== 'undefined') {
+              window.location.href = '/auth?deleted=1';
+            }
+            return;
+          }
+          ensureProfileExists(session.user);
+          setUser(session.user);
+        });
       } else if (isSubscribed) {
         setUser(null);
       }
@@ -163,7 +233,7 @@ export function useAuth() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isSubscribed) return;
 
       if (event === 'SIGNED_OUT') {
@@ -183,6 +253,15 @@ export function useAuth() {
         event === 'USER_UPDATED'
       ) {
         if (session?.user) {
+          // ✅ Re-check deletion status on every auth event
+          const deleted = await isProfileDeleted(session.user.id);
+          if (deleted) {
+            await supabase.auth.signOut();
+            if (typeof window !== 'undefined') {
+              window.location.href = '/auth?deleted=1';
+            }
+            return;
+          }
           ensureProfileExists(session.user);
           setUser(session.user);
         }
