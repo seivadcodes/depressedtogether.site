@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Shield, Trash2, Mail } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 
 export default function AccountDeletionInfo() {
   return (
@@ -73,24 +73,24 @@ export default function AccountDeletionInfo() {
 
         {/* What Gets Deleted */}
         <div style={{
-  backgroundColor: '#f8fafc',
-  border: '1px solid #e2e8f0',
-  borderRadius: '0.75rem',
-  padding: '1rem',
-  marginBottom: '1.5rem',
-}}>
-  <h3 style={{ fontWeight: 600, color: '#1e40af', marginBottom: '0.75rem', fontSize: '1rem' }}>
-    This will permanently:
-  </h3>
-  <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#4b5563', fontSize: '0.875rem', lineHeight: 1.7 }}>
-    <li>Revoke your access and login credentials</li>
-    <li>Blacklist your email from future signups</li>
-    <li>Remove your personal settings and private data</li>
-    <li style={{ color: '#64748b', fontStyle: 'italic' }}>
-      Note: Your name and photo on past posts remain to preserve community history.
-    </li>
-  </ul>
-</div>
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '0.75rem',
+          padding: '1rem',
+          marginBottom: '1.5rem',
+        }}>
+          <h3 style={{ fontWeight: 600, color: '#1e40af', marginBottom: '0.75rem', fontSize: '1rem' }}>
+            This will permanently:
+          </h3>
+          <ul style={{ margin: 0, paddingLeft: '1.25rem', color: '#4b5563', fontSize: '0.875rem', lineHeight: 1.7 }}>
+            <li>Revoke your access and login credentials</li>
+            <li>Blacklist your email from future signups</li>
+            <li>Remove your personal settings and private data</li>
+            <li style={{ color: '#64748b', fontStyle: 'italic' }}>
+              Note: Your name and photo on past posts remain to preserve community history.
+            </li>
+          </ul>
+        </div>
 
         {/* Action Button */}
         <Link
@@ -118,32 +118,6 @@ export default function AccountDeletionInfo() {
           Log In to Delete Account
         </Link>
 
-        {/* Support Contact */}
-        <div style={{
-          borderTop: '1px solid #e7e5e4',
-          paddingTop: '1.5rem',
-          textAlign: 'center',
-        }}>
-          {/*<p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.5rem' }}>
-            Having trouble? Contact our support team.
-          </p>
-          <a
-            href="mailto:seivadyoung@gmail.com"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              color: '#3b82f6',
-              textDecoration: 'none',
-              fontWeight: 500,
-              fontSize: '0.9rem',
-            }}
-          >
-            <Mail size={16} />
-            seivadyoung@gmail.com
-          </a>*/}
-        </div>
-        
         <div style={{ marginTop: '2rem', textAlign: 'center' }}>
           <Link
             href="/"
