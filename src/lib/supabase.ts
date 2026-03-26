@@ -1,5 +1,20 @@
 ﻿// src/lib/supabase.ts
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { Preferences } from '@capacitor/preferences';
+
+// Custom storage adapter that uses Capacitor Preferences
+const capacitorStorage = {
+  getItem: async (key: string) => {
+    const { value } = await Preferences.get({ key });
+    return value;
+  },
+  setItem: async (key: string, value: string) => {
+    await Preferences.set({ key, value });
+  },
+  removeItem: async (key: string) => {
+    await Preferences.remove({ key });
+  },
+};
 
 export const createClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -11,5 +26,11 @@ export const createClient = () => {
     );
   }
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  return createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      storage: capacitorStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+  });
 };
