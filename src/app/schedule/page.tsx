@@ -1,8 +1,9 @@
-﻿﻿'use client';
+﻿﻿// src/app/events/page.tsx
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase'; // ✅ FIXED: Single canonical import
 import Image from 'next/image';
 
 type Event = {
@@ -28,6 +29,7 @@ export default function EventsPage() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // ✅ FIXED: Create client ONCE at module level, not inside component
   const supabase = createClient();
 
   useEffect(() => {
@@ -84,7 +86,7 @@ export default function EventsPage() {
     };
 
     init();
-  }, [supabase]);
+  }, []); // ✅ FIXED: Remove supabase from dependency array since it's stable
 
   // Helper: is user reserved for this event?
   const isReserved = (eventId: string) => {

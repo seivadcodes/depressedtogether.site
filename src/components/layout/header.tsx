@@ -17,17 +17,20 @@ import {
 } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Image from 'next/image';
-import { createClient } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase'; // ✅ FIXED: Single canonical import
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 import SuggestionModal from '@/components/modals/SuggestionModal';
-import NotificationModal from '@/components/notifications/NotificationModal'; // ✅ Ensure imported
+import NotificationModal from '@/components/notifications/NotificationModal';
 
 type CallInvitation = {
   caller_id: string;
   caller_name: string;
   room_id: string;
 };
+
+// ✅ FIXED: Create client ONCE at module level (stable reference)
+const supabase = createClient();
 
 export default function Header() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -41,13 +44,12 @@ export default function Header() {
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [isUnreadLoading, setIsUnreadLoading] = useState(true);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false); // ✅ Controls modal visibility
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [isHamburgerMenuOpen, setIsHamburgerMenuOpen] = useState(false);
   const [isSuggestionModalOpen, setIsSuggestionModalOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const hamburgerMenuRef = useRef<HTMLDivElement>(null);
-  const supabase = useMemo(() => createClient(), []);
 
   // Fetch profile
   useEffect(() => {
@@ -79,7 +81,7 @@ export default function Header() {
       setProfileLoading(false);
     };
     fetchProfile();
-  }, [user, supabase]);
+  }, [user]); // ✅ Removed supabase from deps since it's stable
 
   const fetchAllUnreadCounts = useCallback(async () => {
     if (!user?.id) {
@@ -120,7 +122,7 @@ export default function Header() {
     } finally {
       setIsUnreadLoading(false);
     }
-  }, [user?.id, supabase]);
+  }, [user?.id]); // ✅ Removed supabase from deps
 
   // Unified initial fetch + refetch on focus/visibility
   useEffect(() => {

@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { createClient } from '@/utils/supabase/client';
+import { createClient } from '@/lib/supabase'; // ✅ FIXED: Single canonical import
 import Link from 'next/link';
 import Image from 'next/image';
 import { BookOpen, AlertTriangle, ExternalLink, Search, Filter } from 'lucide-react';
@@ -46,8 +46,10 @@ const CATEGORIES: Record<ResourceType, string> = {
 const ALL_TYPES = 'All';
 type FilterType = ResourceType | 'All';
 
+// ✅ FIXED: Create client ONCE at module level (stable reference)
+const supabase = createClient();
+
 export default function ResourcesPage() {
-  const supabase = createClient();
   const [resources, setResources] = useState<Resource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -149,7 +151,7 @@ export default function ResourcesPage() {
     };
 
     fetchResourcesAndVotes();
-  }, [supabase]);
+  }, []); // ✅ FIXED: Remove supabase from deps since it's a stable module-level constant
 
   const handleVote = async (resourceId: string, newVoteType: 'helpful' | 'unhelpful') => {
     const { data: { user } } = await supabase.auth.getUser();

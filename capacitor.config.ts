@@ -11,7 +11,7 @@ const config: CapacitorConfig = {
     // ✅ Allow navigation to auth callback URLs (critical for Supabase redirects)
     allowNavigation: [
       'https://www.depressedtogether.com',
-      'https://*.depressedtogether.com',
+      'https://.depressedtogether.com',
       'com.depressedtogether.app://**', // Custom scheme for deep links
     ],
   },
