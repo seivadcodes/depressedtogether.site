@@ -2,18 +2,78 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { Preferences } from '@capacitor/preferences';
 
-// Custom storage adapter that uses Capacitor Preferences
-const capacitorStorage = {
-  getItem: async (key: string) => {
-    const { value } = await Preferences.get({ key });
-    return value;
-  },
-  setItem: async (key: string, value: string) => {
-    await Preferences.set({ key, value });
-  },
-  removeItem: async (key: string) => {
-    await Preferences.remove({ key });
-  },
+// Extend Window type to include Capacitor (from @capacitor/core)
+declare global {
+  interface Window {
+    Capacitor?: {
+      isNativePlatform?: () => boolean;
+      // Add other Capacitor properties if needed
+    };
+  }
+}
+
+// Helper to detect Capacitor native environment
+const isCapacitor = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return !!window.Capacitor;
+};
+
+// Create a storage adapter that works in both Capacitor and browser
+const getStorage = () => {
+  if (isCapacitor()) {
+    // Capacitor native storage using Preferences
+    return {
+      getItem: async (key: string) => {
+        try {
+          const { value } = await Preferences.get({ key });
+          return value;
+        } catch (err) {
+          console.warn('Preferences.get failed:', err);
+          return null;
+        }
+      },
+      setItem: async (key: string, value: string) => {
+        try {
+          await Preferences.set({ key, value });
+        } catch (err) {
+          console.warn('Preferences.set failed:', err);
+        }
+      },
+      removeItem: async (key: string) => {
+        try {
+          await Preferences.remove({ key });
+        } catch (err) {
+          console.warn('Preferences.remove failed:', err);
+        }
+      },
+    };
+  } else {
+    // Browser localStorage
+    return {
+      getItem: (key: string) => {
+        try {
+          return localStorage.getItem(key);
+        } catch (err) {
+          console.warn('localStorage.getItem failed:', err);
+          return null;
+        }
+      },
+      setItem: (key: string, value: string) => {
+        try {
+          localStorage.setItem(key, value);
+        } catch (err) {
+          console.warn('localStorage.setItem failed:', err);
+        }
+      },
+      removeItem: (key: string) => {
+        try {
+          localStorage.removeItem(key);
+        } catch (err) {
+          console.warn('localStorage.removeItem failed:', err);
+        }
+      },
+    };
+  }
 };
 
 export const createClient = () => {
@@ -26,9 +86,11 @@ export const createClient = () => {
     );
   }
 
+  const storage = getStorage();
+
   return createSupabaseClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      storage: capacitorStorage,
+      storage,
       persistSession: true,
       autoRefreshToken: true,
     },
