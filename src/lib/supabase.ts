@@ -11,5 +11,19 @@ export const createClient = () => {
     );
   }
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: 'pkce', // Critical for Capacitor/Mobile
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+      // Explicitly use localStorage for Capacitor compatibility
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'capacitor-android-app',
+      },
+    },
+  });
 };

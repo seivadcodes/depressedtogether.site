@@ -173,6 +173,10 @@ export function useAuth() {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
     setUser(null);
+    // Optional: clear any custom stored data like saved email
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('auth.email'); // if you store it elsewhere
+    }
     router.push('/auth');
   }, [router]);
 
@@ -180,24 +184,11 @@ export function useAuth() {
     let isSubscribed = true;
     const supabase = createClient();
 
-    const clearStaleSession = () => {
-      try {
-        if (typeof window !== 'undefined') {
-          Object.keys(localStorage).forEach((key) => {
-            if (
-              key.startsWith('supabase.auth.token') ||
-              key.startsWith('supabase.session') ||
-              key.startsWith('sb-')
-            ) {
-              localStorage.removeItem(key);
-            }
-          });
-        }
-      } catch (e) {
-        console.warn('Unable to clear stale session data:', e);
-      }
-    };
+    // --- REMOVED: clearStaleSession() ---
+    // This was deleting valid tokens on every mount, breaking session persistence.
+    // Supabase manages token expiration automatically.
 
+    // Fetch initial session
     supabase.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
         console.error('Session error:', error);
@@ -209,7 +200,7 @@ export function useAuth() {
       }
 
       if (isSubscribed && session?.user) {
-        // ✅ Check if user was deleted before loading profile
+        // Check if user was deleted before loading profile
         isProfileDeleted(session.user.id).then((deleted) => {
           if (deleted) {
             supabase.auth.signOut();
@@ -231,6 +222,7 @@ export function useAuth() {
       }
     });
 
+    // Listen to auth state changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -253,7 +245,7 @@ export function useAuth() {
         event === 'USER_UPDATED'
       ) {
         if (session?.user) {
-          // ✅ Re-check deletion status on every auth event
+          // Re-check deletion status on every auth event
           const deleted = await isProfileDeleted(session.user.id);
           if (deleted) {
             await supabase.auth.signOut();
@@ -269,8 +261,6 @@ export function useAuth() {
         setSessionChecked(true);
       }
     });
-
-    clearStaleSession();
 
     return () => {
       isSubscribed = false;
